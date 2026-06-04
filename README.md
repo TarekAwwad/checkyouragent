@@ -4,6 +4,31 @@ Offline forensic explorer for Claude Code `.claude/projects` exports.
 
 The app mounts raw exports read-only, indexes them into a rebuildable SQLite database, and provides a graph-first UI for inspecting sessions, tool cycles, subagents, errors, and event trails. It does not call external services and does not mutate the raw export.
 
+## At a Glance
+
+Claude Analytics is built around two high-signal views: a triage board for finding the sessions that deserve attention, and cost analytics for understanding where Claude Code spend comes from.
+
+| Triage suspicious sessions | Understand cost and token behavior |
+| --- | --- |
+| ![Triage board showing session risk, findings, activity, fanout, volume, and cost](docs/screenshots/triage-board.png) | ![Cost analytics dashboard showing project spend, cache savings, model mix, and spend over time](docs/screenshots/cost-analytics-1.png) |
+
+## Research Foundation
+
+The current UI is the first layer of a broader research tool for understanding how coding agents behave in real projects. Claude Analytics turns local Claude Code history into inspectable evidence: what tools were used, where loops appeared, how subagents were orchestrated, which sessions became expensive, and which workflows repeatedly produced friction.
+
+That makes it a base for deeper work on coding-agent usage patterns, optimization techniques, cost control, prompt and workflow design, failure-mode analysis, and human-in-the-loop review. The project deliberately keeps raw exports read-only and rebuilds its own local cache, so experiments can be repeated without mutating the source data.
+
+## Usage Flow
+
+1. Import Claude Code exports from the mounted read-only source.
+2. Use the triage board to sort sessions by risk, errors, loops, fanout, volume, or cost.
+3. Open a session to inspect the event trace, timeline, subagents, tool usage, and raw evidence.
+4. Review cost analytics to spot expensive projects, model mix, cache savings, and costly turns.
+
+| Import exports | Inspect a session | Investigate cost outliers |
+| --- | --- | --- |
+| ![Import page showing mounted source, cache totals, and project import controls](docs/screenshots/import.png) | ![Session workspace showing event density, subagents, tool usage, trace lanes, loops, and token chart](docs/screenshots/session-workspace.png) | ![Cost outlier view showing turn distribution and the selected expensive turn drivers](docs/screenshots/cost-analytics-2.png) |
+
 ## Project Docs
 
 - [Contributing](CONTRIBUTING.md)
@@ -70,12 +95,3 @@ http://localhost:5173
 ```
 
 `VITE_API_BASE` defaults to `http://localhost:8000/api` if unset. Set it before `npm run dev` when the backend runs on a different host or port.
-
-## V1 Behavior
-
-- Import screen indexes the mounted export.
-- Global map shows projects and sessions with behavior counts.
-- Session workspace provides replay, event graph, expandable subagent evidence, and metadata-first inspection.
-- Raw JSON is loaded on demand from the read-only export using recorded source path and line number.
-
-V1 deliberately avoids automatic loop/deadlock/drift labels. It exposes enough structure for a human analyst to spot suspicious regions.
