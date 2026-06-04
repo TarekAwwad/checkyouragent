@@ -1,0 +1,16 @@
+Data/
+frontend/node_modules/
+frontend/dist/
+frontend/.dev-server*.log
+backend/.venv/
+backend/.pytest_cache/
+backend/.dev*.sqlite3
+backend/.dev-server*.log
+backend/src/ccfr/static/
+**/__pycache__/
+**/*.py[cod]
+**/*.sqlite3
+**/*.tsbuildinfo
+.git/
+.env
+

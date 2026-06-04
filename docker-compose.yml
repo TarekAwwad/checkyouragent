@@ -1,0 +1,30 @@
+services:
+  backend:
+    build: .
+    init: true
+    ports:
+      # Expose only on the host loopback; the API is unauthenticated.
+      - "127.0.0.1:8000:8000"
+    environment:
+      CCFR_DATA_DIR: /app/data
+      CCFR_DB_PATH: /app/data/ccfr.sqlite3
+      CCFR_IMPORT_ROOT: /imports
+    volumes:
+      - ./Data:/imports:ro
+      - ccfr-data:/app/data
+      # Mount pricing.csv read-only so edits take effect on the next request (no rebuild).
+      - ./pricing.csv:/app/pricing.csv:ro
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE: http://localhost:8000/api
+    ports:
+      # Serve the local UI on loopback only.
+      - "127.0.0.1:5173:5173"
+    depends_on:
+      - backend
+
+volumes:
+  ccfr-data:

@@ -1,0 +1,400 @@
+from __future__ import annotations
+
+from typing import Any
+
+from pydantic import BaseModel, Field
+
+
+class ImportRequest(BaseModel):
+    source_path: str | None = Field(default=None, description="Export root path; defaults to CCFR_IMPORT_ROOT.")
+    project: str | None = Field(default=None, description="Import only this project folder; null imports all new projects.")
+
+
+class RuntimeConfigResponse(BaseModel):
+    import_root: str
+    database_path: str
+    is_docker: bool = False
+
+
+class CacheStatsResponse(BaseModel):
+    project_count: int
+    session_count: int
+    event_count: int
+    subagent_count: int
+    memory_count: int
+    persisted_output_count: int
+
+
+class ImportProgressSummary(BaseModel):
+    project_count: int
+    session_count: int
+    event_count: int
+    subagent_count: int
+    memory_count: int
+    persisted_output_count: int
+    file_count: int
+    error_count: int
+
+
+class ImportProgressResponse(BaseModel):
+    active: bool
+    import_id: int | None = None
+    status: str = "idle"
+    source_path: str | None = None
+    project: str | None = None
+    totals: CacheStatsResponse | None = None
+    summary: ImportProgressSummary | None = None
+    updated_at: str | None = None
+
+
+class ImportSummaryResponse(BaseModel):
+    import_id: int
+    source_path: str
+    project_count: int
+    session_count: int
+    event_count: int
+    subagent_count: int
+    memory_count: int
+    persisted_output_count: int
+    file_count: int
+    error_count: int
+    errors: list[dict[str, Any]]
+
+
+class DiscoveredProjectResponse(BaseModel):
+    name: str
+    imported: bool
+    session_count: int
+    last_imported_at: str | None
+
+
+class ProjectResponse(BaseModel):
+    id: int
+    export_name: str
+    display_name: str
+    inferred_cwd: str | None
+    session_count: int
+    event_count: int
+    subagent_count: int
+    cost_usd: float = 0
+    cost_available: bool = False
+
+
+class SessionCard(BaseModel):
+    id: int
+    project_id: int
+    project_name: str
+    session_id: str
+    title: str | None
+    first_ts: str | None
+    last_ts: str | None
+    cwd: str | None
+    version: str | None
+    entrypoint: str | None
+    git_branch: str | None
+    event_count: int = 0
+    turn_count: int = 0
+    tool_call_count: int = 0
+    subagent_count: int = 0
+    error_count: int = 0
+    system_count: int = 0
+    persisted_output_count: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    loop_count: int = 0
+    max_repeat: int = 0
+    duration_seconds: int = 0
+    max_agent_events: int = 0
+    finding_count: int = 0
+    pattern_risk_score: float = 0
+    top_finding_category: str | None = None
+    top_finding_severity: str | None = None
+    top_finding_title: str | None = None
+    cost_usd: float = 0
+    cost_available: bool = False
+
+
+class TimelineItem(BaseModel):
+    id: str
+    event_id: int
+    kind: str
+    title: str
+    timestamp: str | None
+    preview: str | None
+    event_type: str
+    role: str | None = None
+    tool_name: str | None = None
+    agent_id: str | None = None
+    is_sidechain: bool = False
+    related_event_ids: list[int] = Field(default_factory=list)
+
+
+
+class SubagentResponse(BaseModel):
+    id: int
+    agent_id: str
+    agent_type: str | None
+    description: str | None
+    name: str | None
+    tool_use_id: str | None
+    event_count: int
+    first_ts: str | None
+    last_ts: str | None
+
+
+class RiskFindingResponse(BaseModel):
+    id: int
+    session_id: int
+    severity: str
+    category: str
+    title: str
+    explanation: str
+    pattern: list[str] = Field(default_factory=list)
+    support: int
+    positive_support: int
+    negative_support: int
+    lift: float
+    score: float
+    start_event_id: int | None
+    end_event_id: int | None
+    evidence: dict[str, Any] = Field(default_factory=dict)
+
+
+class EventDetail(BaseModel):
+    id: int
+    session_id: int
+    uuid: str | None
+    parent_uuid: str | None
+    type: str
+    timestamp: str | None
+    is_sidechain: bool
+    agent_id: str | None
+    source_path: str
+    line_no: int
+    role: str | None
+    model: str | None
+    text_preview: str | None
+    tool_calls: list[dict[str, Any]]
+    tool_results: list[dict[str, Any]]
+    related_event_ids: list[int]
+    raw_json: dict[str, Any] | None
+
+
+class SearchResult(BaseModel):
+    kind: str
+    ref_id: int
+    project_id: int | None
+    session_id: int | None
+    title: str | None
+    preview: str | None
+
+
+class TraceLane(BaseModel):
+    lane_id: str
+    label: str
+    kind: str
+
+
+class TraceSpan(BaseModel):
+    id: str
+    event_id: int
+    lane: str
+    kind: str
+    input_tokens: int = 0
+    output_tokens: int = 0
+    model: str | None = None
+    start_ts: str | None
+    end_ts: str | None
+    tool_use_id: str | None
+    tool_name: str | None = None
+    is_loop: bool
+    loop_run_id: str | None = None
+    loop_position: int | None = None
+    loop_count: int | None = None
+    loop_start_event_id: int | None = None
+    loop_end_event_id: int | None = None
+
+
+class CostTokens(BaseModel):
+    base_input: int = 0
+    cache_write_5m: int = 0
+    cache_write_1h: int = 0
+    cache_read: int = 0
+    output: int = 0
+
+
+class SessionCost(BaseModel):
+    usd: float = 0
+    available: bool = False
+    unpriced_models: list[str] = Field(default_factory=list)
+    tokens: CostTokens = Field(default_factory=CostTokens)
+
+
+class TraceResponse(BaseModel):
+    session_id: int
+    first_ts: str | None
+    last_ts: str | None
+    lanes: list[TraceLane]
+    spans: list[TraceSpan]
+    cost: SessionCost = Field(default_factory=SessionCost)
+
+
+class TreemapModel(BaseModel):
+    model: str
+    usd: float = 0
+
+
+class TreemapProject(BaseModel):
+    project_id: int
+    project_name: str
+    usd: float = 0
+    children: list[TreemapModel] = Field(default_factory=list)
+
+
+class OverTimeBucket(BaseModel):
+    bucket: str
+    per_model: dict[str, float] = Field(default_factory=dict)
+
+
+class CategoryCost(BaseModel):
+    tokens: int = 0
+    usd: float = 0
+
+
+class CategoriesBreakdown(BaseModel):
+    base_input: CategoryCost = Field(default_factory=CategoryCost)
+    cache_write_5m: CategoryCost = Field(default_factory=CategoryCost)
+    cache_write_1h: CategoryCost = Field(default_factory=CategoryCost)
+    cache_read: CategoryCost = Field(default_factory=CategoryCost)
+    output: CategoryCost = Field(default_factory=CategoryCost)
+
+
+class ModelCost(BaseModel):
+    model: str
+    usd: float = 0
+    tokens: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    effective_usd_per_million: float = 0
+
+
+class TurnCostStats(BaseModel):
+    turn_count: int = 0
+    median_usd: float = 0
+    p95_usd: float = 0
+    max_usd: float = 0
+    outlier_count: int = 0
+
+
+class TurnCostDetail(BaseModel):
+    index: int
+    start_event_id: int
+    title: str
+    preview: str | None = None
+    start_timestamp: str | None = None
+    usd: float = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    event_count: int = 0
+    assistant_message_count: int = 0
+    tool_call_count: int = 0
+    error_count: int = 0
+    subagent_count: int = 0
+    loop_count: int = 0
+    max_repeat: int = 0
+    models: list[str] = Field(default_factory=list)
+    is_outlier: bool = False
+
+
+class TurnCostBreakdown(BaseModel):
+    session_id: int
+    turn_count: int = 0
+    median_usd: float = 0
+    p95_usd: float = 0
+    max_usd: float = 0
+    outlier_threshold_usd: float = 0
+    outlier_count: int = 0
+    turns: list[TurnCostDetail] = Field(default_factory=list)
+
+
+class SessionCostEntry(BaseModel):
+    id: int
+    session_id: str
+    title: str | None = None
+    project_name: str
+    usd: float = 0
+    tokens: int = 0
+    turn_count: int = 0
+    tool_call_count: int = 0
+    subagent_count: int = 0
+    error_count: int = 0
+    loop_count: int = 0
+    max_repeat: int = 0
+    finding_count: int = 0
+    duration_seconds: int = 0
+    turn_cost_stats: TurnCostStats = Field(default_factory=TurnCostStats)
+
+
+class CacheEconomicsModel(BaseModel):
+    model: str
+    observed_input_usd: float = 0
+    no_cache_input_usd: float = 0
+    net_savings_usd: float = 0
+    input_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+
+
+class CacheEconomics(BaseModel):
+    observed_input_usd: float = 0
+    no_cache_input_usd: float = 0
+    net_savings_usd: float = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    by_model: list[CacheEconomicsModel] = Field(default_factory=list)
+
+
+class SpendSpikeSession(BaseModel):
+    id: int
+    session_id: str
+    title: str | None = None
+    project_name: str
+    usd: float = 0
+    tokens: int = 0
+
+
+class SpendSpike(BaseModel):
+    bucket: str
+    total_usd: float = 0
+    delta_usd: float = 0
+    sessions: list[SpendSpikeSession] = Field(default_factory=list)
+
+
+class AvailableProject(BaseModel):
+    id: int
+    name: str
+
+
+class CostAnalyticsMeta(BaseModel):
+    available: bool = False
+    unpriced_models: list[str] = Field(default_factory=list)
+    total_usd: float = 0
+    total_tokens: int = 0
+    available_projects: list[AvailableProject] = Field(default_factory=list)
+    available_models: list[str] = Field(default_factory=list)
+    bucket: str = "day"
+
+
+class CostAnalyticsResponse(BaseModel):
+    meta: CostAnalyticsMeta = Field(default_factory=CostAnalyticsMeta)
+    treemap: list[TreemapProject] = Field(default_factory=list)
+    over_time: list[OverTimeBucket] = Field(default_factory=list)
+    categories: CategoriesBreakdown = Field(default_factory=CategoriesBreakdown)
+    by_model: list[ModelCost] = Field(default_factory=list)
+    sessions: list[SessionCostEntry] = Field(default_factory=list)
+    cache_economics: CacheEconomics = Field(default_factory=CacheEconomics)
+    spikes: list[SpendSpike] = Field(default_factory=list)
