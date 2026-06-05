@@ -2,7 +2,7 @@
 name = "claude-code-flight-recorder"
 version = "0.1.0"
 description = "Offline forensic explorer for Claude Code project exports"
-license = { text = "Apache-2.0" }
+license = { text = "BUSL-1.1" }
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115.0",
