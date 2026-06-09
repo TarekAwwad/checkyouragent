@@ -6,7 +6,7 @@ import type { DiscoveryDriver, DiscoveryResponse, Project } from "../api/types";
 const { getDiscoveryAnalytics } = vi.hoisted(() => ({ getDiscoveryAnalytics: vi.fn() }));
 vi.mock("../api/client", () => ({ getDiscoveryAnalytics }));
 
-import DiscoverPage from "./DiscoverPage";
+import SubgroupDiscovery from "./SubgroupDiscovery";
 
 const projects: Project[] = [
   {
@@ -115,7 +115,7 @@ function renderPage(onOpenSession = vi.fn()) {
     onOpenSession,
     ...render(
       <QueryClientProvider client={queryClient}>
-        <DiscoverPage projects={projects} onOpenSession={onOpenSession} />
+        <SubgroupDiscovery projects={projects} onOpenSession={onOpenSession} />
       </QueryClientProvider>,
     ),
   };
@@ -126,12 +126,12 @@ beforeEach(() => {
   getDiscoveryAnalytics.mockResolvedValue(payload);
 });
 
-describe("DiscoverPage", () => {
+describe("SubgroupDiscovery", () => {
   it("renders drivers with expanded evidence and opens example sessions", async () => {
     const onOpenSession = vi.fn();
     renderPage(onOpenSession);
 
-    expect(await screen.findByRole("heading", { name: "Discover" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "What drives high-cost sessions?" })).toBeInTheDocument();
     expect(await screen.findByText(">10 subagents + Uses claude-sonnet-4-6")).toBeInTheDocument();
     expect(await screen.findByText("6 of 11 matched items hit this outcome.")).toBeInTheDocument();
     expect(await screen.findByText("54.5%")).toBeInTheDocument();
@@ -153,7 +153,7 @@ describe("DiscoverPage", () => {
 
   it("passes project and minimum support filters to the API", async () => {
     renderPage();
-    await screen.findByRole("heading", { name: "Discover" });
+    await screen.findByRole("heading", { name: "What drives high-cost sessions?" });
 
     fireEvent.change(screen.getByLabelText("Project"), { target: { value: "1" } });
     fireEvent.change(screen.getByLabelText("Minimum support"), { target: { value: "10" } });

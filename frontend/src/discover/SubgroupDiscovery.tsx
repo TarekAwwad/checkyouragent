@@ -19,6 +19,15 @@ const SECTION_TABS: Array<{ key: string; label: string }> = [
 
 const SUPPORT_OPTIONS = [3, 5, 10, 20];
 
+const OUTCOME_HEADLINES: Record<string, string> = {
+  cost: "What drives high-cost sessions?",
+  fanout_cost: "What drives high-cost fanout sessions?",
+  tool_errors: "What drives tool-call errors?",
+  rejections: "What drives rejected slices?",
+};
+
+const SECTION_FALLBACK_DESC = "Conditions that shape this outcome.";
+
 function formatCount(value: number): string {
   return value.toLocaleString("en-US");
 }
@@ -28,7 +37,7 @@ function formatPct(value: number): string {
 }
 
 function formatLift(value: number): string {
-  return `${value.toFixed(value >= 10 ? 1 : 2)}x baseline`;
+  return `${value.toFixed(value >= 10 ? 1 : 2)}× baseline`;
 }
 
 function exampleTitle(example: DiscoveryExample): string {
@@ -188,7 +197,7 @@ function SectionResults({
   );
 }
 
-export default function DiscoverPage({ projects, onOpenSession }: Props) {
+export default function SubgroupDiscovery({ projects, onOpenSession }: Props) {
   const [projectId, setProjectId] = React.useState<number | null>(null);
   const [minSupport, setMinSupport] = React.useState(5);
   const [activeSection, setActiveSection] = React.useState("cost");
@@ -212,13 +221,23 @@ export default function DiscoverPage({ projects, onOpenSession }: Props) {
     : 0;
   const errorMessage = query.error instanceof Error ? query.error.message : "Unable to load discovery results.";
 
+  const headline =
+    (section && OUTCOME_HEADLINES[section.key]) || section?.title || "Subgroup discovery";
+  const topLift =
+    section && section.results.length
+      ? Math.max(...section.results.map((result) => result.lift))
+      : null;
+
   return (
     <main className="discover-page">
       <div className="discover-page-inner">
         <section className="discover-head">
           <div>
-            <p className="discover-kicker"><Sparkles size={14} /> Drivers</p>
-            <h1>Discover</h1>
+            <p className="discover-kicker"><Sparkles size={14} /> Subgroup discovery</p>
+            <h1>{headline}</h1>
+            <p className="discover-subtitle">
+              {section?.description ?? SECTION_FALLBACK_DESC}
+            </p>
           </div>
           <div className="discover-controls">
             <label className="selectbox">
@@ -239,6 +258,23 @@ export default function DiscoverPage({ projects, onOpenSession }: Props) {
           </div>
         </section>
 
+        <div className="discover-tabs" role="tablist" aria-label="Outcome category">
+          {SECTION_TABS.map((tab) => (
+            <button
+              type="button"
+              role="tab"
+              key={tab.key}
+              id={`discover-tab-${tab.key}`}
+              aria-controls="discover-tabpanel"
+              className={activeSection === tab.key ? "active" : ""}
+              aria-selected={activeSection === tab.key}
+              onClick={() => setActiveSection(tab.key)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
         <section className="discover-overview" aria-label="Discovery summary">
           <InsightStat
             label="Scope"
@@ -251,9 +287,9 @@ export default function DiscoverPage({ projects, onOpenSession }: Props) {
             hint="matching current support"
           />
           <InsightStat
-            label="Support"
-            value={formatCount(minSupport)}
-            hint="minimum matched items"
+            label="Top lift"
+            value={topLift !== null ? `${topLift.toFixed(topLift >= 10 ? 1 : 2)}×` : "—"}
+            hint="vs baseline"
           />
           <InsightStat
             label="Cost data"
@@ -263,23 +299,6 @@ export default function DiscoverPage({ projects, onOpenSession }: Props) {
         </section>
 
         <section className="discover-workspace">
-          <div className="discover-tabs" role="tablist" aria-label="Driver category">
-            {SECTION_TABS.map((tab) => (
-              <button
-                type="button"
-                role="tab"
-                key={tab.key}
-                id={`discover-tab-${tab.key}`}
-                aria-controls="discover-tabpanel"
-                className={activeSection === tab.key ? "active" : ""}
-                aria-selected={activeSection === tab.key}
-                onClick={() => setActiveSection(tab.key)}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
           <div
             id="discover-tabpanel"
             role="tabpanel"
@@ -289,7 +308,7 @@ export default function DiscoverPage({ projects, onOpenSession }: Props) {
             <div className="discover-section-head">
               <div>
                 <h2>{section?.title ?? "Drivers"}</h2>
-                <p>{section?.description ?? "Conditions that shape this outcome."}</p>
+                <p>{section?.description ?? SECTION_FALLBACK_DESC}</p>
               </div>
               {section && (
                 <span className="discover-section-meta">
