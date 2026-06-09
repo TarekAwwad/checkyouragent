@@ -1,5 +1,5 @@
 import React from "react";
-import { AlertTriangle, Filter, Network, Search } from "lucide-react";
+import { AlertTriangle, Network, Search } from "lucide-react";
 import type { Project, SessionCard } from "../api/types";
 import { riskScore } from "./riskScore";
 import RiskCell from "./RiskCell";
@@ -81,28 +81,26 @@ function TriageBoard({ projects, sessions, loading, onOpenSession }: Props) {
 
   return (
     <main className="page triage-page">
-      <section className="triage-head">
-        <h1>Triage Board <span className="count">{rows.length.toLocaleString()} sessions</span></h1>
+      <section className="cost-filterbar triage-toolbar" aria-label="Triage controls">
         <label className="searchbox">
           <Search size={16} />
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search sessions" />
         </label>
+        <select
+          aria-label="Project"
+          value={activeProjectId}
+          onChange={(e) => setProjectId(e.target.value === "all" ? "all" : Number(e.target.value))}
+        >
+          <option value="all">All projects</option>
+          {projects.map((project) => <option value={project.id} key={project.id}>{project.display_name}</option>)}
+        </select>
+        <label className="toggle">
+          <input type="checkbox" checked={onlyErrors} onChange={(e) => setOnlyErrors(e.target.checked)} />
+          <span>Errors only</span>
+        </label>
       </section>
 
       <section className="card triage-card">
-        <div className="triage-toolbar">
-          <label className="selectbox">
-            <Filter size={15} />
-            <select value={activeProjectId} onChange={(e) => setProjectId(e.target.value === "all" ? "all" : Number(e.target.value))}>
-              <option value="all">All projects</option>
-              {projects.map((project) => <option value={project.id} key={project.id}>{project.display_name}</option>)}
-            </select>
-          </label>
-          <label className="toggle">
-            <input type="checkbox" checked={onlyErrors} onChange={(e) => setOnlyErrors(e.target.checked)} />
-            <span>Errors only</span>
-          </label>
-        </div>
         <div className="triage-project-summary" aria-label="Project cost summary">
           <span className="tps-project">{projectLabel}</span>
           <span className="tps-sessions">{rows.length.toLocaleString()} sessions</span>

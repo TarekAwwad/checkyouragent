@@ -53,13 +53,71 @@ button, input, select { font: inherit; font-family: Verdana, Geneva, sans-serif;
 button { cursor: pointer; }
 button:disabled { cursor: not-allowed; opacity: 0.5; }
 
-.app-shell { height: 100%; display: flex; flex-direction: column; }
+.app-shell { height: 100%; display: flex; align-items: stretch; }
 
-.topbar {
-  flex: 0 0 auto;
-  height: 56px; display: flex; align-items: center; gap: 18px;
-  padding: 0 18px; background: var(--surface); border-bottom: 1px solid var(--border);
+/* ---- Global sidebar ---- */
+.app-sidebar {
+  flex: 0 0 218px; width: 218px; box-sizing: border-box;
+  display: flex; flex-direction: column; gap: 4px; padding: 14px 12px;
+  background: var(--surface); border-right: 1px solid var(--border);
 }
+.app-sidebar.is-collapsed { flex-basis: 64px; width: 64px; align-items: stretch; }
+
+.sb-brand { display: flex; align-items: center; gap: 9px; padding: 4px 6px 12px; }
+.sb-logo { width: 24px; height: 24px; border-radius: 7px; flex: none;
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #7c5cff)); }
+.sb-brand strong { font-size: 14px; font-weight: 700; letter-spacing: -.01em; color: var(--accent); white-space: nowrap; }
+
+.sb-nav { display: flex; flex-direction: column; gap: 2px; }
+.sb-item {
+  width: 100%; display: flex; align-items: center; gap: 10px;
+  border: 0; background: transparent; color: var(--muted);
+  font-weight: 700; font-size: 12.5px; padding: 9px 10px; border-radius: 9px; text-align: left;
+}
+.sb-item:hover:not(:disabled) { background: var(--bg); color: var(--text); }
+.sb-item.active {
+  background: color-mix(in srgb, var(--accent) 14%, var(--raised));
+  color: var(--accent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.sb-item:disabled { opacity: .4; }
+.sb-ic { flex: none; }
+
+.sb-subnav {
+  display: flex; flex-direction: column; gap: 2px;
+  margin: 2px 0 4px 13px; padding-left: 9px; border-left: 1px solid var(--border);
+}
+.sb-subitem {
+  display: flex; align-items: center; gap: 8px;
+  border: 0; background: transparent; color: var(--muted);
+  font-size: 12px; padding: 6px 9px; border-radius: 8px; text-align: left;
+}
+.sb-subitem:hover:not(:disabled) { background: var(--bg); color: var(--text); }
+.sb-subitem.active { background: var(--bg); color: var(--text); }
+.sb-subitem:disabled { opacity: .5; }
+.sb-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .5; flex: none; }
+.sb-subitem.active .sb-dot { background: var(--accent); opacity: 1; }
+.sb-tag { margin-left: auto; font-style: normal; font-size: 8.5px; letter-spacing: .5px;
+  color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 1px 6px; }
+
+.sb-foot { margin-top: auto; display: flex; gap: 8px; padding-top: 8px; }
+.sb-action {
+  width: 34px; height: 34px; display: grid; place-items: center;
+  border: 1px solid var(--border); background: var(--bg); color: var(--muted); border-radius: 9px;
+}
+.sb-action:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--border-2)); }
+.sb-collapse { margin-left: auto; }
+
+/* Collapsed: hide text, center icons */
+.app-sidebar.is-collapsed .sb-label,
+.app-sidebar.is-collapsed .sb-tag,
+.app-sidebar.is-collapsed .sb-brand strong,
+.app-sidebar.is-collapsed .sb-subnav { display: none; }
+.app-sidebar.is-collapsed .sb-item { justify-content: center; padding: 9px 0; }
+.app-sidebar.is-collapsed .sb-foot { flex-direction: column; align-items: center; }
+.app-sidebar.is-collapsed .sb-collapse { margin-left: 0; }
+
+/* Main content pane */
+.app-main { flex: 1 1 auto; min-width: 0; height: 100%; display: flex; flex-direction: column; overflow: hidden; }
 
 .map-footer span,
 .panel-header,
@@ -71,39 +129,12 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   gap: 8px;
 }
 
-.brand { display: flex; align-items: center; }
-.brand strong { font-size: 15px; font-weight: 700; letter-spacing: -.01em; color: var(--accent); }
-
-.topnav { display: flex; gap: 2px; padding: 3px; margin-left: 8px;
-  background: var(--bg); border: 1px solid var(--border); border-radius: 11px; }
-.topnav button {
-  border: 0; background: transparent; color: var(--muted);
-  font-weight: 700; font-size: 11.5px; padding: 6px 13px; border-radius: 8px;
-}
-.topnav button.active {
-  background: color-mix(in srgb, var(--accent) 14%, var(--raised));
-  color: var(--accent);
-  box-shadow: 0 1px 2px var(--shadow);
-}
-.topnav button:disabled { opacity: .4; }
-
 .icon-actions button {
   width: 30px; height: 30px; display: grid; place-items: center;
   border: 1px solid var(--border); background: var(--bg); color: var(--text); border-radius: 8px;
 }
 
 .icon-actions button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-
-.topbar-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; }
-.theme-toggle {
-  width: 34px; height: 34px; display: grid; place-items: center;
-  border: 1px solid var(--border); background: var(--bg); color: var(--muted); border-radius: 9px;
-}
-.theme-toggle:hover {
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 40%, var(--border-2));
-  background: color-mix(in srgb, var(--accent) 8%, var(--bg));
-}
 
 /* Shared glossary modal — themed via the same CSS variables as the rest of
    the app so it follows light/dark automatically. */
@@ -518,7 +549,6 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
 }
 
 @media (max-width: 760px) {
-  .topbar,
   .workspace-header {
     align-items: stretch;
     flex-direction: column;
@@ -548,13 +578,12 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
   }
 }
 
-.triage-page { display: grid; grid-template-rows: auto 1fr auto; gap: 14px; min-height: calc(100vh - 56px); padding: 20px 22px; }
-.triage-head { display: flex; align-items: center; justify-content: space-between; }
-.triage-head h1 { margin: 0; font-size: 19px; font-weight: 700; }
-.triage-head .count { color: var(--faint); font-size: 12px; font-weight: 400; margin-left: 8px; }
-
+.triage-page { display: grid; grid-template-rows: auto 1fr auto; gap: 14px; min-height: 100%; padding: 20px 22px; }
 .triage-card { display: flex; flex-direction: column; min-height: 0; }
-.triage-toolbar { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+.triage-toolbar {
+  flex-wrap: wrap;
+}
+.triage-toolbar .searchbox { flex: 1 1 300px; min-width: 220px; }
 
 .triage-project-summary { display: flex; align-items: baseline; gap: 14px; padding: 8px 14px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--muted); }
 .triage-project-summary .tps-project { font-weight: 700; color: var(--text); }
@@ -1025,30 +1054,8 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
   max-width: var(--page-max-width); margin: 0 auto; padding: 18px var(--page-gutter);
   display: flex; flex-direction: column; gap: 14px;
 }
-.discover-head {
-  display: flex; justify-content: space-between; align-items: flex-end; gap: 18px;
-}
-.discover-head h1 { margin: 2px 0 0; font-size: 22px; line-height: 1.15; }
-.discover-kicker {
-  margin: 0; display: flex; align-items: center; gap: 6px;
-  color: var(--muted); font-size: 11px; font-weight: 700;
-  text-transform: uppercase; letter-spacing: .55px;
-}
-.discover-controls {
-  display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap;
-}
-.discover-controls .selectbox { min-width: 170px; display: grid; gap: 4px; }
-.discover-controls .selectbox span {
-  font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .45px;
-}
-.discover-controls select {
-  min-height: 36px; padding: 7px 12px; border-radius: 9px; font-size: 12px;
-  border: 1px solid var(--border-2); background: var(--surface); color: var(--text);
-}
-/* Match the focus ring used by other inputs (.selectbox / .searchbox). */
-.discover-controls select:focus-visible {
-  outline: 0; border-color: var(--accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
+.discover-toolbar {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px 18px; flex-wrap: wrap;
 }
 .discover-overview {
   display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px;
@@ -1060,17 +1067,26 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
   overflow: hidden; display: flex; flex-direction: column;
   border: 1px solid var(--border); border-radius: 14px; background: var(--surface);
 }
+.discover-subtitle { margin: 4px 0 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
+
+/* Outcome segmented control (was the in-panel tab row) */
 .discover-tabs {
-  flex-shrink: 0; display: flex; gap: 4px; padding: 10px 12px;
-  border-bottom: 1px solid var(--border); background: var(--raised);
+  display: inline-flex; gap: 4px; max-width: 100%; overflow-x: auto; flex: 1 1 420px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 11px; padding: 4px;
 }
 .discover-tabs button {
   border: 0; background: transparent; color: var(--muted);
-  font-weight: 700; font-size: 12px; padding: 7px 10px; border-radius: 7px;
+  font-weight: 700; font-size: 12px; padding: 7px 14px; border-radius: 8px;
 }
 .discover-tabs button.active {
-  color: var(--text); background: var(--surface); box-shadow: inset 0 0 0 1px var(--border);
+  background: var(--accent); color: #fff;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 35%, transparent);
 }
+.discover-filterbar { margin-left: auto; justify-content: flex-end; flex-wrap: wrap; }
+.discover-filterbar select { min-width: 150px; }
+
+.discover-soon { align-content: center; gap: 6px; text-align: center; }
+.discover-soon strong { font-size: 14px; }
 /* Tab panel owns the body layout: a fixed section head plus a scrolling list. */
 .discover-tabpanel {
   flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
@@ -1156,13 +1172,22 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
   .session-cost-list { grid-template-columns: 1fr; }
   .session-insight-list { grid-template-columns: 1fr; }
   .cost-insight-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .discover-head { align-items: stretch; flex-direction: column; }
-  .discover-controls { justify-content: flex-start; }
+  .discover-toolbar { align-items: stretch; flex-direction: column; }
+  .discover-filterbar { margin-left: 0; justify-content: flex-start; }
   .discover-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .driver-evidence-grid { grid-template-columns: 1fr; }
   .turn-insight-toprow { grid-template-columns: 1fr; }
   .turn-detail-body { grid-template-columns: repeat(6, minmax(0, 1fr)); }
   .turn-detail-plot { grid-column: 1 / -1; }
+  /* Force the icon rail on narrow screens */
+  .app-sidebar { flex-basis: 64px; width: 64px; }
+  .app-sidebar .sb-label,
+  .app-sidebar .sb-tag,
+  .app-sidebar .sb-brand strong,
+  .app-sidebar .sb-subnav { display: none; }
+  .app-sidebar .sb-item { justify-content: center; padding: 9px 0; }
+  .app-sidebar .sb-foot { flex-direction: column; align-items: center; }
+  .app-sidebar .sb-collapse { margin-left: 0; }
 }
 
 @media (max-width: 620px) {
@@ -1200,6 +1225,7 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
 .session-toolbar {
   flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
 }
 
 .session-header {
@@ -1216,7 +1242,8 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
 .session-header-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
 .session-title { min-width: 260px; flex: 1 1 340px; }
 .session-title .crumb { margin: 0 0 4px; font-size: 10px; color: var(--faint); letter-spacing: .04em; }
-.session-title h1 { margin: 0 0 5px; font-size: 18px; font-weight: 700; line-height: 1.2; }
+.session-title h1,
+.session-title h2 { margin: 0 0 5px; font-size: 18px; font-weight: 700; line-height: 1.2; }
 .session-title .session-meta {
   margin: 0; font-size: 10.5px; color: var(--muted);
   font-family: var(--font-mono);
@@ -1379,7 +1406,7 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
   min-height: 420px;
 }
 .session-tile-heading {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
 }
 .session-tile-heading .hint {
   display: inline-flex; align-items: center; gap: 6px;

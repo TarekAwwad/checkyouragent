@@ -101,17 +101,19 @@ describe("App", () => {
     expect(await screen.findByRole("button", { name: "Cost" })).toBeInTheDocument();
   });
 
-  it("shows the Discover tab and switches to the standalone page", async () => {
+  it("shows the Discover nav item and switches to the discovery view", async () => {
     renderApp();
     const tab = await screen.findByRole("button", { name: "Discover" });
 
     fireEvent.click(tab);
 
     await waitFor(() => expect(tab).toHaveClass("active"));
-    expect(await screen.findByRole("heading", { name: "Discover" })).toBeInTheDocument();
+    // The technique subnav appears and the subgroup headline renders.
+    expect(await screen.findByRole("button", { name: "Subgroup discovery" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /What drives/ })).toBeInTheDocument();
   });
 
-  it("opens the glossary modal from the topbar help button", async () => {
+  it("opens the glossary modal from the sidebar help button", async () => {
     renderApp();
 
     fireEvent.click(await screen.findByRole("button", { name: "Open glossary" }));
