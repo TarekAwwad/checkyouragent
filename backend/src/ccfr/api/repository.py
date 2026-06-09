@@ -11,7 +11,7 @@ from ccfr.analysis.pricing import (
     match_price,
 )
 from ccfr.analysis.trace import build_trace
-from ccfr.api.naming import project_display_name
+from ccfr.naming import project_display_name
 from ccfr.config import pricing_path
 
 _COST_CATEGORIES = ("base_input", "cache_write_5m", "cache_write_1h", "cache_read", "output")

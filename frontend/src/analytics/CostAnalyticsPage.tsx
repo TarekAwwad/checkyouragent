@@ -40,7 +40,7 @@ export default function CostAnalyticsPage({ onOpenSession }: Props) {
       <div className="cost-page-inner">
         <FilterBar filters={filters} meta={payload?.meta} onChange={setFilters} />
         {query.isError ? (
-          <div className="empty-state cost-error">
+          <div className="empty-state panel-error">
             <strong>Cost analytics failed.</strong>
             <span>{errorMessage}</span>
           </div>

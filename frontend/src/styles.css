@@ -341,17 +341,18 @@ h3 {
   color: var(--muted);
 }
 
-.cost-error {
+/* Shared panel-level error state, used by both the cost and discover panels. */
+.panel-error {
   align-content: center;
   gap: 8px;
   text-align: center;
 }
 
-.cost-error strong {
+.panel-error strong {
   color: var(--err);
 }
 
-.cost-error span {
+.panel-error span {
   max-width: 760px;
   overflow-wrap: anywhere;
 }
@@ -1018,12 +1019,147 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
 .turn-detail-causes p { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.4; }
 .turn-detail-empty { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
 
+/* Discover page */
+.discover-page { flex: 1; min-height: 0; overflow-y: auto; width: 100%; }
+.discover-page-inner {
+  max-width: var(--page-max-width); margin: 0 auto; padding: 18px var(--page-gutter);
+  display: flex; flex-direction: column; gap: 14px;
+}
+.discover-head {
+  display: flex; justify-content: space-between; align-items: flex-end; gap: 18px;
+}
+.discover-head h1 { margin: 2px 0 0; font-size: 22px; line-height: 1.15; }
+.discover-kicker {
+  margin: 0; display: flex; align-items: center; gap: 6px;
+  color: var(--muted); font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .55px;
+}
+.discover-controls {
+  display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap;
+}
+.discover-controls .selectbox { min-width: 170px; display: grid; gap: 4px; }
+.discover-controls .selectbox span {
+  font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .45px;
+}
+.discover-controls select {
+  min-height: 36px; padding: 7px 12px; border-radius: 9px; font-size: 12px;
+  border: 1px solid var(--border-2); background: var(--surface); color: var(--text);
+}
+/* Match the focus ring used by other inputs (.selectbox / .searchbox). */
+.discover-controls select:focus-visible {
+  outline: 0; border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.discover-overview {
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px;
+}
+.discover-workspace {
+  /* Stable height so switching tabs / expanding drivers scrolls *inside* the
+     panel instead of resizing it and jumping the whole page. */
+  height: clamp(440px, calc(100vh - 300px), 760px); flex-shrink: 0;
+  overflow: hidden; display: flex; flex-direction: column;
+  border: 1px solid var(--border); border-radius: 14px; background: var(--surface);
+}
+.discover-tabs {
+  flex-shrink: 0; display: flex; gap: 4px; padding: 10px 12px;
+  border-bottom: 1px solid var(--border); background: var(--raised);
+}
+.discover-tabs button {
+  border: 0; background: transparent; color: var(--muted);
+  font-weight: 700; font-size: 12px; padding: 7px 10px; border-radius: 7px;
+}
+.discover-tabs button.active {
+  color: var(--text); background: var(--surface); box-shadow: inset 0 0 0 1px var(--border);
+}
+/* Tab panel owns the body layout: a fixed section head plus a scrolling list. */
+.discover-tabpanel {
+  flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
+}
+.discover-section-head {
+  flex-shrink: 0;
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 14px;
+  padding: 14px 16px; border-bottom: 1px solid var(--border);
+}
+.discover-section-head h2 { margin: 0; font-size: 16px; }
+.discover-section-head p { margin: 3px 0 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.discover-section-meta {
+  display: grid; gap: 2px; text-align: right; flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.discover-section-meta b { color: var(--text); font-size: 13px; }
+.discover-section-meta small {
+  color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: .4px;
+}
+.driver-list { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
+/* Subtle stale-data cue while a refetch runs behind kept (placeholder) results. */
+.driver-list.is-refetching { opacity: .55; pointer-events: none; transition: opacity .15s ease; }
+/* Loading / error / empty states fill the panel body so it never resizes. */
+.discover-tabpanel > .empty-state { flex: 1 1 auto; min-height: 0; }
+.driver-row { border-bottom: 1px solid var(--grid); }
+.driver-summary {
+  width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center;
+  border: 0; background: transparent; color: var(--text); padding: 14px 16px; text-align: left;
+}
+.driver-summary:hover { background: color-mix(in srgb, var(--accent) 6%, var(--surface)); }
+.driver-main { display: grid; gap: 3px; min-width: 0; }
+.driver-main strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.driver-main small { color: var(--muted); font-size: 11.5px; }
+.driver-lift {
+  color: var(--accent); font-size: 12px; font-weight: 800;
+  white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.driver-evidence { padding: 0 16px 16px 42px; display: grid; gap: 12px; }
+.driver-evidence p { margin: 0; color: var(--muted); line-height: 1.45; font-size: 12.5px; }
+.driver-evidence h3 {
+  margin: 0; color: var(--text); font-size: 11px;
+  text-transform: uppercase; letter-spacing: .5px;
+}
+.driver-bars { display: grid; gap: 7px; max-width: 620px; }
+.driver-bar-row {
+  display: grid; grid-template-columns: 96px minmax(120px, 1fr) 56px; gap: 10px; align-items: center;
+  color: var(--muted); font-size: 11.5px;
+}
+.driver-bar-row i { height: 8px; border-radius: 999px; background: var(--grid); overflow: hidden; }
+.driver-bar-row i b { display: block; height: 100%; border-radius: inherit; background: var(--muted); }
+.driver-bar-row.strong i b { background: var(--accent); }
+.driver-bar-row em { font-style: normal; text-align: right; font-variant-numeric: tabular-nums; }
+.driver-selector-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.driver-selector-list span {
+  border: 1px solid var(--border); background: var(--raised); color: var(--muted);
+  border-radius: 999px; padding: 4px 8px; font-size: 11px;
+}
+.driver-evidence-grid {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; max-width: 620px;
+}
+.discover-examples { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; max-width: 780px; }
+.discover-examples li {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center;
+  padding: 9px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--raised);
+}
+.discover-examples strong {
+  display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px;
+}
+.discover-examples span {
+  display: block; margin-top: 2px; color: var(--muted); font-size: 11.5px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.discover-examples button {
+  display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  border-radius: 7px; padding: 7px 9px; font-size: 11.5px; font-weight: 700;
+}
+.discover-muted { color: var(--muted); font-size: 12px; }
+
 @media (max-width: 980px) {
   .cost-bento { grid-template-columns: 1fr; }
   .cost-bento .tile-full { grid-column: auto; }
   .session-cost-list { grid-template-columns: 1fr; }
   .session-insight-list { grid-template-columns: 1fr; }
   .cost-insight-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .discover-head { align-items: stretch; flex-direction: column; }
+  .discover-controls { justify-content: flex-start; }
+  .discover-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .driver-evidence-grid { grid-template-columns: 1fr; }
   .turn-insight-toprow { grid-template-columns: 1fr; }
   .turn-detail-body { grid-template-columns: repeat(6, minmax(0, 1fr)); }
   .turn-detail-plot { grid-column: 1 / -1; }
@@ -1041,6 +1177,13 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
   .turn-detail-plot, .turn-detail-metrics { grid-column: auto; }
   .turn-detail-plot svg { height: 170px; }
   .tb-legend em { width: 100%; margin-left: 0; }
+  .discover-overview { grid-template-columns: 1fr; }
+  .discover-tabs { overflow-x: auto; }
+  .driver-summary { grid-template-columns: auto minmax(0, 1fr); }
+  .driver-lift { grid-column: 2; }
+  .driver-evidence { padding-left: 16px; }
+  .driver-bar-row { grid-template-columns: 82px minmax(80px, 1fr) 48px; }
+  .discover-examples li { grid-template-columns: 1fr; }
 }
 
 /* ---- Session page redesign ---- */

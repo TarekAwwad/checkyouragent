@@ -1,7 +1,7 @@
 # backend/tests/test_naming.py
 from __future__ import annotations
 
-from ccfr.api.naming import project_display_name
+from ccfr.naming import project_display_name
 
 
 def test_leaf_from_windows_cwd() -> None:
