@@ -21,7 +21,7 @@ from ccfr.analysis.pricing import (
     normalize_model_key,
 )
 from ccfr.analysis.metrics import compute_loop_stats
-from ccfr.api.naming import project_display_name
+from ccfr.naming import project_display_name
 from ccfr.config import pricing_path
 
 # Payload category -> messages column. input_tokens == base+5m+1h+read, so we sum the four

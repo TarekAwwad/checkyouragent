@@ -8,7 +8,7 @@ from typing import Any
 
 from ccfr.analysis.pricing import TokenBreakdown, cost_usd, load_price_table, match_price
 from ccfr.analysis.risk_patterns import _command_family
-from ccfr.api.naming import project_display_name
+from ccfr.naming import project_display_name
 from ccfr.config import pricing_path
 
 

@@ -1,4 +1,4 @@
-# backend/src/ccfr/api/naming.py
+# backend/src/ccfr/naming.py
 """Human-friendly project labels.
 
 Claude Code stores each project under a folder whose name encodes the full cwd path
