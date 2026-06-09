@@ -1,6 +1,5 @@
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { HelpCircle, Moon, Sun } from "lucide-react";
 import { listImports, listProjects, listSessions } from "./api/client";
 import type { SessionCard } from "./api/types";
 import ImportPage from "./pages/ImportPage";
@@ -9,17 +8,21 @@ import SessionWorkspace from "./pages/SessionWorkspace";
 import CostAnalyticsPage from "./analytics/CostAnalyticsPage";
 import DiscoverPage from "./discover/DiscoverPage";
 import GlossaryDialog from "./glossary/GlossaryDialog";
+import Sidebar from "./shell/Sidebar";
+import type { View } from "./shell/navConfig";
+import { DEFAULT_TECHNIQUE } from "./discover/techniques";
+import { useCollapsed } from "./shell/useCollapsed";
 import { useTheme } from "./theme/useTheme";
-
-type View = "import" | "map" | "session" | "cost" | "discover";
 
 function App() {
   const imports = useQuery({ queryKey: ["imports"], queryFn: listImports });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const sessions = useQuery({ queryKey: ["sessions", {}], queryFn: () => listSessions() });
   const [view, setView] = React.useState<View>("import");
+  const [discoverTechnique, setDiscoverTechnique] = React.useState<string>(DEFAULT_TECHNIQUE);
   const [selectedSession, setSelectedSession] = React.useState<SessionCard | null>(null);
   const { theme, toggle } = useTheme();
+  const { collapsed, toggle: toggleCollapsed } = useCollapsed();
   const [glossaryOpen, setGlossaryOpen] = React.useState(false);
   const autoRouted = React.useRef(false);
 
@@ -42,55 +45,50 @@ function App() {
     if (card) openSession(card);
   };
 
+  const selectTechnique = (key: string) => {
+    setDiscoverTechnique(key);
+    setView("discover");
+  };
+
+  const openGlossary = () => setGlossaryOpen(true);
+
   return (
     <div className="app-shell">
-      <header className="topbar">
-        <div className="brand">
-          <strong>Claude Analytics</strong>
-        </div>
-        <nav className="topnav" aria-label="Primary">
-          <button className={view === "import" ? "active" : ""} onClick={() => setView("import")}>Import</button>
-          <button className={view === "map" ? "active" : ""} onClick={() => setView("map")}>Triage</button>
-          <button className={view === "cost" ? "active" : ""} onClick={() => setView("cost")}>Cost</button>
-          <button className={view === "discover" ? "active" : ""} onClick={() => setView("discover")}>Discover</button>
-          <button className={view === "session" ? "active" : ""} disabled={!selectedSession} onClick={() => setView("session")}>Session</button>
-        </nav>
-        <div className="topbar-actions">
-          <button
-            className="theme-toggle"
-            onClick={() => setGlossaryOpen(true)}
-            aria-label="Open glossary"
-            title="Glossary of terms"
-          >
-            <HelpCircle size={16} />
-          </button>
-          <button
-            className="theme-toggle"
-            onClick={toggle}
-            aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-            title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-          >
-            {theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
-          </button>
-        </div>
-      </header>
+      <Sidebar
+        view={view}
+        discoverTechnique={discoverTechnique}
+        collapsed={collapsed}
+        sessionEnabled={!!selectedSession}
+        theme={theme}
+        onSelectView={setView}
+        onSelectTechnique={selectTechnique}
+        onToggleCollapsed={toggleCollapsed}
+        onToggleTheme={toggle}
+        onOpenGlossary={openGlossary}
+      />
 
-      <GlossaryDialog open={glossaryOpen} onClose={() => setGlossaryOpen(false)} />
+      <main className="app-main">
+        <GlossaryDialog open={glossaryOpen} onClose={() => setGlossaryOpen(false)} />
 
-      {view === "import" && <ImportPage />}
-      {view === "map" && (
-        <TriageBoard
-          projects={projects.data ?? []}
-          sessions={sessions.data ?? []}
-          loading={projects.isLoading || sessions.isLoading}
-          onOpenSession={openSession}
-        />
-      )}
-      {view === "cost" && <CostAnalyticsPage onOpenSession={openSessionById} />}
-      {view === "discover" && (
-        <DiscoverPage projects={projects.data ?? []} onOpenSession={openSessionById} />
-      )}
-      {view === "session" && selectedSession && <SessionWorkspace session={selectedSession} />}
+        {view === "import" && <ImportPage />}
+        {view === "map" && (
+          <TriageBoard
+            projects={projects.data ?? []}
+            sessions={sessions.data ?? []}
+            loading={projects.isLoading || sessions.isLoading}
+            onOpenSession={openSession}
+          />
+        )}
+        {view === "cost" && <CostAnalyticsPage onOpenSession={openSessionById} />}
+        {view === "discover" && (
+          <DiscoverPage
+            projects={projects.data ?? []}
+            onOpenSession={openSessionById}
+            technique={discoverTechnique}
+          />
+        )}
+        {view === "session" && selectedSession && <SessionWorkspace session={selectedSession} />}
+      </main>
     </div>
   );
 }
