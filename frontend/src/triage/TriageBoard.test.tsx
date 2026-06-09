@@ -154,13 +154,15 @@ describe("TriageBoard", () => {
     expect(within(summary).getByText("$1.75")).toBeInTheDocument();
   });
 
-  it("explains the activity trace symbols", () => {
-    render(<TriageBoard projects={projects} sessions={[s({ id: 1 })]} loading={false} onOpenSession={() => {}} />);
+  it("replaces the activity column and legend with self-explaining risk cells", () => {
+    const sessions = [
+      s({ id: 1, session_id: "noisy001", event_count: 500, error_count: 30, loop_count: 4, max_repeat: 12, subagent_count: 6 }),
+    ];
+    const { container } = render(<TriageBoard projects={projects} sessions={sessions} loading={false} onOpenSession={() => {}} />);
 
-    const legend = screen.getByLabelText("Activity trace legend");
-    expect(within(legend).getByText("Event density")).toBeInTheDocument();
-    expect(within(legend).getByText("Alert tick")).toBeInTheDocument();
-    expect(within(legend).getByText("Loop band")).toBeInTheDocument();
-    expect(within(legend).getByText("Subagent fork")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Activity trace legend")).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "Activity" })).toBeNull();
+    expect(container.querySelector('[data-testid="risk-bar"]')).not.toBeNull();
+    expect(container.querySelectorAll('[data-testid="risk-seg"]').length).toBeGreaterThan(0);
   });
 });

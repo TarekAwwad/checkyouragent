@@ -1,8 +1,8 @@
 import React from "react";
 import { AlertTriangle, Filter, Network, Search } from "lucide-react";
 import type { Project, SessionCard } from "../api/types";
-import { riskScore, riskBreakdown } from "./riskScore";
-import ActivityStrip from "./ActivityStrip";
+import { riskScore } from "./riskScore";
+import RiskCell from "./RiskCell";
 
 interface Props {
   projects: Project[];
@@ -21,12 +21,6 @@ function sortValue(session: SessionCard, sortKey: SortKey): number {
 
 function formatUsd(value: number): string {
   return `$${value.toFixed(2)}`;
-}
-
-function riskClass(score: number): string {
-  if (score >= 6) return "g-hi";
-  if (score >= 3) return "g-md";
-  return "g-lo";
 }
 
 function formatCategory(value: string | null): string {
@@ -108,12 +102,6 @@ function TriageBoard({ projects, sessions, loading, onOpenSession }: Props) {
             <input type="checkbox" checked={onlyErrors} onChange={(e) => setOnlyErrors(e.target.checked)} />
             <span>Errors only</span>
           </label>
-          <div className="activity-legend" aria-label="Activity trace legend">
-            <span><i className="legend-density" /> Event density</span>
-            <span><i className="legend-error" /> Alert tick</span>
-            <span><i className="legend-loop" /> Loop band</span>
-            <span><i className="legend-fork" /> Subagent fork</span>
-          </div>
         </div>
         <div className="triage-project-summary" aria-label="Project cost summary">
           <span className="tps-project">{projectLabel}</span>
@@ -133,7 +121,6 @@ function TriageBoard({ projects, sessions, loading, onOpenSession }: Props) {
                 <tr>
                   {header("risk", "Risk")}
                   <th>Session</th>
-                  <th>Activity</th>
                   {header("patterns", "Findings")}
                   {header("error_count", "Errors")}
                   {header("max_repeat", "Loops")}
@@ -144,8 +131,6 @@ function TriageBoard({ projects, sessions, loading, onOpenSession }: Props) {
               </thead>
               <tbody>
                 {rows.map((session) => {
-                  const score = riskScore(session);
-                  const alertCount = session.error_count + session.system_count;
                   return (
                     <tr
                       key={session.id}
@@ -157,16 +142,11 @@ function TriageBoard({ projects, sessions, loading, onOpenSession }: Props) {
                       className="triage-row"
                     >
                       <td>
-                        <span className={`risk-gauge ${riskClass(score)}`} title={riskBreakdown(session).map((p) => `${p.label}: ${p.value.toFixed(2)}`).join("\n")}>
-                          {score.toFixed(1)}
-                        </span>
+                        <RiskCell session={session} />
                       </td>
                       <td>
                         <div className="tr-name">{session.title || session.session_id.slice(0, 8)}</div>
                         <div className="tr-sub">{session.project_name}{session.title ? ` · ${session.session_id.slice(0, 8)}` : ""}</div>
-                      </td>
-                      <td>
-                        <ActivityStrip events={session.event_count} alerts={alertCount} loops={session.loop_count} subagents={session.subagent_count} />
                       </td>
                       <td className={session.finding_count ? "cell-findings" : "cell-muted"}>
                         {session.finding_count ? (
