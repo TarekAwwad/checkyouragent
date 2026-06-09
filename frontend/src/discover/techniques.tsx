@@ -1,5 +1,6 @@
 import type { ComponentType } from "react";
 import type { Project } from "../api/types";
+import SubgroupDiscovery from "./SubgroupDiscovery";
 
 export interface TechniqueProps {
   projects: Project[];
@@ -13,9 +14,9 @@ export interface Technique {
   component?: ComponentType<TechniqueProps>;
 }
 
-// `subgroup.component` is attached in Task 4 once SubgroupDiscovery exists.
+// Attach a component here when a technique becomes ready.
 export const TECHNIQUES: Technique[] = [
-  { key: "subgroup", label: "Subgroup discovery", status: "ready" },
+  { key: "subgroup", label: "Subgroup discovery", status: "ready", component: SubgroupDiscovery },
   { key: "sequence", label: "Sequence mining", status: "soon" },
   { key: "anomalies", label: "Anomalies", status: "soon" },
 ];
