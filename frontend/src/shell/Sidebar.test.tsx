@@ -67,4 +67,9 @@ describe("Sidebar", () => {
     expect(props.onToggleTheme).toHaveBeenCalled();
     expect(props.onToggleCollapsed).toHaveBeenCalled();
   });
+
+  it("applies the collapsed class to the sidebar when collapsed", () => {
+    setup({ collapsed: true });
+    expect(screen.getByRole("complementary")).toHaveClass("is-collapsed");
+  });
 });

@@ -549,7 +549,6 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
 }
 
 @media (max-width: 760px) {
-  .topbar,
   .workspace-header {
     align-items: stretch;
     flex-direction: column;
@@ -579,7 +578,7 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
   }
 }
 
-.triage-page { display: grid; grid-template-rows: auto 1fr auto; gap: 14px; min-height: calc(100vh - 56px); padding: 20px 22px; }
+.triage-page { display: grid; grid-template-rows: auto 1fr auto; gap: 14px; min-height: 100%; padding: 20px 22px; }
 .triage-head { display: flex; align-items: center; justify-content: space-between; }
 .triage-head h1 { margin: 0; font-size: 19px; font-weight: 700; }
 .triage-head .count { color: var(--faint); font-size: 12px; font-weight: 400; margin-left: 8px; }
