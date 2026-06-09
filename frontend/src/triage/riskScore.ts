@@ -49,3 +49,11 @@ export function riskBreakdown(s: SessionCard): RiskComponent[] {
 export function riskScore(s: SessionCard): number {
   return riskBreakdown(s).reduce((sum, part) => sum + part.value, 0);
 }
+
+// Severity tier for a risk score, driving the score's color. Thresholds match the
+// risk gauge that this classifies (high >= 6, medium >= 3, low below).
+export function riskClass(score: number): "g-hi" | "g-md" | "g-lo" {
+  if (score >= 6) return "g-hi";
+  if (score >= 3) return "g-md";
+  return "g-lo";
+}

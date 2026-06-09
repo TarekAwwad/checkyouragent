@@ -554,13 +554,6 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
 
 .triage-card { display: flex; flex-direction: column; min-height: 0; }
 .triage-toolbar { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--border); }
-.activity-legend { display: flex; gap: 15px; align-items: center; margin-left: auto; color: var(--faint); font-size: 10.5px; }
-.activity-legend span { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
-.activity-legend i { display: inline-block; flex: 0 0 auto; }
-.legend-density { width: 26px; height: 3px; border-radius: 999px; background: var(--dens); }
-.legend-error { width: 3px; height: 14px; border-radius: 999px; background: var(--err); }
-.legend-loop { width: 22px; height: 14px; border-radius: 4px; background: color-mix(in srgb, var(--loop) 30%, transparent); }
-.legend-fork { width: 16px; height: 14px; background: linear-gradient(60deg, transparent 45%, var(--fan) 45%, var(--fan) 60%, transparent 60%); }
 
 .triage-project-summary { display: flex; align-items: baseline; gap: 14px; padding: 8px 14px; border-bottom: 1px solid var(--border); font-size: 12px; color: var(--muted); }
 .triage-project-summary .tps-project { font-weight: 700; color: var(--text); }
@@ -577,10 +570,21 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
 .triage-row:hover { background: color-mix(in srgb, var(--accent) 7%, var(--surface)); }
 .triage-table td { padding: 12px 16px; vertical-align: middle; }
 
-.risk-gauge { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 9px; font-weight: 700; font-size: 12px; }
-.risk-gauge.g-hi { color: var(--err); background: color-mix(in srgb, var(--err) 15%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--err) 40%, transparent); }
-.risk-gauge.g-md { color: var(--loop); background: color-mix(in srgb, var(--loop) 15%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--loop) 38%, transparent); }
-.risk-gauge.g-lo { color: var(--muted); background: var(--raised); box-shadow: inset 0 0 0 1px var(--border); }
+/* Self-explaining risk cell: score (magnitude, tier-colored) over a segmented
+   underline showing what drives it. Segment colors match the Err/Loop/Fan columns. */
+.risk-cell { display: inline-flex; flex-direction: column; align-items: center; gap: 5px; width: 48px; }
+.risk-score { font-weight: 700; font-size: 15px; font-variant-numeric: tabular-nums; line-height: 1; }
+.risk-score.g-hi { color: var(--err); }
+.risk-score.g-md { color: var(--loop); }
+.risk-score.g-lo { color: var(--muted); }
+.risk-bar { display: flex; width: 42px; height: 3px; border-radius: 999px; overflow: hidden; background: var(--track); }
+.risk-bar.calm { background: var(--faint); opacity: 0.35; }
+.risk-seg { height: 100%; min-width: 2px; }
+.risk-seg.seg-alerts { background: var(--err); }
+.risk-seg.seg-loops { background: var(--loop); }
+.risk-seg.seg-fanout { background: var(--fan); }
+.risk-seg.seg-cost { background: var(--accent); }
+.risk-seg.seg-patterns { background: var(--info); }
 
 .tr-name { font-weight: 700; color: var(--text); }
 .tr-sub { font-size: 11px; color: var(--faint); margin-top: 3px; }
@@ -736,10 +740,6 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
 .trace-loop-band { cursor: pointer; }
 .turn-group > summary { cursor: pointer; padding: 6px 9px; color: var(--accent); font-size: 11.5px; font-weight: 700; }
 .turn-group > ol { list-style: none; margin: 0; padding: 0; }
-
-.ekg-density { fill: var(--dens); }
-.ekg-loop { fill: color-mix(in srgb, var(--loop) 22%, transparent); }
-.ekg-alert { stroke: var(--err); }
 
 /* ---- Cost analytics page ---- */
 .cost-page { flex: 1; min-height: 0; overflow-y: auto; width: 100%; }
@@ -1042,7 +1042,6 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
   .turn-detail-plot svg { height: 170px; }
   .tb-legend em { width: 100%; margin-left: 0; }
 }
-.ekg-fork { stroke: var(--fan); }
 
 /* ---- Session page redesign ---- */
 /* Cost-page shell with a session toolbar, insight strip, and bento content. */

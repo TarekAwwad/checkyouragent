@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { riskScore, riskBreakdown } from "./riskScore";
+import { riskScore, riskBreakdown, riskClass } from "./riskScore";
 import type { SessionCard } from "../api/types";
 
 function session(partial: Partial<SessionCard>): SessionCard {
@@ -62,5 +62,22 @@ describe("riskScore", () => {
 
     expect(patterns?.label).toBe("Patterns");
     expect(patterns?.value).toBeGreaterThan(0);
+  });
+});
+
+describe("riskClass", () => {
+  it("flags scores at or above 6 as high", () => {
+    expect(riskClass(6)).toBe("g-hi");
+    expect(riskClass(9.2)).toBe("g-hi");
+  });
+
+  it("flags scores in the 3-to-6 band as medium", () => {
+    expect(riskClass(3)).toBe("g-md");
+    expect(riskClass(5.9)).toBe("g-md");
+  });
+
+  it("flags scores below 3 as low", () => {
+    expect(riskClass(2.9)).toBe("g-lo");
+    expect(riskClass(0)).toBe("g-lo");
   });
 });
