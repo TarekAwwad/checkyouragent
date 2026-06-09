@@ -38,7 +38,8 @@ describe("DiscoverPage", () => {
 
   it("renders a coming-soon placeholder for a soon technique", () => {
     renderPage("sequence");
-    expect(screen.getByText(/coming soon/i)).toBeInTheDocument();
+    expect(screen.getByText("Sequence mining")).toBeInTheDocument();
+    expect(screen.getByText("This discovery technique isn't available yet.")).toBeInTheDocument();
     expect(getDiscoveryAnalytics).not.toHaveBeenCalled();
   });
 });

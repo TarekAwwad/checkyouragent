@@ -11,16 +11,9 @@ function ComingSoon({ technique }: { technique: Technique }) {
   return (
     <main className="discover-page">
       <div className="discover-page-inner">
-        <section className="discover-head">
-          <div>
-            <p className="discover-kicker">{technique.label}</p>
-            <h1>{technique.label}</h1>
-            <p className="discover-subtitle">This discovery technique is not yet available.</p>
-          </div>
-        </section>
         <div className="empty-state discover-soon">
-          <strong>Coming soon</strong>
-          <span>{technique.label} isn't available yet.</span>
+          <strong>{technique.label}</strong>
+          <span>This discovery technique isn't available yet.</span>
         </div>
       </div>
     </main>

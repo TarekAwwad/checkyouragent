@@ -126,14 +126,6 @@ function SessionWorkspace({ session }: Props) {
     <main className="cost-page session-page">
       <div className="cost-page-inner session-page-inner">
         <div className="cost-filterbar session-toolbar">
-          <div className="session-title">
-            <p className="crumb">
-              {card.project_name}
-              {card.git_branch ? ` / ${card.git_branch}` : ""}
-            </p>
-            <h1>{card.title || card.session_id}</h1>
-            <p className="session-meta">{metaParts.length ? metaParts.join(" · ") : card.session_id}</p>
-          </div>
           <div className="session-search-wrap">
             <label className="session-search">
               <Search size={15} />
@@ -168,7 +160,14 @@ function SessionWorkspace({ session }: Props) {
         <section className="cost-bento session-workspace" aria-label="Session workspace">
             <section className="tile tile-full session-trace-tile">
               <div className="session-tile-heading">
-                <h2>Trace</h2>
+                <div className="session-title">
+                  <p className="crumb">
+                    {card.project_name}
+                    {card.git_branch ? ` / ${card.git_branch}` : ""}
+                  </p>
+                  <h2>{card.title || card.session_id}</h2>
+                  <p className="session-meta">{metaParts.length ? metaParts.join(" · ") : card.session_id}</p>
+                </div>
                 <span className="hint"><ArrowLeftRight size={13} /> spacing · lanes · loops</span>
               </div>
               <div className="session-trace-body event-graph">

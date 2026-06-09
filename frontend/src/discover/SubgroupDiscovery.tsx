@@ -1,6 +1,6 @@
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight, ExternalLink, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
 import { getDiscoveryAnalytics } from "../api/client";
 import InsightStat from "../components/InsightStat";
 import type { DiscoveryDriver, DiscoveryExample, DiscoverySection, Project } from "../api/types";
@@ -231,49 +231,43 @@ export default function SubgroupDiscovery({ projects, onOpenSession }: Props) {
   return (
     <main className="discover-page">
       <div className="discover-page-inner">
-        <section className="discover-head">
-          <div>
-            <p className="discover-kicker"><Sparkles size={14} /> Subgroup discovery</p>
-            <h1>{headline}</h1>
-            <p className="discover-subtitle">
-              {section?.description ?? SECTION_FALLBACK_DESC}
-            </p>
+        <section className="discover-toolbar" aria-label="Discovery controls">
+          <div className="discover-tabs" role="tablist" aria-label="Outcome category">
+            {SECTION_TABS.map((tab) => (
+              <button
+                type="button"
+                role="tab"
+                key={tab.key}
+                id={`discover-tab-${tab.key}`}
+                aria-controls="discover-tabpanel"
+                className={activeSection === tab.key ? "active" : ""}
+                aria-selected={activeSection === tab.key}
+                onClick={() => setActiveSection(tab.key)}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
-          <div className="discover-controls">
-            <label className="selectbox">
-              <span>Project</span>
-              <select value={projectId ?? ""} onChange={(event) => setProjectId(event.target.value ? Number(event.target.value) : null)}>
-                <option value="">All projects</option>
-                {projects.map((project) => (
-                  <option value={project.id} key={project.id}>{project.display_name}</option>
-                ))}
-              </select>
-            </label>
-            <label className="selectbox">
-              <span>Minimum support</span>
-              <select value={minSupport} onChange={(event) => setMinSupport(Number(event.target.value))}>
-                {SUPPORT_OPTIONS.map((value) => <option value={value} key={value}>{value}</option>)}
-              </select>
-            </label>
+          <div className="cost-filterbar discover-filterbar">
+            <select
+              aria-label="Project"
+              value={projectId ?? ""}
+              onChange={(event) => setProjectId(event.target.value ? Number(event.target.value) : null)}
+            >
+              <option value="">All projects</option>
+              {projects.map((project) => (
+                <option value={project.id} key={project.id}>{project.display_name}</option>
+              ))}
+            </select>
+            <select
+              aria-label="Minimum support"
+              value={minSupport}
+              onChange={(event) => setMinSupport(Number(event.target.value))}
+            >
+              {SUPPORT_OPTIONS.map((value) => <option value={value} key={value}>{value}</option>)}
+            </select>
           </div>
         </section>
-
-        <div className="discover-tabs" role="tablist" aria-label="Outcome category">
-          {SECTION_TABS.map((tab) => (
-            <button
-              type="button"
-              role="tab"
-              key={tab.key}
-              id={`discover-tab-${tab.key}`}
-              aria-controls="discover-tabpanel"
-              className={activeSection === tab.key ? "active" : ""}
-              aria-selected={activeSection === tab.key}
-              onClick={() => setActiveSection(tab.key)}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
 
         <section className="discover-overview" aria-label="Discovery summary">
           <InsightStat
@@ -307,7 +301,7 @@ export default function SubgroupDiscovery({ projects, onOpenSession }: Props) {
           >
             <div className="discover-section-head">
               <div>
-                <h2>{section?.title ?? "Drivers"}</h2>
+                <h2>{headline}</h2>
                 <p>{section?.description ?? SECTION_FALLBACK_DESC}</p>
               </div>
               {section && (
