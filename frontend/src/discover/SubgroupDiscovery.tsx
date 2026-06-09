@@ -1,6 +1,6 @@
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
+import { ExternalLink, Target, TrendingUp } from "lucide-react";
 import { getDiscoveryAnalytics } from "../api/client";
 import InsightStat from "../components/InsightStat";
 import type { DiscoveryDriver, DiscoveryExample, DiscoverySection, Project } from "../api/types";
@@ -26,8 +26,6 @@ const OUTCOME_HEADLINES: Record<string, string> = {
   rejections: "What drives rejected slices?",
 };
 
-const SECTION_FALLBACK_DESC = "Conditions that shape this outcome.";
-
 function formatCount(value: number): string {
   return value.toLocaleString("en-US");
 }
@@ -37,7 +35,19 @@ function formatPct(value: number): string {
 }
 
 function formatLift(value: number): string {
-  return `${value.toFixed(value >= 10 ? 1 : 2)}× baseline`;
+  return `${value.toFixed(value >= 10 ? 1 : 2)}×`;
+}
+
+function formatDelta(from: number, to: number): string {
+  return `+${((to - from) * 100).toFixed(1)} pts`;
+}
+
+function formatBarWidth(value: number): string {
+  return `${Math.min(value * 100, 100).toFixed(2)}%`;
+}
+
+function formatOutcome(label: string): string {
+  return label ? label.charAt(0).toLowerCase() + label.slice(1) : "this outcome";
 }
 
 function exampleTitle(example: DiscoveryExample): string {
@@ -79,69 +89,136 @@ function ExampleList({
 }
 
 function ComparisonBar({ driver }: { driver: DiscoveryDriver }) {
-  const baseline = Math.min(driver.baseline_rate * 100, 100);
-  const matched = Math.min(driver.subgroup_rate * 100, 100);
-
   return (
-    <div className="driver-bars" aria-label={`${formatPct(driver.subgroup_rate)} matched versus ${formatPct(driver.baseline_rate)} baseline`}>
+    <div className="driver-bars" aria-label={`${formatPct(driver.subgroup_rate)} sessions like this versus ${formatPct(driver.baseline_rate)} all sessions`}>
       <div className="driver-bar-row">
-        <span>Baseline</span>
-        <i><b style={{ width: `${baseline}%` }} /></i>
+        <span>All sessions</span>
+        <i><b style={{ width: formatBarWidth(driver.baseline_rate) }} /></i>
         <em>{formatPct(driver.baseline_rate)}</em>
       </div>
       <div className="driver-bar-row strong">
-        <span>Matched group</span>
-        <i><b style={{ width: `${matched}%` }} /></i>
+        <span>Sessions like this</span>
+        <i><b style={{ width: formatBarWidth(driver.subgroup_rate) }} /></i>
         <em>{formatPct(driver.subgroup_rate)}</em>
       </div>
     </div>
   );
 }
 
-function DriverRow({
+function SelectorChips({ selectors }: { selectors: string[] }) {
+  return (
+    <div className="driver-selector-list" aria-label="Conditions">
+      {selectors.map((selector) => <span key={selector}>{selector}</span>)}
+    </div>
+  );
+}
+
+function DriverSpotlight({
   driver,
-  expanded,
-  onToggle,
+  section,
+}: {
+  driver: DiscoveryDriver;
+  section: DiscoverySection;
+}) {
+  const outcome = formatOutcome(section.target_label);
+  const headline = OUTCOME_HEADLINES[section.key] || section.title;
+
+  return (
+    <article className="driver-spotlight">
+      <div className="driver-spotlight-copy">
+        <span className="driver-outcome-pill">
+          <Target size={13} />
+          {section.target_label}
+        </span>
+        <h3>{headline}</h3>
+        <strong className="driver-finding-title">{driver.title}</strong>
+        <p>
+          Sessions like this hit {outcome} {formatPct(driver.subgroup_rate)} of the time,
+          compared with {formatPct(driver.baseline_rate)} across all sessions.
+        </p>
+        <p className="driver-confidence">
+          At 95% confidence the rate stays at or above {formatPct(driver.subgroup_rate_low)},
+          still ahead of the {formatPct(driver.baseline_rate)} baseline.
+        </p>
+        <SelectorChips selectors={driver.selectors} />
+      </div>
+
+      <div className="driver-spotlight-visual">
+        <div className="driver-lift-card">
+          <span>More likely</span>
+          <strong>{formatLift(driver.lift)}</strong>
+          <em>{formatDelta(driver.baseline_rate, driver.subgroup_rate)} vs all sessions</em>
+        </div>
+        <ComparisonBar driver={driver} />
+        <div className="driver-evidence-grid">
+          <div>
+            <h3>Sessions like this</h3>
+            <p>{driver.positive_support} of {driver.support} matching items hit {outcome}.</p>
+          </div>
+          <div>
+            <h3>All sessions</h3>
+            <p>{formatCount(section.positive_count)} of {formatCount(section.baseline_count)} hit {outcome}.</p>
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function DriverExamplesCard({
+  driver,
   onOpenSession,
 }: {
   driver: DiscoveryDriver;
-  expanded: boolean;
-  onToggle: () => void;
   onOpenSession: (sessionId: number) => void;
 }) {
   return (
-    <article className={`driver-row ${expanded ? "is-expanded" : ""}`}>
-      <button type="button" className="driver-summary" onClick={onToggle} aria-expanded={expanded}>
-        {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-        <span className="driver-main">
-          <strong>{driver.title}</strong>
-          <small>{driver.positive_support} of {driver.support} matched items hit the target</small>
-        </span>
-        <span className="driver-lift">{formatLift(driver.lift)}</span>
-      </button>
-
-      {expanded && (
-        <div className="driver-evidence">
-          <p>{driver.summary}</p>
-          <ComparisonBar driver={driver} />
-          <div className="driver-selector-list" aria-label="Matched conditions">
-            {driver.selectors.map((selector) => <span key={selector}>{selector}</span>)}
-          </div>
-          <div className="driver-evidence-grid">
-            <div>
-              <h3>Matched group</h3>
-              <p>{driver.positive_support} of {driver.support} matched items hit this outcome.</p>
-            </div>
-            <div>
-              <h3>Baseline</h3>
-              <p>{formatPct(driver.baseline_rate)} across the current scope.</p>
-            </div>
-          </div>
-          <h3>Examples</h3>
-          <ExampleList examples={driver.examples} onOpenSession={onOpenSession} />
-        </div>
-      )}
+    <article className="driver-examples-card">
+      <div className="driver-card-head">
+        <h3>Example sessions</h3>
+        <span>{formatCount(driver.support)} matching total</span>
+      </div>
+      <ExampleList examples={driver.examples} onOpenSession={onOpenSession} />
     </article>
+  );
+}
+
+function DriverCard({
+  driver,
+  section,
+  selected,
+  onSelect,
+}: {
+  driver: DiscoveryDriver;
+  section: DiscoverySection;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const outcome = formatOutcome(section.target_label);
+
+  return (
+    <button
+      type="button"
+      className={`driver-card ${selected ? "is-selected" : ""}`}
+      onClick={onSelect}
+      aria-pressed={selected}
+    >
+      <span className="driver-card-topline">
+        <span><TrendingUp size={13} /> {formatLift(driver.lift)} more likely</span>
+        <b>{driver.positive_support}/{driver.support}</b>
+      </span>
+      <strong>{driver.title}</strong>
+      <span className="driver-card-note">
+        {formatPct(driver.subgroup_rate)} hit {outcome}
+      </span>
+      <span className="driver-card-bars" aria-hidden="true">
+        <i><b style={{ width: formatBarWidth(driver.baseline_rate) }} /></i>
+        <i><b style={{ width: formatBarWidth(driver.subgroup_rate) }} /></i>
+      </span>
+      <span className="driver-card-chipline">
+        {driver.selectors.map((selector) => <em key={selector}>{selector}</em>)}
+      </span>
+    </button>
   );
 }
 
@@ -154,15 +231,21 @@ function SectionResults({
   isRefetching: boolean;
   onOpenSession: (sessionId: number) => void;
 }) {
-  const [expandedId, setExpandedId] = React.useState<string | null>(null);
+  const [selectedId, setSelectedId] = React.useState<string | null>(null);
 
-  // Auto-expand the first driver when the user switches sections. Depend only on
-  // the section identity so a background refetch within the same section does not
-  // collapse the row the user currently has open.
+  // Keep a visible insight selected, but preserve the user's choice when a
+  // background refresh returns the same driver set.
   React.useEffect(() => {
-    setExpandedId(section?.results[0]?.id ?? null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [section?.key]);
+    if (!section?.results.length) {
+      setSelectedId(null);
+      return;
+    }
+    setSelectedId((current) => (
+      current && section.results.some((driver) => driver.id === current)
+        ? current
+        : section.results[0].id
+    ));
+  }, [section?.key, section?.results]);
 
   if (!section) {
     return <div className="empty-state">No discovery section returned.</div>;
@@ -182,17 +265,33 @@ function SectionResults({
     return <div className="empty-state">No drivers meet the current support threshold.</div>;
   }
 
+  const selectedDriver = section.results.find((driver) => driver.id === selectedId) ?? section.results[0];
+
   return (
     <div className={`driver-list ${isRefetching ? "is-refetching" : ""}`}>
-      {section.results.map((driver) => (
-        <DriverRow
-          key={driver.id}
-          driver={driver}
-          expanded={expandedId === driver.id}
-          onToggle={() => setExpandedId((current) => current === driver.id ? null : driver.id)}
-          onOpenSession={onOpenSession}
-        />
-      ))}
+      <div className="driver-board">
+        <div className="driver-main-column">
+          <DriverSpotlight driver={selectedDriver} section={section} />
+          <DriverExamplesCard driver={selectedDriver} onOpenSession={onOpenSession} />
+        </div>
+        <aside className="driver-list-card">
+          <div className="driver-card-head">
+            <h3>Subgroups</h3>
+            <span>{section.results.length}</span>
+          </div>
+          <div className="driver-card-grid" aria-label="Drivers">
+            {section.results.map((driver) => (
+              <DriverCard
+                key={driver.id}
+                driver={driver}
+                section={section}
+                selected={selectedDriver.id === driver.id}
+                onSelect={() => setSelectedId(driver.id)}
+              />
+            ))}
+          </div>
+        </aside>
+      </div>
     </div>
   );
 }
@@ -221,15 +320,13 @@ export default function SubgroupDiscovery({ projects, onOpenSession }: Props) {
     : 0;
   const errorMessage = query.error instanceof Error ? query.error.message : "Unable to load discovery results.";
 
-  const headline =
-    (section && OUTCOME_HEADLINES[section.key]) || section?.title || "Subgroup discovery";
   const topLift =
     section && section.results.length
       ? Math.max(...section.results.map((result) => result.lift))
       : null;
 
   return (
-    <main className="discover-page">
+    <main className={`discover-page discover-section-${activeSection}`}>
       <div className="discover-page-inner">
         <section className="discover-toolbar" aria-label="Discovery controls">
           <div className="discover-tabs" role="tablist" aria-label="Outcome category">
@@ -264,7 +361,9 @@ export default function SubgroupDiscovery({ projects, onOpenSession }: Props) {
               value={minSupport}
               onChange={(event) => setMinSupport(Number(event.target.value))}
             >
-              {SUPPORT_OPTIONS.map((value) => <option value={value} key={value}>{value}</option>)}
+              {SUPPORT_OPTIONS.map((value) => (
+                <option value={value} key={value}>Min support: {value}</option>
+              ))}
             </select>
           </div>
         </section>
@@ -285,11 +384,6 @@ export default function SubgroupDiscovery({ projects, onOpenSession }: Props) {
             value={topLift !== null ? `${topLift.toFixed(topLift >= 10 ? 1 : 2)}×` : "—"}
             hint="vs baseline"
           />
-          <InsightStat
-            label="Cost data"
-            value={payload ? (payload.meta.cost_available ? "Available" : "Missing") : "-"}
-            hint={payload?.meta.cost_available ? "priced models loaded" : "cost sections may be unavailable"}
-          />
         </section>
 
         <section className="discover-workspace">
@@ -299,19 +393,6 @@ export default function SubgroupDiscovery({ projects, onOpenSession }: Props) {
             aria-labelledby={`discover-tab-${activeSection}`}
             className="discover-tabpanel"
           >
-            <div className="discover-section-head">
-              <div>
-                <h2>{headline}</h2>
-                <p>{section?.description ?? SECTION_FALLBACK_DESC}</p>
-              </div>
-              {section && (
-                <span className="discover-section-meta">
-                  <b>{formatCount(section.positive_count)} of {formatCount(section.baseline_count)}</b>
-                  <small>{section.target_label}</small>
-                </span>
-              )}
-            </div>
-
             {query.isError ? (
               <div className="empty-state panel-error">
                 <strong>Discovery failed.</strong>

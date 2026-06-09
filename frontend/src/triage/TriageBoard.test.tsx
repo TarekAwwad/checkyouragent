@@ -21,7 +21,7 @@ const projects: Project[] = [
 ];
 
 describe("TriageBoard", () => {
-  it("selects the first project by default once projects are available", () => {
+  it("selects all projects by default once projects are available", () => {
     const projectOptions: Project[] = [
       { id: 1, export_name: "Hermes", display_name: "Hermes", inferred_cwd: null, session_count: 1, event_count: 0, subagent_count: 0 },
       { id: 2, export_name: "Dashboard", display_name: "Dashboard", inferred_cwd: null, session_count: 1, event_count: 0, subagent_count: 0 },
@@ -33,9 +33,9 @@ describe("TriageBoard", () => {
 
     render(<TriageBoard projects={projectOptions} sessions={sessions} loading={false} onOpenSession={() => {}} />);
 
-    expect(screen.getByRole("combobox")).toHaveValue("1");
+    expect(screen.getByRole("combobox")).toHaveValue("all");
     expect(screen.getByText(/herm0001/)).toBeInTheDocument();
-    expect(screen.queryByText(/dash0002/)).toBeNull();
+    expect(screen.getByText(/dash0002/)).toBeInTheDocument();
   });
 
   it("sorts the highest-risk session into the first row by default", () => {

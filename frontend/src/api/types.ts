@@ -371,6 +371,7 @@ export interface DiscoveryDriver {
   positive_support: number;
   baseline_rate: number;
   subgroup_rate: number;
+  subgroup_rate_low: number;
   lift: number;
   score: number;
   examples: DiscoveryExample[];

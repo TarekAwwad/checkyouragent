@@ -1,5 +1,5 @@
 // frontend/src/shell/Sidebar.tsx
-import { HelpCircle, Moon, PanelLeft, PanelLeftClose, Sun } from "lucide-react";
+import { Activity, HelpCircle, Moon, PanelLeft, PanelLeftClose, Sun } from "lucide-react";
 import { NAV_ITEMS, type View } from "./navConfig";
 import { TECHNIQUES } from "../discover/techniques";
 
@@ -31,7 +31,9 @@ export default function Sidebar({
   return (
     <aside className={`app-sidebar ${collapsed ? "is-collapsed" : ""}`} aria-label="Primary">
       <div className="sb-brand">
-        <span className="sb-logo" aria-hidden="true" />
+        <span className="sb-logo" aria-hidden="true">
+          <Activity size={15} strokeWidth={2.4} />
+        </span>
         <strong>Claude Analytics</strong>
       </div>
 

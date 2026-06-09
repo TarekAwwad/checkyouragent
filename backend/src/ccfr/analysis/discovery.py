@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
 from collections import Counter, defaultdict
 from dataclasses import dataclass
@@ -15,6 +16,12 @@ from ccfr.config import pricing_path
 SECTION_LIMIT = 8
 EXAMPLE_LIMIT = 3
 MAX_PAIR_DESCRIPTORS = 80
+
+# z-score for a one-sided 95% Wilson score bound. Used to require that a
+# subgroup's enrichment clears the baseline with statistical confidence rather
+# than by chance on a handful of matching items.
+CONFIDENCE_Z = 1.645
+MIN_LIFT = 1.15
 
 
 @dataclass(frozen=True)
@@ -198,9 +205,16 @@ def _score_group(
     if subgroup_rate <= baseline_rate:
         return None
     lift = subgroup_rate / baseline_rate if baseline_rate > 0 else 0.0
-    score = (support / total) * (subgroup_rate - baseline_rate)
-    if lift < 1.15:
+    if lift < MIN_LIFT:
         return None
+    # Significance gate: require the Wilson score lower bound of the subgroup
+    # rate to clear the baseline. The lower bound shrinks toward the rate only
+    # as support grows, so a modest lift measured on a handful of matching items
+    # no longer qualifies the way a raw rate or lift comparison would.
+    subgroup_rate_low = _wilson_lower_bound(positive_support, support)
+    if subgroup_rate_low <= baseline_rate:
+        return None
+    score = (support / total) * (subgroup_rate - baseline_rate)
 
     labels = [descriptor.label for descriptor in descriptors]
     examples = [
@@ -221,10 +235,28 @@ def _score_group(
         "positive_support": positive_support,
         "baseline_rate": round(baseline_rate, 4),
         "subgroup_rate": round(subgroup_rate, 4),
+        "subgroup_rate_low": round(subgroup_rate_low, 4),
         "lift": round(lift, 3),
         "score": round(score, 6),
         "examples": examples,
     }
+
+
+def _wilson_lower_bound(positives: int, total: int, z: float = CONFIDENCE_Z) -> float:
+    """One-sided Wilson score lower bound for a binomial proportion.
+
+    Unlike the raw rate ``positives / total``, this shrinks toward 0 as the
+    sample shrinks, so a 1/1 or 3/3 subgroup does not look as confident as a
+    600/1000 one. We compare it against the baseline to decide significance.
+    """
+    if total <= 0:
+        return 0.0
+    phat = positives / total
+    z2 = z * z
+    denom = 1.0 + z2 / total
+    center = phat + z2 / (2 * total)
+    margin = z * math.sqrt((phat * (1.0 - phat) + z2 / (4 * total)) / total)
+    return max(0.0, (center - margin) / denom)
 
 
 def _summary(labels: list[str], lift: float) -> str:
