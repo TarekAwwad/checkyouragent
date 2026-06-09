@@ -2,6 +2,8 @@ import type {
   CacheStats,
   CostAnalyticsFilters,
   CostAnalyticsResponse,
+  DiscoveryFilters,
+  DiscoveryResponse,
   DiscoveredProject,
   EventDetail,
   ImportProgress,
@@ -135,4 +137,12 @@ export function getCostAnalytics(filters: CostAnalyticsFilters = {}) {
   if (filters.model) params.set("model", filters.model);
   const query = params.toString();
   return request<CostAnalyticsResponse>(`/analytics/cost${query ? `?${query}` : ""}`);
+}
+
+export function getDiscoveryAnalytics(filters: DiscoveryFilters = {}) {
+  const params = new URLSearchParams();
+  if (filters.projectId) params.set("project_id", String(filters.projectId));
+  if (filters.minSupport) params.set("min_support", String(filters.minSupport));
+  const query = params.toString();
+  return request<DiscoveryResponse>(`/analytics/discovery${query ? `?${query}` : ""}`);
 }

@@ -9,9 +9,11 @@ from sqlite3 import Connection
 from ccfr.api import analytics, repository
 from ccfr.api.deps import get_db
 from ccfr.api.import_progress import import_progress_store
+from ccfr.analysis.discovery import discovery_analytics
 from ccfr.api.schemas import (
     CacheStatsResponse,
     CostAnalyticsResponse,
+    DiscoveryResponse,
     DiscoveredProjectResponse,
     EventDetail,
     ImportProgressResponse,
@@ -237,4 +239,15 @@ def get_cost_analytics(
         **analytics.cost_analytics(
             conn, date_from=date_from, date_to=date_to, project_id=project_id, model=model
         )
+    )
+
+
+@router.get("/analytics/discovery", response_model=DiscoveryResponse)
+def get_discovery_analytics(
+    project_id: int | None = None,
+    min_support: int = Query(default=5, ge=1),
+    conn: Connection = Depends(get_db),
+) -> DiscoveryResponse:
+    return DiscoveryResponse(
+        **discovery_analytics(conn, project_id=project_id, min_support=min_support)
     )

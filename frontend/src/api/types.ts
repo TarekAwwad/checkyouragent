@@ -351,6 +351,58 @@ export interface SpendSpike {
   sessions: SpendSpikeSession[];
 }
 
+export interface DiscoveryExample {
+  id: number | null;
+  kind: string;
+  session_id: string | null;
+  title: string | null;
+  project_name: string | null;
+  metric: number;
+  metric_label: string | null;
+  detail: string | null;
+}
+
+export interface DiscoveryDriver {
+  id: string;
+  title: string;
+  summary: string;
+  selectors: string[];
+  support: number;
+  positive_support: number;
+  baseline_rate: number;
+  subgroup_rate: number;
+  lift: number;
+  score: number;
+  examples: DiscoveryExample[];
+}
+
+export interface DiscoverySection {
+  key: string;
+  title: string;
+  target_label: string;
+  description: string;
+  available: boolean;
+  unavailable_reason: string | null;
+  baseline_count: number;
+  positive_count: number;
+  results: DiscoveryDriver[];
+}
+
+export interface DiscoveryResponse {
+  meta: {
+    project_id: number | null;
+    min_support: number;
+    total_sessions: number;
+    cost_available: boolean;
+  };
+  sections: Record<string, DiscoverySection>;
+}
+
+export interface DiscoveryFilters {
+  projectId?: number | null;
+  minSupport?: number | null;
+}
+
 export interface CostAnalyticsMeta {
   available: boolean;
   unpriced_models: string[];

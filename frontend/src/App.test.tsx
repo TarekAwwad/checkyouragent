@@ -32,6 +32,31 @@ vi.mock("./api/client", () => ({
     },
     spikes: [],
   })),
+  getDiscoveryAnalytics: vi.fn(async () => ({
+    meta: { project_id: null, min_support: 5, total_sessions: 0, cost_available: false },
+    sections: {
+      cost: {
+        key: "cost", title: "Cost drivers", target_label: "High-cost sessions",
+        description: "", available: false, unavailable_reason: "Price table unavailable.",
+        baseline_count: 0, positive_count: 0, results: [],
+      },
+      fanout_cost: {
+        key: "fanout_cost", title: "Fanout cost drivers", target_label: "High-cost sessions",
+        description: "", available: false, unavailable_reason: "Price table unavailable.",
+        baseline_count: 0, positive_count: 0, results: [],
+      },
+      tool_errors: {
+        key: "tool_errors", title: "Tool error drivers", target_label: "Tool calls with errors",
+        description: "", available: true, unavailable_reason: null,
+        baseline_count: 0, positive_count: 0, results: [],
+      },
+      rejections: {
+        key: "rejections", title: "Rejection drivers", target_label: "Rejected slices",
+        description: "", available: true, unavailable_reason: null,
+        baseline_count: 0, positive_count: 0, results: [],
+      },
+    },
+  })),
 }));
 
 function renderApp() {
@@ -74,6 +99,16 @@ describe("App", () => {
   it("shows the Cost tab in the top nav", async () => {
     renderApp();
     expect(await screen.findByRole("button", { name: "Cost" })).toBeInTheDocument();
+  });
+
+  it("shows the Discover tab and switches to the standalone page", async () => {
+    renderApp();
+    const tab = await screen.findByRole("button", { name: "Discover" });
+
+    fireEvent.click(tab);
+
+    await waitFor(() => expect(tab).toHaveClass("active"));
+    expect(await screen.findByRole("heading", { name: "Discover" })).toBeInTheDocument();
   });
 
   it("opens the glossary modal from the topbar help button", async () => {

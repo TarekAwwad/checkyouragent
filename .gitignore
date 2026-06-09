@@ -22,3 +22,7 @@ frontend/vite.config.d.ts
 .superpowers/
 *.log
 /Data
+.claude/*
+AGENT.md
+CLAUDE.md
+docs/superpowers/*

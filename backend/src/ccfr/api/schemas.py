@@ -374,6 +374,55 @@ class SpendSpike(BaseModel):
     sessions: list[SpendSpikeSession] = Field(default_factory=list)
 
 
+class DiscoveryExample(BaseModel):
+    id: int | None = None
+    kind: str
+    session_id: str | None = None
+    title: str | None = None
+    project_name: str | None = None
+    metric: float = 0
+    metric_label: str | None = None
+    detail: str | None = None
+
+
+class DiscoveryDriver(BaseModel):
+    id: str
+    title: str
+    summary: str
+    selectors: list[str] = Field(default_factory=list)
+    support: int = 0
+    positive_support: int = 0
+    baseline_rate: float = 0
+    subgroup_rate: float = 0
+    lift: float = 0
+    score: float = 0
+    examples: list[DiscoveryExample] = Field(default_factory=list)
+
+
+class DiscoverySection(BaseModel):
+    key: str
+    title: str
+    target_label: str
+    description: str
+    available: bool = True
+    unavailable_reason: str | None = None
+    baseline_count: int = 0
+    positive_count: int = 0
+    results: list[DiscoveryDriver] = Field(default_factory=list)
+
+
+class DiscoveryMeta(BaseModel):
+    project_id: int | None = None
+    min_support: int = 5
+    total_sessions: int = 0
+    cost_available: bool = False
+
+
+class DiscoveryResponse(BaseModel):
+    meta: DiscoveryMeta = Field(default_factory=DiscoveryMeta)
+    sections: dict[str, DiscoverySection] = Field(default_factory=dict)
+
+
 class AvailableProject(BaseModel):
     id: int
     name: str

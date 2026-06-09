@@ -7,10 +7,11 @@ import ImportPage from "./pages/ImportPage";
 import TriageBoard from "./triage/TriageBoard";
 import SessionWorkspace from "./pages/SessionWorkspace";
 import CostAnalyticsPage from "./analytics/CostAnalyticsPage";
+import DiscoverPage from "./discover/DiscoverPage";
 import GlossaryDialog from "./glossary/GlossaryDialog";
 import { useTheme } from "./theme/useTheme";
 
-type View = "import" | "map" | "session" | "cost";
+type View = "import" | "map" | "session" | "cost" | "discover";
 
 function App() {
   const imports = useQuery({ queryKey: ["imports"], queryFn: listImports });
@@ -51,6 +52,7 @@ function App() {
           <button className={view === "import" ? "active" : ""} onClick={() => setView("import")}>Import</button>
           <button className={view === "map" ? "active" : ""} onClick={() => setView("map")}>Triage</button>
           <button className={view === "cost" ? "active" : ""} onClick={() => setView("cost")}>Cost</button>
+          <button className={view === "discover" ? "active" : ""} onClick={() => setView("discover")}>Discover</button>
           <button className={view === "session" ? "active" : ""} disabled={!selectedSession} onClick={() => setView("session")}>Session</button>
         </nav>
         <div className="topbar-actions">
@@ -85,6 +87,9 @@ function App() {
         />
       )}
       {view === "cost" && <CostAnalyticsPage onOpenSession={openSessionById} />}
+      {view === "discover" && (
+        <DiscoverPage projects={projects.data ?? []} onOpenSession={openSessionById} />
+      )}
       {view === "session" && selectedSession && <SessionWorkspace session={selectedSession} />}
     </div>
   );
