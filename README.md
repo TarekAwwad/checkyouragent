@@ -6,11 +6,13 @@ The app mounts raw exports read-only, indexes them into a rebuildable SQLite dat
 
 ## At a Glance
 
-Claude Analytics is built around two high-signal views: a triage board for finding the sessions that deserve attention, and cost analytics for understanding where Claude Code spend comes from.
+Claude Analytics is built around high-signal views: a triage board for finding the sessions that deserve attention, cost analytics for understanding where Claude Code spend comes from, and subgroup discovery for surfacing the conditions that drive outcomes like high-cost sessions.
 
 | Triage suspicious sessions | Understand cost and token behavior |
 | --- | --- |
 | ![Triage board showing session risk, findings, activity, fanout, volume, and cost](docs/screenshots/triage-board.png) | ![Cost analytics dashboard showing project spend, cache savings, model mix, and spend over time](docs/screenshots/cost-analytics-1.png) |
+| **Discover subgroups that drive outcomes** | **More exploration techniques** |
+| ![Subgroup discovery view showing which session conditions most increase the rate of high-cost sessions, ranked by lift over baseline](docs/screenshots/subgroup.png) | _Other exploration techniques coming soon._ |
 
 ## Research Foundation
 
