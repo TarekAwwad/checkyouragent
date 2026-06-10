@@ -134,4 +134,32 @@ describe("App", () => {
     expect(screen.getByRole("heading", { name: "Glossary" })).toBeInTheDocument();
     expect(screen.getByText("Subagent")).toBeInTheDocument();
   });
+
+  it("shows the first-run glossary hint and dismisses it on 'Got it'", async () => {
+    renderApp();
+
+    expect(await screen.findByText("Not sure what a term means?")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Got it" }));
+
+    expect(screen.queryByText("Not sure what a term means?")).not.toBeInTheDocument();
+    expect(localStorage.getItem("ccfr-glossary-hint-seen")).toBe("1");
+  });
+
+  it("retires the glossary hint once the glossary is opened", async () => {
+    renderApp();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open glossary" }));
+
+    expect(screen.queryByText("Not sure what a term means?")).not.toBeInTheDocument();
+    expect(localStorage.getItem("ccfr-glossary-hint-seen")).toBe("1");
+  });
+
+  it("hides the hint when it has already been seen", async () => {
+    localStorage.setItem("ccfr-glossary-hint-seen", "1");
+    renderApp();
+
+    await screen.findByRole("button", { name: "Open glossary" });
+    expect(screen.queryByText("Not sure what a term means?")).not.toBeInTheDocument();
+  });
 });
