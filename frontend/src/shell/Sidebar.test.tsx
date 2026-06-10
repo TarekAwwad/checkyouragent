@@ -45,7 +45,7 @@ describe("Sidebar", () => {
 
   it("shows the technique subnav when Discover is active", () => {
     const props = setup({ view: "discover" });
-    const ready = screen.getByRole("button", { name: "Subgroup discovery" });
+    const ready = screen.getByRole("button", { name: "Subgroups" });
     expect(ready).toHaveClass("active");
     fireEvent.click(ready);
     expect(props.onSelectTechnique).toHaveBeenCalledWith("subgroup");
@@ -55,7 +55,7 @@ describe("Sidebar", () => {
 
   it("hides the technique subnav when Discover is not active", () => {
     setup({ view: "cost" });
-    expect(screen.queryByRole("button", { name: "Subgroup discovery" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Subgroups" })).not.toBeInTheDocument();
   });
 
   it("fires footer actions", () => {

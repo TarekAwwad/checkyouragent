@@ -33,12 +33,11 @@ function formatCategory(value: string | null): string {
 
 function TriageBoard({ projects, sessions, loading, onOpenSession }: Props) {
   const [query, setQuery] = React.useState("");
-  const [projectId, setProjectId] = React.useState<number | "all" | null>(null);
+  const [projectId, setProjectId] = React.useState<number | "all">("all");
   const [onlyErrors, setOnlyErrors] = React.useState(false);
   const [sortKey, setSortKey] = React.useState<SortKey>("risk");
 
   const activeProjectId = React.useMemo<number | "all">(() => {
-    if (projectId === null) return projects[0]?.id ?? "all";
     if (projectId === "all") return projectId;
     return projects.some((project) => project.id === projectId) ? projectId : (projects[0]?.id ?? "all");
   }, [projectId, projects]);

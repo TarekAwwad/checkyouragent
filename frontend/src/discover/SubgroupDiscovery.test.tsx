@@ -32,6 +32,7 @@ function driver(overrides: Partial<DiscoveryDriver> = {}): DiscoveryDriver {
     positive_support: 6,
     baseline_rate: 0.105,
     subgroup_rate: 0.545,
+    subgroup_rate_low: 0.36,
     lift: 5.18,
     score: 0.0849,
     examples: [
@@ -127,15 +128,20 @@ beforeEach(() => {
 });
 
 describe("SubgroupDiscovery", () => {
-  it("renders drivers with expanded evidence and opens example sessions", async () => {
+  it("renders the driver board with spotlight evidence and opens example sessions", async () => {
     const onOpenSession = vi.fn();
     renderPage(onOpenSession);
 
     expect(await screen.findByRole("heading", { name: "What drives high-cost sessions?" })).toBeInTheDocument();
-    expect(await screen.findByText(">10 subagents + Uses claude-sonnet-4-6")).toBeInTheDocument();
-    expect(await screen.findByText("6 of 11 matched items hit this outcome.")).toBeInTheDocument();
-    expect(await screen.findByText("54.5%")).toBeInTheDocument();
-    expect(await screen.findByText("10.5%")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Subgroups" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Example sessions" })).toBeInTheDocument();
+    expect(await screen.findAllByText(">10 subagents + Uses claude-sonnet-4-6")).not.toHaveLength(0);
+    expect(await screen.findByText(/Sessions like this hit high-cost sessions 54.5%/)).toBeInTheDocument();
+    expect(await screen.findByText("6 of 11 matching items hit high-cost sessions.")).toBeInTheDocument();
+    expect(await screen.findByText("11 matching total")).toBeInTheDocument();
+    expect(await screen.findByText("+44.0 pts vs all sessions")).toBeInTheDocument();
+    expect(await screen.findAllByText("54.5%")).not.toHaveLength(0);
+    expect(await screen.findAllByText("10.5%")).not.toHaveLength(0);
 
     fireEvent.click(screen.getByRole("button", { name: /Open session/ }));
 
@@ -148,12 +154,12 @@ describe("SubgroupDiscovery", () => {
     fireEvent.click(await screen.findByRole("tab", { name: "Tool errors" }));
 
     expect(await screen.findAllByText("Bash Test commands")).not.toHaveLength(0);
-    expect(await screen.findByText("40.0%")).toBeInTheDocument();
+    expect(await screen.findAllByText("40.0%")).not.toHaveLength(0);
   });
 
   it("passes project and minimum support filters to the API", async () => {
     renderPage();
-    await screen.findByRole("heading", { name: "What drives high-cost sessions?" });
+    await screen.findAllByRole("heading", { name: "What drives high-cost sessions?" });
 
     fireEvent.change(screen.getByLabelText("Project"), { target: { value: "1" } });
     fireEvent.change(screen.getByLabelText("Minimum support"), { target: { value: "10" } });

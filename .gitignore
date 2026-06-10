@@ -26,3 +26,4 @@ frontend/vite.config.d.ts
 AGENT.md
 CLAUDE.md
 docs/superpowers/*
+.DS_Store

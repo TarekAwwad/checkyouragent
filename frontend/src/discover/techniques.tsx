@@ -16,7 +16,7 @@ export interface Technique {
 
 // Attach a component here when a technique becomes ready.
 export const TECHNIQUES: Technique[] = [
-  { key: "subgroup", label: "Subgroup discovery", status: "ready", component: SubgroupDiscovery },
+  { key: "subgroup", label: "Subgroups", status: "ready", component: SubgroupDiscovery },
   { key: "sequence", label: "Sequence mining", status: "soon" },
   { key: "anomalies", label: "Anomalies", status: "soon" },
 ];

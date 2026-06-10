@@ -33,12 +33,25 @@ vi.mock("./api/client", () => ({
     spikes: [],
   })),
   getDiscoveryAnalytics: vi.fn(async () => ({
-    meta: { project_id: null, min_support: 5, total_sessions: 0, cost_available: false },
+    meta: { project_id: null, min_support: 5, total_sessions: 12, cost_available: true },
     sections: {
       cost: {
         key: "cost", title: "Cost drivers", target_label: "High-cost sessions",
-        description: "", available: false, unavailable_reason: "Price table unavailable.",
-        baseline_count: 0, positive_count: 0, results: [],
+        description: "", available: true, unavailable_reason: null,
+        baseline_count: 12, positive_count: 3, results: [{
+          id: "model:sonnet",
+          title: "Sonnet-heavy sessions",
+          summary: "",
+          selectors: ["model = sonnet"],
+          support: 6,
+          positive_support: 3,
+          baseline_rate: 0.25,
+          subgroup_rate: 0.5,
+          subgroup_rate_low: 0.22,
+          lift: 2,
+          score: 1,
+          examples: [],
+        }],
       },
       fanout_cost: {
         key: "fanout_cost", title: "Fanout cost drivers", target_label: "High-cost sessions",
@@ -109,7 +122,7 @@ describe("App", () => {
 
     await waitFor(() => expect(tab).toHaveClass("active"));
     // The technique subnav appears and the subgroup headline renders.
-    expect(await screen.findByRole("button", { name: "Subgroup discovery" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Subgroups" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: /What drives/ })).toBeInTheDocument();
   });
 

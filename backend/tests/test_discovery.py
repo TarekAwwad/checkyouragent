@@ -86,21 +86,24 @@ def _seed(conn: sqlite3.Connection) -> tuple[int, int]:
         (import_id,),
     ).lastrowid)
 
-    for index, tokens in enumerate((120_000_000, 10_000_000, 8_000_000), start=1):
+    # Cost signal: a dozen high-cost fanout sessions whose cost dominates the
+    # top-decile band, against many cheap quiet sessions. With ~60 subjects the
+    # fanout enrichment is large enough to clear the Wilson significance gate.
+    for index in range(12):
         _add_session(
             conn,
             project_id=alpha,
-            session_uuid=f"alpha-high-{index}",
+            session_uuid=f"alpha-fanout-{index}",
             title=f"Alpha fanout {index}",
             model="claude-sonnet-4-6",
-            base_tokens=tokens,
+            base_tokens=100_000_000 + index,
             subagents=12,
             tool_name="Agent",
         )
-    for index in range(1, 4):
+    for index in range(48):
         _add_session(
             conn,
-            project_id=alpha if index < 3 else beta,
+            project_id=alpha if index < 24 else beta,
             session_uuid=f"quiet-{index}",
             title=f"Quiet {index}",
             model="claude-haiku-4-5",
@@ -110,7 +113,9 @@ def _seed(conn: sqlite3.Connection) -> tuple[int, int]:
         )
 
     sessions = [row["id"] for row in conn.execute("SELECT id FROM sessions ORDER BY id").fetchall()]
-    for index in range(12):
+    # Tool-error signal: 40 Bash test-command calls erroring 70% of the time vs
+    # 40 Read calls that almost never error.
+    for index in range(80):
         session_id = sessions[index % len(sessions)]
         event_id = int(conn.execute(
             """
@@ -119,7 +124,7 @@ def _seed(conn: sqlite3.Connection) -> tuple[int, int]:
             """,
             (session_id, index + 1),
         ).lastrowid)
-        is_test = index < 6
+        is_test = index < 40
         tool_use_id = f"call-{index}"
         command = "uv run pytest tests" if is_test else ""
         raw_json = f'{{"input": {{"command": "{command}"}}}}' if is_test else "{}"
@@ -130,15 +135,18 @@ def _seed(conn: sqlite3.Connection) -> tuple[int, int]:
             """,
             (event_id, session_id, tool_use_id, "Bash" if is_test else "Read", command, raw_json),
         )
+        is_error = (is_test and index < 28) or (not is_test and index >= 78)
         conn.execute(
             """
             INSERT INTO tool_results(event_id, session_id, tool_use_id, is_error, raw_json)
             VALUES (?, ?, ?, ?, '{}')
             """,
-            (event_id, session_id, tool_use_id, 1 if index < 3 else 0),
+            (event_id, session_id, tool_use_id, 1 if is_error else 0),
         )
 
-    for index in range(12):
+    # Rejection signal: 40 git-activity slices rejected 70% of the time vs 40
+    # inspect/read slices that are almost always clean.
+    for index in range(80):
         session_id = sessions[index % len(sessions)]
         event_id = int(conn.execute(
             """
@@ -147,13 +155,14 @@ def _seed(conn: sqlite3.Connection) -> tuple[int, int]:
             """,
             (session_id, index + 1),
         ).lastrowid)
-        is_git = index < 6
+        is_git = index < 40
+        rejected = (is_git and index < 28) or (not is_git and index >= 78)
         slice_id = int(conn.execute(
             """
             INSERT INTO sequence_slices(session_id, kind, lane, start_event_id, end_event_id, outcome, length, duration_seconds)
             VALUES (?, 'turn', 'main', ?, ?, ?, 4, 60)
             """,
-            (session_id, event_id, event_id, "rejected" if index < 3 else "clean"),
+            (session_id, event_id, event_id, "rejected" if rejected else "clean"),
         ).lastrowid)
         symbol = "CALL:Bash:git" if is_git else "CALL:inspect:Read"
         conn.execute(
@@ -200,6 +209,13 @@ def test_discovery_returns_ranked_driver_sections(seeded: tuple[sqlite3.Connecti
     assert any("Bash git activity" in result["title"] for result in rejections["results"])
     assert all("cost" not in selector.lower() for result in cost["results"] for selector in result["selectors"])
 
+    # Every surfaced driver must clear its baseline with statistical confidence,
+    # not merely on raw rate. The Wilson lower bound stays above the baseline.
+    for section in (cost, fanout, tool_errors, rejections):
+        baseline_rate = section["positive_count"] / section["baseline_count"]
+        for result in section["results"]:
+            assert result["subgroup_rate_low"] > baseline_rate
+
 
 def test_discovery_applies_project_and_support_filters(seeded: tuple[sqlite3.Connection, int, int]) -> None:
     conn, alpha, beta = seeded
@@ -208,8 +224,8 @@ def test_discovery_applies_project_and_support_filters(seeded: tuple[sqlite3.Con
     beta_payload = discovery_analytics(conn, project_id=beta, min_support=3)
     strict_payload = discovery_analytics(conn, project_id=alpha, min_support=99)
 
-    assert alpha_payload["meta"]["total_sessions"] == 5
-    assert beta_payload["meta"]["total_sessions"] == 1
+    assert alpha_payload["meta"]["total_sessions"] == 36
+    assert beta_payload["meta"]["total_sessions"] == 24
     assert alpha_payload["sections"]["cost"]["results"]
     assert not strict_payload["sections"]["cost"]["results"]
 
