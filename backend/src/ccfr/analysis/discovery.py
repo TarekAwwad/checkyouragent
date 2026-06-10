@@ -5,6 +5,7 @@ import math
 import sqlite3
 from collections import Counter, defaultdict
 from dataclasses import dataclass
+from statistics import NormalDist
 from typing import Any
 
 from ccfr.analysis.pricing import TokenBreakdown, cost_usd, load_price_table, match_price
@@ -17,11 +18,23 @@ SECTION_LIMIT = 8
 EXAMPLE_LIMIT = 3
 MAX_PAIR_DESCRIPTORS = 80
 
-# z-score for a one-sided 95% Wilson score bound. Used to require that a
-# subgroup's enrichment clears the baseline with statistical confidence rather
-# than by chance on a handful of matching items.
-CONFIDENCE_Z = 1.645
+# Family-wise error rate for the Wilson significance gate. The gate applies a
+# Bonferroni correction — dividing ALPHA by the number of candidates actually
+# scored — so the per-section false-positive probability stays at most ALPHA
+# regardless of how many conditions are tested.
+ALPHA = 0.05
 MIN_LIFT = 1.15
+
+
+def _adjusted_z(num_candidates: int) -> float:
+    """One-sided z for a Bonferroni-corrected Wilson gate over num_candidates tests.
+
+    Divides ALPHA by the candidate count so the family-wise false-positive rate
+    stays at ALPHA. For num_candidates=1 the result equals the classic 1.6449
+    (inv_cdf(0.95)); for larger counts it grows, making the gate strictly more
+    conservative.
+    """
+    return NormalDist().inv_cdf(1 - ALPHA / max(1, num_candidates))
 
 
 @dataclass(frozen=True)
@@ -134,11 +147,18 @@ def _section(
         }
 
     candidates = _candidate_groups(subjects, min_support=min_support)
+    # Apply the fanout filter first to obtain the set actually scored, then
+    # derive z from that count so the Bonferroni correction reflects the real
+    # number of simultaneous hypotheses tested in this section.
+    scored_candidates = [
+        (descriptors, indexes)
+        for descriptors, indexes in candidates
+        if not require_fanout or any(descriptor.fanout for descriptor in descriptors)
+    ]
+    z = _adjusted_z(len(scored_candidates))
     results = []
-    for descriptors, indexes in candidates:
-        if require_fanout and not any(descriptor.fanout for descriptor in descriptors):
-            continue
-        result = _score_group(subjects, descriptors, indexes)
+    for descriptors, indexes in scored_candidates:
+        result = _score_group(subjects, descriptors, indexes, z=z)
         if result is None:
             continue
         results.append(result)
@@ -191,6 +211,8 @@ def _score_group(
     subjects: list[Subject],
     descriptors: tuple[Descriptor, ...],
     indexes: set[int],
+    *,
+    z: float,
 ) -> dict[str, Any] | None:
     total = len(subjects)
     positives = sum(1 for subject in subjects if subject.positive)
@@ -207,11 +229,11 @@ def _score_group(
     lift = subgroup_rate / baseline_rate if baseline_rate > 0 else 0.0
     if lift < MIN_LIFT:
         return None
-    # Significance gate: require the Wilson score lower bound of the subgroup
-    # rate to clear the baseline. The lower bound shrinks toward the rate only
-    # as support grows, so a modest lift measured on a handful of matching items
-    # no longer qualifies the way a raw rate or lift comparison would.
-    subgroup_rate_low = _wilson_lower_bound(positive_support, support)
+    # Significance gate: require the Bonferroni-adjusted Wilson score lower bound
+    # of the subgroup rate to clear the baseline. The caller derives z from
+    # _adjusted_z(m) where m is the number of candidates scored in this section,
+    # so the family-wise false-positive rate stays at ALPHA across all tests.
+    subgroup_rate_low = _wilson_lower_bound(positive_support, support, z)
     if subgroup_rate_low <= baseline_rate:
         return None
     score = (support / total) * (subgroup_rate - baseline_rate)
@@ -242,12 +264,13 @@ def _score_group(
     }
 
 
-def _wilson_lower_bound(positives: int, total: int, z: float = CONFIDENCE_Z) -> float:
+def _wilson_lower_bound(positives: int, total: int, z: float) -> float:
     """One-sided Wilson score lower bound for a binomial proportion.
 
     Unlike the raw rate ``positives / total``, this shrinks toward 0 as the
     sample shrinks, so a 1/1 or 3/3 subgroup does not look as confident as a
     600/1000 one. We compare it against the baseline to decide significance.
+    Callers derive z from _adjusted_z(m).
     """
     if total <= 0:
         return 0.0

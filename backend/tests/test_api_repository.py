@@ -68,3 +68,50 @@ def test_list_sessions_and_projects_carry_cost_estimates(tmp_path: Path) -> None
             sum(s["cost_usd"] for s in sessions if s["project_id"] == project["id"]), 6
         )
         assert project["cost_usd"] == session_sum
+
+
+def test_list_sessions_session_id_filter_returns_single_row(tmp_path: Path) -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    init_db(conn)
+    import_export(conn, sanitized_export(tmp_path))
+
+    all_sessions = repository.list_sessions(conn, with_cost=False)
+    # The fixture imports at least two sessions; pick two distinct ids to verify isolation.
+    assert len(all_sessions) >= 2
+    target = all_sessions[0]
+    other = all_sessions[1]
+
+    filtered = repository.list_sessions(conn, session_id=target["id"], with_cost=False)
+    assert len(filtered) == 1
+    assert filtered[0]["id"] == target["id"]
+
+    other_filtered = repository.list_sessions(conn, session_id=other["id"], with_cost=False)
+    assert len(other_filtered) == 1
+    assert other_filtered[0]["id"] == other["id"]
+
+
+def test_get_session_matches_list_sessions_row(tmp_path: Path) -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    init_db(conn)
+    import_export(conn, sanitized_export(tmp_path))
+
+    all_sessions = repository.list_sessions(conn, with_cost=False)
+    assert all_sessions
+    target = all_sessions[0]
+
+    result = repository.get_session(conn, target["id"])
+    assert result is not None
+    # Response shape must be identical to the corresponding list_sessions row.
+    assert result == target
+
+
+def test_get_session_returns_none_for_nonexistent_id(tmp_path: Path) -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    init_db(conn)
+    import_export(conn, sanitized_export(tmp_path))
+
+    result = repository.get_session(conn, 999_999)
+    assert result is None

@@ -217,9 +217,9 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
   },
   {
     category: "Discovery",
-    term: "95% confidence lower bound",
+    term: "Significance gate (Wilson lower bound)",
     definition:
-      "The \"stays at or above X%\" figure. Even on a pessimistic reading of a small sample, the subgroup's rate is still expected to beat the baseline — a guard against being fooled by a handful of sessions.",
+      "The \"stays at or above X%\" figure. Even on a pessimistic reading of a small sample, the subgroup's rate must still beat the baseline — and the bar rises with the number of conditions tested (a Bonferroni adjustment), so a long screen doesn't manufacture false positives. The gate is conservative: weak real effects can be hidden. Treat results as leads to investigate, not proof of cause.",
   },
 
   // Cost — token usage and spend.

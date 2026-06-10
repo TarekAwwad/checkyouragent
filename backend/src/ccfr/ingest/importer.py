@@ -101,7 +101,7 @@ def import_project(
         raise FileNotFoundError(f"Project not found under import root: {project_name}")
     _prepare_conn(conn)
     file_count = sum(1 for p in project_dir.rglob("*") if p.is_file())
-    import_id, summary = _create_import_row(conn, project_dir, file_count)
+    import_id, summary = _create_import_row(conn, source_root, file_count)
     _notify_progress(progress_callback, summary, "running")
 
     pid, sids = _import_one_project(

@@ -34,6 +34,8 @@ def test_normalize_model_key_maps_display_names_to_ids() -> None:
     assert normalize_model_key("claude-opus-4-8") == "claude-opus-4-8"
     # a dated model id keeps its key; date stripping happens at match time
     assert normalize_model_key("claude-haiku-4-5-20251001") == "claude-haiku-4-5-20251001"
+    # hyphen before "(deprecated)" must not leave a trailing hyphen
+    assert normalize_model_key("Claude-Opus-4.1-(deprecated)") == "claude-opus-4-1"
 
 
 def test_cost_usd_prices_each_category_per_million() -> None:
