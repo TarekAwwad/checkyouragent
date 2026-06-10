@@ -204,6 +204,7 @@ def list_sessions(
     conn: sqlite3.Connection,
     *,
     project_id: int | None = None,
+    session_id: int | None = None,
     q: str | None = None,
     has_subagents: bool | None = None,
     has_errors: bool | None = None,
@@ -216,6 +217,9 @@ def list_sessions(
     if project_id is not None:
         clauses.append("s.project_id = ?")
         params.append(project_id)
+    if session_id is not None:
+        clauses.append("s.id = ?")
+        params.append(session_id)
     if has_subagents is not None:
         clauses.append("COALESCE(ss.subagent_count, 0) > 0" if has_subagents else "COALESCE(ss.subagent_count, 0) = 0")
     if has_errors is not None:
@@ -319,13 +323,11 @@ def list_sessions(
 
 def get_session(conn: sqlite3.Connection, session_id: int) -> dict[str, Any] | None:
     # Cost is skipped here: this powers 404 guards and the single-session card, neither of
-    # which surfaces cost (the triage list and trace endpoint carry it). Avoids a full
-    # token GROUP-BY on every timeline/trace/event fetch.
-    rows = list_sessions(conn, with_cost=False)
-    for row in rows:
-        if row["id"] == session_id:
-            return row
-    return None
+    # which surfaces cost (the triage list and trace endpoint carry it), so the token
+    # GROUP-BY is avoided. The session_id filter makes this a single-row PK lookup
+    # rather than a full session listing.
+    rows = list_sessions(conn, session_id=session_id, with_cost=False)
+    return rows[0] if rows else None
 
 
 def get_timeline(conn: sqlite3.Connection, session_id: int) -> list[dict[str, Any]]:

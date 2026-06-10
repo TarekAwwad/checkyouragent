@@ -7,7 +7,7 @@ from pathlib import Path
 from ccfr.api import repository
 from ccfr.ingest import import_export
 from ccfr.storage import init_db
-from tests.fixtures import SANITIZED_EXPORT_COUNTS, sanitized_export
+from tests.fixtures import ALPHA_SESSION_ID, SANITIZED_EXPORT_COUNTS, sanitized_export
 
 
 def memory_conn() -> sqlite3.Connection:
@@ -268,6 +268,46 @@ def test_import_project_unknown_name_raises(tmp_path: Path) -> None:
     import pytest
     with pytest.raises(FileNotFoundError):
         import_project(conn, tmp_path, "d--Missing")
+
+
+def test_import_project_raw_event_reads_from_disk_not_truncated_db(tmp_path: Path) -> None:
+    """Project-scoped imports must serve raw events from the source file, untruncated."""
+    from ccfr.ingest import import_project
+
+    project = tmp_path / "d--Alpha"
+    project.mkdir()
+    event_uuid = "u-long"
+
+    # Must exceed the _compact_for_storage string_limit (4000) to trigger truncation.
+    long_value = "X" * 5000
+    row = {
+        "type": "user",
+        "uuid": event_uuid,
+        "timestamp": "2026-01-01T00:00:00Z",
+        "message": {"role": "user", "content": long_value},
+    }
+    (project / f"{ALPHA_SESSION_ID}.jsonl").write_text(
+        json.dumps(row, separators=(",", ":")),
+        encoding="utf-8",
+    )
+
+    conn = memory_conn()
+    import_project(conn, tmp_path, "d--Alpha")
+
+    event_row = conn.execute("SELECT id FROM events WHERE uuid = ?", (event_uuid,)).fetchone()
+    assert event_row is not None, "event not ingested"
+    event = repository.get_event(conn, event_row["id"], include_raw=True)
+    assert event is not None
+
+    raw = event["raw_json"]
+    # The full content must be present — this fails before the fix because _load_raw_event
+    # resolves to the wrong path and falls back to the truncated raw_json column.
+    assert isinstance(raw, dict), f"expected dict, got {type(raw)}"
+    actual_content = raw.get("message", {}).get("content", "")
+    assert actual_content == long_value, (
+        f"raw_json content length {len(actual_content)} != {len(long_value)}; "
+        "likely fell back to truncated DB copy"
+    )
 
 
 def test_discover_projects_reports_status(tmp_path: Path) -> None:

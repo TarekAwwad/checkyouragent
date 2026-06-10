@@ -7,10 +7,118 @@ import pytest
 from fastapi.testclient import TestClient
 
 from ccfr.analysis import discovery
-from ccfr.analysis.discovery import discovery_analytics
+from ccfr.analysis.discovery import (
+    _adjusted_z,
+    _candidate_groups,
+    _descriptor,
+    _section,
+    _wilson_lower_bound,
+    discovery_analytics,
+    Subject,
+)
 from ccfr.api.deps import get_db
 from ccfr.main import create_app
 from ccfr.storage import init_db
+
+
+# ---------------------------------------------------------------------------
+# Unit tests for Bonferroni-adjusted z helper
+# ---------------------------------------------------------------------------
+
+def test_adjusted_z_single_candidate_matches_classic_z() -> None:
+    # With one candidate the Bonferroni correction is a no-op.
+    # inv_cdf(1 - 0.05/1) = inv_cdf(0.95) ≈ 1.6449.
+    assert abs(_adjusted_z(1) - 1.6449) < 1e-3
+
+
+def test_adjusted_z_twenty_candidates() -> None:
+    # inv_cdf(1 - 0.05/20) = inv_cdf(0.9975) ≈ 2.807.
+    assert abs(_adjusted_z(20) - 2.807) < 1e-2
+
+
+def test_adjusted_z_is_monotonically_increasing() -> None:
+    assert _adjusted_z(80) > _adjusted_z(20) > _adjusted_z(1)
+
+
+# ---------------------------------------------------------------------------
+# End-to-end _section test: marginal subgroup excluded, strong one kept
+# ---------------------------------------------------------------------------
+
+def test_section_bonferroni_gate_excludes_marginal_keeps_strong() -> None:
+    """A marginal subgroup that clears the classic z=1.6449 gate must be
+    excluded once the gate is Bonferroni-adjusted for the candidates scored,
+    while a strong subgroup survives.
+
+    Population (195 subjects, 39 positive, baseline rate exactly 0.20):
+      - "strong" (signal family): 20 subjects, 18 positive (rate 0.90).
+        Clears the adjusted gate with a wide margin.
+      - "marginal" (signal family): 25 subjects, 10 positive (rate 0.40).
+        Wilson lower bound at z=1.6449 is ~0.256 (clears the 0.20 baseline by
+        ~0.056); at the adjusted z for m=32 candidates it is ~0.175 (fails by
+        ~0.025).
+      - 30 "noise" descriptors (noise family) over 150 background subjects,
+        support exactly 5 each, so every one clears min_support=5 and counts
+        toward m. Eleven of them carry exactly 1 positive (rate 0.20, equal to
+        baseline — never a finding) and the rest carry none. No subject mixes
+        families, so no pair candidates form: m = 30 + 2 = 32 exactly.
+    """
+    strong_desc = _descriptor("signal", "strong", "Strong signal")
+    marginal_desc = _descriptor("signal", "marginal", "Marginal signal")
+    noise_descriptors = [
+        _descriptor("noise", f"v{i}", f"Noise {i}") for i in range(30)
+    ]
+
+    subjects: list[Subject] = []
+    for i in range(20):
+        subjects.append(Subject(id=len(subjects), descriptors={strong_desc}, positive=i < 18))
+    for i in range(25):
+        subjects.append(Subject(id=len(subjects), descriptors={marginal_desc}, positive=i < 10))
+    for noise_index, noise in enumerate(noise_descriptors):
+        for member in range(5):
+            subjects.append(
+                Subject(
+                    id=len(subjects),
+                    descriptors={noise},
+                    positive=noise_index < 11 and member == 0,
+                )
+            )
+
+    total = len(subjects)
+    positives = sum(1 for subject in subjects if subject.positive)
+    baseline_rate = positives / total
+    assert (total, positives) == (195, 39)
+    assert baseline_rate == 0.20
+
+    # m must match what _section scores: replicate the candidate filter
+    # (require_fanout is False here, so every candidate is scored).
+    candidates = _candidate_groups(subjects, min_support=5)
+    m = len(candidates)
+    assert m == 32
+
+    # The marginal subgroup clears the classic gate and fails the adjusted one,
+    # with comfortable margins on both sides — the test is not balanced on a
+    # rounding edge.
+    lb_classic = _wilson_lower_bound(10, 25, _adjusted_z(1))
+    lb_adjusted = _wilson_lower_bound(10, 25, _adjusted_z(m))
+    assert lb_classic > baseline_rate + 0.04
+    assert lb_adjusted < baseline_rate - 0.02
+
+    result = _section(
+        key="test",
+        title="Test section",
+        target_label="Positives",
+        description="Test",
+        subjects=subjects,
+        min_support=5,
+    )
+    result_ids = {item["id"] for item in result["results"]}
+
+    assert strong_desc.key in result_ids, (
+        f"Strong driver was incorrectly excluded. Results: {result_ids}"
+    )
+    assert marginal_desc.key not in result_ids, (
+        f"Marginal driver survived the adjusted gate. Results: {result_ids}"
+    )
 
 
 def _add_session(
@@ -87,8 +195,10 @@ def _seed(conn: sqlite3.Connection) -> tuple[int, int]:
     ).lastrowid)
 
     # Cost signal: a dozen high-cost fanout sessions whose cost dominates the
-    # top-decile band, against many cheap quiet sessions. With ~60 subjects the
-    # fanout enrichment is large enough to clear the Wilson significance gate.
+    # top-decile band, against many cheap quiet sessions. All fanout sessions
+    # share the same token count so they all tie at the 90th-percentile
+    # threshold and are all marked positive — ensuring the Bonferroni-adjusted
+    # Wilson gate is cleared even when scoped to the smaller alpha project.
     for index in range(12):
         _add_session(
             conn,
@@ -96,7 +206,7 @@ def _seed(conn: sqlite3.Connection) -> tuple[int, int]:
             session_uuid=f"alpha-fanout-{index}",
             title=f"Alpha fanout {index}",
             model="claude-sonnet-4-6",
-            base_tokens=100_000_000 + index,
+            base_tokens=100_000_000,
             subagents=12,
             tool_name="Agent",
         )

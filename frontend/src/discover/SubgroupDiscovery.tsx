@@ -137,7 +137,7 @@ function DriverSpotlight({
           compared with {formatPct(driver.baseline_rate)} across all sessions.
         </p>
         <p className="driver-confidence">
-          At 95% confidence the rate stays at or above {formatPct(driver.subgroup_rate_low)},
+          Even on a conservative, Bonferroni-adjusted reading the rate stays at or above {formatPct(driver.subgroup_rate_low)},
           still ahead of the {formatPct(driver.baseline_rate)} baseline.
         </p>
         <SelectorChips selectors={driver.selectors} />

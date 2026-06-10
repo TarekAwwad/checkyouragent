@@ -65,7 +65,7 @@ def normalize_model_key(name: str) -> str:
     dots into hyphens so "Claude Opus 4.8" and "claude-opus-4-8" collapse together.
     """
     text = name.strip().lower()
-    text = re.sub(r"\s*\(deprecated\)\s*$", "", text)
+    text = re.sub(r"[\s-]*\(deprecated\)\s*$", "", text)
     text = text.strip()
     text = re.sub(r"[ .]+", "-", text)
     return text
