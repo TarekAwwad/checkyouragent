@@ -12,6 +12,7 @@ import Sidebar from "./shell/Sidebar";
 import type { View } from "./shell/navConfig";
 import { DEFAULT_TECHNIQUE } from "./discover/techniques";
 import { useCollapsed } from "./shell/useCollapsed";
+import { useGlossaryHint } from "./shell/useGlossaryHint";
 import { useTheme } from "./theme/useTheme";
 
 function App() {
@@ -23,6 +24,7 @@ function App() {
   const [selectedSession, setSelectedSession] = React.useState<SessionCard | null>(null);
   const { theme, toggle } = useTheme();
   const { collapsed, toggle: toggleCollapsed } = useCollapsed();
+  const { seen: glossaryHintSeen, dismiss: dismissGlossaryHint } = useGlossaryHint();
   const [glossaryOpen, setGlossaryOpen] = React.useState(false);
   const autoRouted = React.useRef(false);
 
@@ -50,7 +52,12 @@ function App() {
     setView("discover");
   };
 
-  const openGlossary = () => setGlossaryOpen(true);
+  // Opening the glossary (from the button or the hint's CTA) counts as
+  // discovery, so retire the first-run hint at the same time.
+  const openGlossary = () => {
+    setGlossaryOpen(true);
+    dismissGlossaryHint();
+  };
 
   return (
     <div className="app-shell">
@@ -65,6 +72,8 @@ function App() {
         onToggleCollapsed={toggleCollapsed}
         onToggleTheme={toggle}
         onOpenGlossary={openGlossary}
+        glossaryHint={!glossaryHintSeen}
+        onDismissGlossaryHint={dismissGlossaryHint}
       />
 
       <main className="app-main">

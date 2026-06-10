@@ -14,6 +14,10 @@ interface Props {
   onToggleCollapsed: () => void;
   onToggleTheme: () => void;
   onOpenGlossary: () => void;
+  // First-run hint that surfaces the glossary. When true, the help button
+  // pulses and a dismissable coachmark is shown.
+  glossaryHint?: boolean;
+  onDismissGlossaryHint?: () => void;
 }
 
 export default function Sidebar({
@@ -27,6 +31,8 @@ export default function Sidebar({
   onToggleCollapsed,
   onToggleTheme,
   onOpenGlossary,
+  glossaryHint = false,
+  onDismissGlossaryHint,
 }: Props) {
   return (
     <aside className={`app-sidebar ${collapsed ? "is-collapsed" : ""}`} aria-label="Primary">
@@ -78,9 +84,30 @@ export default function Sidebar({
       </nav>
 
       <div className="sb-foot">
-        <button className="sb-action" onClick={onOpenGlossary} aria-label="Open glossary" title="Open glossary">
-          <HelpCircle size={16} />
-        </button>
+        <div className="sb-glossary">
+          <button
+            className={`sb-action ${glossaryHint ? "is-hinted" : ""}`}
+            onClick={onOpenGlossary}
+            aria-label="Open glossary"
+            title="Open glossary"
+          >
+            <HelpCircle size={16} />
+          </button>
+          {glossaryHint && (
+            <div className="glossary-hint" role="note" aria-labelledby="glossary-hint-title">
+              <h4 id="glossary-hint-title">Not sure what a term means?</h4>
+              <p>Open the glossary any time for plain-English definitions — and how each score is computed.</p>
+              <div className="glossary-hint-actions">
+                <button type="button" className="ghint-primary" onClick={onOpenGlossary}>
+                  Browse glossary
+                </button>
+                <button type="button" className="ghint-secondary" onClick={() => onDismissGlossaryHint?.()}>
+                  Got it
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
         <button
           className="sb-action"
           onClick={onToggleTheme}
