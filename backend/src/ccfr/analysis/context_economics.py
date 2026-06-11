@@ -939,3 +939,46 @@ def context_economics_analytics(
         },
         "archetypes": archetypes,
     }
+
+
+def session_context_economics(conn: sqlite3.Connection, session_db_id: int) -> dict[str, Any]:
+    """Drill-down payload for one session.
+
+    Detection runs session-locally: corpus-relative thresholds are computed
+    over this session only, with the absolute floors still applying. Findings
+    can therefore differ slightly from the corpus view; the corpus payload is
+    the authority for aggregate numbers.
+    """
+    table = load_price_table(pricing_path())
+    threads, _skipped = load_threads(conn, session_db_id=session_db_id)
+    for thread in threads:
+        accrue_tax(thread, table)
+    results = run_detectors(threads)
+
+    payload_threads = []
+    for thread in threads:
+        payload_threads.append({
+            "agent_id": thread.agent_id,
+            "calls": [
+                {"turn": i, "ts": call.ts, "context_tokens": call.context_tokens,
+                 "model": call.model}
+                for i, call in enumerate(thread.calls)
+            ],
+            "epochs": [
+                {"start_turn": e.start, "end_turn": e.end, "ended_by": e.ended_by}
+                for e in thread.epochs
+            ],
+            "contributors": [
+                {"id": c.key, "kind": c.kind, "label": c.label,
+                 "entry_turn": c.entry_call, "end_turn": c.end_call,
+                 "est_tokens": c.est_tokens, "accrued_usd": round(c.accrued_usd, 6),
+                 "event_id": c.event_id}
+                for c in thread.contributors
+            ],
+            "findings": [
+                _finding_payload(f)
+                for findings, _ in results.values() for f in findings
+                if f.session_id == thread.session_db_id
+            ],
+        })
+    return {"threads": payload_threads, "cost_available": bool(table)}

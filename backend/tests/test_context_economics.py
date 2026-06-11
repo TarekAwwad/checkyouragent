@@ -780,3 +780,31 @@ def test_corpus_payload_empty_db_is_stable(conn: sqlite3.Connection, tmp_path: P
     payload = context_economics_analytics(conn)
     assert payload["meta"]["sessions_analyzed"] == 0
     assert [a["findings"] for a in payload["archetypes"]] == [[], [], [], []]
+
+
+from ccfr.analysis.context_economics import session_context_economics
+
+
+def test_session_payload_serializes_threads(economics_conn: sqlite3.Connection) -> None:
+    session_id = int(economics_conn.execute(
+        "SELECT id FROM sessions ORDER BY id LIMIT 1"
+    ).fetchone()[0])
+    payload = session_context_economics(economics_conn, session_id)
+
+    assert payload["cost_available"] is True
+    assert len(payload["threads"]) == 1
+    thread = payload["threads"][0]
+    assert thread["agent_id"] is None
+    assert [c["turn"] for c in thread["calls"]] == [0, 1, 2, 3]
+    assert all(c["context_tokens"] > 0 for c in thread["calls"])
+    assert thread["epochs"] == [{"start_turn": 0, "end_turn": 3, "ended_by": "end"}]
+    kinds = {c["kind"] for c in thread["contributors"]}
+    assert "baseline" in kinds and "tool_result" in kinds
+    assert all(c["accrued_usd"] >= 0 for c in thread["contributors"])
+    # Session-local detection still finds the re-read (thresholds use floors).
+    assert any(f["label"].startswith("big.py read") for f in thread["findings"])
+
+
+def test_session_payload_unknown_session_is_empty(economics_conn: sqlite3.Connection) -> None:
+    payload = session_context_economics(economics_conn, 999_999)
+    assert payload["threads"] == []
