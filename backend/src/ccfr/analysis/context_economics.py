@@ -835,6 +835,7 @@ def _corpus_total_usd(conn: sqlite3.Connection, project_id: int | None,
 
 def _finding_payload(finding: FindingRec) -> dict[str, Any]:
     return {
+        "archetype": finding.archetype,
         "session_id": finding.session_id,
         "session_title": finding.session_title,
         "project_name": finding.project_name,
@@ -948,6 +949,9 @@ def session_context_economics(conn: sqlite3.Connection, session_db_id: int) -> d
     over this session only, with the absolute floors still applying. Findings
     can therefore differ slightly from the corpus view; the corpus payload is
     the authority for aggregate numbers.
+
+    Findings are routed to the thread that owns their event_id, so sidechain
+    findings stay on the sidechain thread.
     """
     table = load_price_table(pricing_path())
     threads, _skipped = load_threads(conn, session_db_id=session_db_id)
@@ -957,6 +961,10 @@ def session_context_economics(conn: sqlite3.Connection, session_db_id: int) -> d
 
     payload_threads = []
     for thread in threads:
+        thread_event_ids = {call.event_id for call in thread.calls}
+        thread_event_ids.update(
+            c.event_id for c in thread.contributors if c.event_id is not None
+        )
         payload_threads.append({
             "agent_id": thread.agent_id,
             "calls": [
@@ -978,7 +986,7 @@ def session_context_economics(conn: sqlite3.Connection, session_db_id: int) -> d
             "findings": [
                 _finding_payload(f)
                 for findings, _ in results.values() for f in findings
-                if f.session_id == thread.session_db_id
+                if f.session_id == thread.session_db_id and f.event_id in thread_event_ids
             ],
         })
     return {"threads": payload_threads, "cost_available": bool(table)}

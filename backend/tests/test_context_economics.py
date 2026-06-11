@@ -808,3 +808,39 @@ def test_session_payload_serializes_threads(economics_conn: sqlite3.Connection) 
 def test_session_payload_unknown_session_is_empty(economics_conn: sqlite3.Connection) -> None:
     payload = session_context_economics(economics_conn, 999_999)
     assert payload["threads"] == []
+
+
+def test_session_payload_without_pricing_is_token_only(
+    conn: sqlite3.Connection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(context_economics, "pricing_path", lambda: tmp_path / "missing.csv")
+    sid = add_session(conn, uuid="nz", calls=[
+        {"context": 10_000, "minute": 1}, {"context": 20_000, "minute": 2},
+    ])
+    payload = session_context_economics(conn, sid)
+    assert payload["cost_available"] is False
+    assert all(c["accrued_usd"] == 0.0
+               for t in payload["threads"] for c in t["contributors"])
+
+
+def test_session_payload_routes_findings_to_owning_thread(economics_conn: sqlite3.Connection) -> None:
+    # Add a sidechain assistant call to the first re-reader session; its thread
+    # must not carry the main thread's big.py re-read finding.
+    sid = int(economics_conn.execute("SELECT id FROM sessions ORDER BY id LIMIT 1").fetchone()[0])
+    event_id = int(economics_conn.execute(
+        "INSERT INTO events(session_id, source_path, line_no, type, timestamp, agent_id, raw_json)"
+        " VALUES (?, 'side.jsonl', 999, 'assistant', ?, 'sub-1', '{}')",
+        (sid, _ts(5)),
+    ).lastrowid)
+    economics_conn.execute(
+        "INSERT INTO messages(event_id, role, model, input_tokens, output_tokens,"
+        " base_input_tokens, cache_5m_tokens, cache_1h_tokens, cache_read_tokens)"
+        " VALUES (?, 'assistant', 'claude-sonnet-4-6', 8000, 0, 0, 0, 0, 8000)",
+        (event_id,),
+    )
+    economics_conn.commit()
+    payload = session_context_economics(economics_conn, sid)
+    by_agent = {t["agent_id"]: t for t in payload["threads"]}
+    assert set(by_agent) == {None, "sub-1"}
+    assert any(f["label"].startswith("big.py read") for f in by_agent[None]["findings"])
+    assert by_agent["sub-1"]["findings"] == []  # sidechain owns no re-read finding
