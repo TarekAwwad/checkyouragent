@@ -6,7 +6,13 @@ import sqlite3
 import pytest
 from fastapi.testclient import TestClient
 
-from ccfr.analysis.usage_map import classify_tool_call
+from ccfr.analysis.usage_map import (
+    EventRec,
+    ToolCallRec,
+    aggregate_phases,
+    classify_tool_call,
+    event_phase_weights,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -62,14 +68,6 @@ def test_classify_unknown_and_missing_tools_are_converse() -> None:
     assert classify_tool_call("mcp__some__tool") == "converse"
     assert classify_tool_call(None) == "converse"
     assert classify_tool_call("") == "converse"
-
-
-from ccfr.analysis.usage_map import (
-    EventRec,
-    ToolCallRec,
-    aggregate_phases,
-    event_phase_weights,
-)
 
 
 def _event(event_id: int, tools: list[ToolCallRec], cost: float = 2.0,

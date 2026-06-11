@@ -121,7 +121,11 @@ def event_phase_weights(event: EventRec) -> dict[str, float]:
 
 
 def aggregate_phases(events: list[EventRec]) -> dict[str, dict[str, Any]]:
-    """Per-phase accumulation of cost, tokens, tool counts and sessions."""
+    """Per-phase accumulation of cost, tokens, tool counts and sessions.
+
+    `sessions` is the set of session ids with at least one event touching the
+    phase; `tokens` is a float (weighted sum) — callers round at presentation.
+    """
     acc: dict[str, dict[str, Any]] = {
         key: {"cost_usd": 0.0, "tokens": 0.0, "tool_count": 0, "sessions": set()}
         for key in PHASE_KEYS
