@@ -7,11 +7,14 @@ import pytest
 from fastapi.testclient import TestClient
 
 from ccfr.analysis.pricing import ModelPrice
+from ccfr.analysis import usage_map
 from ccfr.analysis.usage_map import (
+    HABIT_BY_KEY,
     EventRec,
     HabitFinding,
     ToolCallRec,
     _in_window,
+    aggregate_habits,
     aggregate_phases,
     classify_tool_call,
     detect_blind_retry,
@@ -21,6 +24,7 @@ from ccfr.analysis.usage_map import (
     detect_tdd_loop,
     event_phase_weights,
     load_events,
+    run_habit_detectors,
 )
 from ccfr.storage import init_db
 
@@ -567,3 +571,70 @@ def test_detect_context_habits_respects_project_filter() -> None:
     conn = _conn()
     _seed_reread_session(conn)  # finding lives in project 1
     assert detect_context_habits(conn, PRICE_TABLE, project_id=2) == []
+
+
+# ---------------------------------------------------------------------------
+# Registry + runner + leaf aggregation
+# ---------------------------------------------------------------------------
+
+def test_registry_covers_the_v1_catalog() -> None:
+    assert set(HABIT_BY_KEY) == {
+        "tdd-loop", "delegation", "plan-before-burst",
+        "blind-retry", "re-reads", "oversized-context", "late-compaction",
+    }
+    for spec in HABIT_BY_KEY.values():
+        assert spec["polarity"] in ("good", "anti")
+        assert spec["rule"]  # every leaf can show why it exists
+
+
+def test_run_habit_detectors_finds_session_habits() -> None:
+    conn = _conn()
+    _seed_base(conn)
+    _add_assistant_event(conn, 1, 1, "2026-06-01T10:00:00Z",
+                         [("Task", {"prompt": "go"}, False)])
+    events = load_events(conn, PRICE_TABLE)
+    findings = run_habit_detectors(conn, PRICE_TABLE, events)
+    assert any(f.habit_key == "delegation" for f in findings)
+
+
+def test_run_habit_detectors_survives_a_broken_detector(monkeypatch) -> None:
+    def boom(_events):
+        raise RuntimeError("broken detector")
+    monkeypatch.setattr(usage_map, "SESSION_DETECTORS",
+                        [boom, usage_map.detect_delegation])
+    conn = _conn()
+    _seed_base(conn)
+    _add_assistant_event(conn, 1, 1, "2026-06-01T10:00:00Z",
+                         [("Task", {"prompt": "go"}, False)])
+    events = load_events(conn, PRICE_TABLE)
+    findings = run_habit_detectors(conn, PRICE_TABLE, events)  # must not raise
+    assert any(f.habit_key == "delegation" for f in findings)
+
+
+def test_aggregate_habits_groups_by_key_and_phase() -> None:
+    def finding(session: int, key: str = "blind-retry", phase: str = "operate",
+                cost: float = 1.0) -> HabitFinding:
+        return HabitFinding(habit_key=key, phase=phase, session_db_id=session,
+                            session_title="S", project_name="alpha",
+                            cost_usd=cost, count=2, exemplar_event_ids=(1,),
+                            detail="d")
+    leaves = aggregate_habits([
+        finding(1), finding(2),
+        finding(1, phase="explore"),       # same habit, different home phase
+        finding(3, key="tdd-loop", phase="verify"),
+    ])
+    by_id = {(leaf["key"], leaf["phase"]): leaf for leaf in leaves}
+    assert by_id[("blind-retry", "operate")]["cost_usd"] == pytest.approx(2.0)
+    assert by_id[("blind-retry", "operate")]["session_count"] == 2
+    assert by_id[("blind-retry", "operate")]["count"] == 4
+    assert by_id[("blind-retry", "operate")]["polarity"] == "anti"
+    assert by_id[("blind-retry", "explore")]["cost_usd"] == pytest.approx(1.0)
+    assert by_id[("tdd-loop", "verify")]["polarity"] == "good"
+    assert all(leaf["status"] == "confirmed" for leaf in leaves)
+
+
+def test_aggregate_habits_skips_unknown_keys() -> None:
+    rogue = HabitFinding(habit_key="not-registered", phase="plan",
+                         session_db_id=1, session_title="S", project_name="a",
+                         cost_usd=1.0, count=1, exemplar_event_ids=(), detail="d")
+    assert aggregate_habits([rogue]) == []

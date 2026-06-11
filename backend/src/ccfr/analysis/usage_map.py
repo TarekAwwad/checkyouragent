@@ -527,3 +527,99 @@ def detect_context_habits(
                 detail=rec.label,
             ))
     return findings
+
+
+HABITS: list[dict[str, str]] = [
+    {"key": "tdd-loop", "label": "Test-driven loops", "polarity": "good",
+     "rule": "A test command fails, edits follow, and the same command later "
+             "passes. Cost counts the two verify turns of each cycle."},
+    {"key": "delegation", "label": "Subagent delegation", "polarity": "good",
+     "rule": "Work dispatched to subagents (Task/Agent calls). Cost counts the "
+             "dispatching turns; the delegated work is measured in its own phases."},
+    {"key": "plan-before-burst", "label": "Plan before implementing", "polarity": "good",
+     "rule": f"A planning step (TodoWrite, plan mode) precedes a run of at least "
+             f"{PLAN_BURST_MIN} edit calls. Cost counts the planning turns plus "
+             "the planned edit burst."},
+    {"key": "blind-retry", "label": "Blind retry loops", "polarity": "anti",
+     "rule": f"The same tool called with identical input at least "
+             f"{BLIND_RETRY_MIN} times in a row, every attempt failing. Cost "
+             "counts every attempt after the first."},
+    {"key": "re-reads", "label": "Repeated file re-reads", "polarity": "anti",
+     "rule": "The same file read into the context repeatedly in one epoch "
+             "without an intervening edit (from Context Economics). Cost is the "
+             "carry cost of the duplicate copies."},
+    {"key": "oversized-context", "label": "Oversized tool results", "polarity": "anti",
+     "rule": "Single tool results far above this corpus's norm entered the "
+             "context (from Context Economics). Cost is the avoidable carry "
+             "above the corpus median."},
+    {"key": "late-compaction", "label": "Late compaction", "polarity": "anti",
+     "rule": "Context stayed near the window limit for many turns without "
+             "compaction (from Context Economics). Cost is the avoidable carry "
+             "of the un-dropped ballast."},
+]
+HABIT_BY_KEY: dict[str, dict[str, str]] = {h["key"]: h for h in HABITS}
+
+# Per-session detectors. Future sequence mining adds entries here (emitting
+# status "candidate" leaves) — nothing else changes.
+SESSION_DETECTORS: list[Callable[[list[EventRec]], list[HabitFinding]]] = [
+    detect_tdd_loop,
+    detect_delegation,
+    detect_plan_before_burst,
+    detect_blind_retry,
+]
+
+
+def run_habit_detectors(
+    conn: sqlite3.Connection,
+    table: dict[str, ModelPrice],
+    events: list[EventRec],
+    *,
+    project_id: int | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> list[HabitFinding]:
+    """All detectors over the filtered corpus. Each detector is isolated: one
+    failure logs and skips, it never breaks the endpoint."""
+    by_session: dict[int, list[EventRec]] = defaultdict(list)
+    for event in events:
+        by_session[event.session_db_id].append(event)
+    findings: list[HabitFinding] = []
+    for detector in SESSION_DETECTORS:
+        try:
+            for session_events in by_session.values():
+                findings.extend(detector(session_events))
+        except Exception:
+            logger.exception("usage-map detector %s failed",
+                             getattr(detector, "__name__", repr(detector)))
+    try:
+        findings.extend(detect_context_habits(
+            conn, table, project_id=project_id,
+            date_from=date_from, date_to=date_to,
+        ))
+    except Exception:
+        logger.exception("usage-map context-economics adapter failed")
+    return findings
+
+
+def aggregate_habits(findings: list[HabitFinding]) -> list[dict[str, Any]]:
+    """Fold findings into leaves keyed by (habit, home phase). A habit whose
+    findings span phases (e.g. blind-retry) yields one leaf per phase."""
+    grouped: dict[tuple[str, str], list[HabitFinding]] = defaultdict(list)
+    for finding in findings:
+        grouped[(finding.habit_key, finding.phase)].append(finding)
+    leaves: list[dict[str, Any]] = []
+    for (habit_key, phase), recs in sorted(grouped.items()):
+        spec = HABIT_BY_KEY.get(habit_key)
+        if spec is None:
+            continue
+        leaves.append({
+            "key": habit_key,
+            "phase": phase,
+            "label": spec["label"],
+            "polarity": spec["polarity"],
+            "status": "confirmed",
+            "cost_usd": round(sum(r.cost_usd for r in recs), 6),
+            "count": sum(r.count for r in recs),
+            "session_count": len({r.session_db_id for r in recs}),
+        })
+    return leaves
