@@ -601,6 +601,30 @@ def run_habit_detectors(
     return findings
 
 
+def aggregate_habits(findings: list[HabitFinding]) -> list[dict[str, Any]]:
+    """Fold findings into leaves keyed by (habit, home phase). A habit whose
+    findings span phases (e.g. blind-retry) yields one leaf per phase."""
+    grouped: dict[tuple[str, str], list[HabitFinding]] = defaultdict(list)
+    for finding in findings:
+        grouped[(finding.habit_key, finding.phase)].append(finding)
+    leaves: list[dict[str, Any]] = []
+    for (habit_key, phase), recs in sorted(grouped.items()):
+        spec = HABIT_BY_KEY.get(habit_key)
+        if spec is None:
+            continue
+        leaves.append({
+            "key": habit_key,
+            "phase": phase,
+            "label": spec["label"],
+            "polarity": spec["polarity"],
+            "status": "confirmed",
+            "cost_usd": round(sum(r.cost_usd for r in recs), 6),
+            "count": sum(r.count for r in recs),
+            "session_count": len({r.session_db_id for r in recs}),
+        })
+    return leaves
+
+
 # --- Corpus aggregation -------------------------------------------------------
 
 def usage_map_analytics(
@@ -656,27 +680,3 @@ def usage_map_analytics(
         },
         "phases": phases,
     }
-
-
-def aggregate_habits(findings: list[HabitFinding]) -> list[dict[str, Any]]:
-    """Fold findings into leaves keyed by (habit, home phase). A habit whose
-    findings span phases (e.g. blind-retry) yields one leaf per phase."""
-    grouped: dict[tuple[str, str], list[HabitFinding]] = defaultdict(list)
-    for finding in findings:
-        grouped[(finding.habit_key, finding.phase)].append(finding)
-    leaves: list[dict[str, Any]] = []
-    for (habit_key, phase), recs in sorted(grouped.items()):
-        spec = HABIT_BY_KEY.get(habit_key)
-        if spec is None:
-            continue
-        leaves.append({
-            "key": habit_key,
-            "phase": phase,
-            "label": spec["label"],
-            "polarity": spec["polarity"],
-            "status": "confirmed",
-            "cost_usd": round(sum(r.cost_usd for r in recs), 6),
-            "count": sum(r.count for r in recs),
-            "session_count": len({r.session_db_id for r in recs}),
-        })
-    return leaves
