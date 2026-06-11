@@ -371,7 +371,8 @@ def detect_tdd_loop(session_events: list[EventRec]) -> list[HabitFinding]:
     if not session_events:
         return []
     head = session_events[0]
-    pending: dict[str, dict[str, Any]] = {}  # verify signature -> failing state
+    pending: dict[str, dict[str, Any]] = {}  # verify signature -> failing state;
+    # stale entries for commands that never re-run are harmless (sessions are bounded).
     cycles = 0
     cost = 0.0
     exemplars: list[int] = []
@@ -381,6 +382,9 @@ def detect_tdd_loop(session_events: list[EventRec]) -> list[HabitFinding]:
                 state["edited"] = True
         elif call.phase == "verify" and call.signature:
             if call.is_error:
+                # Re-failing overwrites the state: the edit gate resets, and
+                # only the latest failing turn's cost is counted — conservative
+                # by design.
                 pending[call.signature] = {
                     "cost": call.cost_share, "edited": False, "event_id": call.event_id,
                 }

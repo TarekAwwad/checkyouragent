@@ -417,3 +417,29 @@ def test_tdd_loop_counts_multiple_cycles_in_one_finding() -> None:
     findings = detect_tdd_loop(cycle(1) + cycle(10))
     assert len(findings) == 1
     assert findings[0].count == 2
+
+
+def test_tdd_loop_refail_resets_the_edit_gate() -> None:
+    # fail -> edit -> fail again -> pass: the second failure resets the edited
+    # flag, so this conservatively counts no cycle.
+    events = [
+        _flat_event(1, "Bash", {"command": "uv run pytest"}, True),
+        _flat_event(2, "Edit", {"file_path": "a.py"}, False),
+        _flat_event(3, "Bash", {"command": "uv run pytest"}, True),
+        _flat_event(4, "Bash", {"command": "uv run pytest"}, False),
+    ]
+    assert detect_tdd_loop(events) == []
+
+
+def test_tdd_loop_refail_then_edit_counts_one_cycle() -> None:
+    events = [
+        _flat_event(1, "Bash", {"command": "uv run pytest"}, True),
+        _flat_event(2, "Edit", {"file_path": "a.py"}, False),
+        _flat_event(3, "Bash", {"command": "uv run pytest"}, True),
+        _flat_event(4, "Edit", {"file_path": "a.py"}, False),
+        _flat_event(5, "Bash", {"command": "uv run pytest"}, False),
+    ]
+    findings = detect_tdd_loop(events)
+    assert len(findings) == 1
+    assert findings[0].count == 1
+    assert findings[0].exemplar_event_ids == (3,)  # the failure that got fixed
