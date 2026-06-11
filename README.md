@@ -4,6 +4,9 @@ Offline forensic explorer for Claude Code `.claude/projects` exports.
 
 The app mounts raw exports read-only, indexes them into a rebuildable SQLite database, and provides a graph-first UI for inspecting sessions, tool cycles, subagents, errors, and event trails. It does not call external services and does not mutate the raw export.
 
+> [!NOTE]
+> **Work in progress.** This project is under active development, and the tooling it analyzes is a moving target: Claude Code's export format, pricing, and agent behavior evolve quickly, and the heuristics and cost models here may lag behind. Findings are estimates derived from local data; treat them as leads to investigate, not ground truth, and expect occasional inaccuracies while both the tool and the ecosystem keep changing.
+
 ## At a Glance
 
 Claude Analytics is built around high-signal views: a triage board for finding the sessions that deserve attention, cost analytics for understanding where Claude Code spend comes from, subgroup discovery for surfacing the conditions that drive outcomes like high-cost sessions, and context economics for separating the share of spend that avoidable context waste is responsible for.
