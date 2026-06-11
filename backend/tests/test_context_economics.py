@@ -121,3 +121,26 @@ def test_calibrate_negative_delta_adds_nothing() -> None:
     items = {1: [RawItem(kind="user", label="msg", raw_chars=4_000)]}
     contributors = calibrate_contributors(calls, epochs, items)
     assert [c.kind for c in contributors] == ["baseline"]
+
+
+def test_calibrate_sums_exactly_to_delta_under_rounding() -> None:
+    # delta=5 split across two equal items: scale is non-integer, so naive
+    # round() would give 2+2=4. Largest-remainder must yield 3+2 (sum 5).
+    calls = [_call(1, 10_000), _call(2, 10_005)]
+    epochs = split_epochs([c.context_tokens for c in calls])
+    items = {1: [
+        RawItem(kind="user", label="a", raw_chars=4_000),
+        RawItem(kind="user", label="b", raw_chars=4_000),
+    ]}
+    contributors = [c for c in calibrate_contributors(calls, epochs, items) if c.kind != "baseline"]
+    assert sum(c.est_tokens for c in contributors) == 5
+    assert sorted(c.est_tokens for c in contributors) == [2, 3]
+
+
+def test_calibrate_many_items_still_sum_to_delta() -> None:
+    # 7 equal items, delta=10 -> shares 1.428..., must still total exactly 10.
+    calls = [_call(1, 100_000), _call(2, 100_010)]
+    epochs = split_epochs([c.context_tokens for c in calls])
+    items = {1: [RawItem(kind="user", label=f"m{n}", raw_chars=4_000) for n in range(7)]}
+    contributors = [c for c in calibrate_contributors(calls, epochs, items) if c.kind != "baseline"]
+    assert sum(c.est_tokens for c in contributors) == 10

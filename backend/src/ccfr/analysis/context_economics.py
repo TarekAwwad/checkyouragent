@@ -196,9 +196,7 @@ def calibrate_contributors(
                 raw_chars=previous.output_tokens * CHARS_PER_TOKEN,
                 event_id=previous.event_id,
             ))
-        raw_tokens = [max(1.0, item.raw_chars / CHARS_PER_TOKEN) for item in items]
-        total_raw = sum(raw_tokens)
-        if total_raw <= 0:
+        if not items:
             contributors.append(ContributorRec(
                 key=f"unattributed-{i}",
                 kind="unattributed",
@@ -209,13 +207,23 @@ def calibrate_contributors(
                 epoch=epoch_of[i],
             ))
             continue
-        scale = delta / total_raw
-        for item, raw in zip(items, raw_tokens):
-            est = int(round(raw * scale))
+        # Floor of 1.0 raw-token keeps tiny items from vanishing before apportionment.
+        raw_tokens = [max(1.0, item.raw_chars / CHARS_PER_TOKEN) for item in items]
+        total_raw = sum(raw_tokens)
+        # Largest-remainder (Hare) apportionment: floor every share, then hand
+        # the leftover tokens to the largest fractional remainders so the
+        # integer ests sum EXACTLY to delta (naive round() does not).
+        shares = [raw * delta / total_raw for raw in raw_tokens]
+        ests = [int(share) for share in shares]
+        leftover = delta - sum(ests)
+        order = sorted(range(len(items)), key=lambda k: (-(shares[k] - ests[k]), k))
+        for k in order[:leftover]:
+            ests[k] += 1
+        for j, (item, est) in enumerate(zip(items, ests)):
             if est <= 0:
                 continue
             contributors.append(ContributorRec(
-                key=f"{item.kind}-{i}-{len(contributors)}",
+                key=f"{item.kind}-{i}-{j}",
                 kind=item.kind,
                 label=item.label,
                 entry_call=i,
