@@ -306,6 +306,6 @@ def get_usage_map_evidence(
     try:
         payload = usage_map_evidence(conn, node=node, project_id=project_id,
                                      date_from=date_from, date_to=date_to)
-    except KeyError:
-        raise HTTPException(status_code=404, detail=f"Unknown node: {node}")
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"Unknown node: {node}") from exc
     return UsageMapEvidenceResponse(**payload)
