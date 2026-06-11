@@ -235,3 +235,33 @@ def calibrate_contributors(
                 detail=item.detail,
             ))
     return contributors
+
+
+def accrue_tax(thread: ThreadRec, table: dict[str, Any]) -> bool:
+    """Price each contributor's carry: one 5m cache write at entry, then one
+    cache read per subsequent call until its epoch ends. Returns False when any
+    call's model has no price row (those calls contribute $0 and the payload
+    flags cost as partially unavailable)."""
+    fully_priced = True
+    thread.read_prices = []
+    thread.write_prices = []
+    for call in thread.calls:
+        price = match_price(table, call.model)
+        if price is None:
+            fully_priced = False
+            thread.read_prices.append(0.0)
+            thread.write_prices.append(0.0)
+        else:
+            thread.read_prices.append(price.cache_read / 1_000_000)
+            thread.write_prices.append(price.cache_write_5m / 1_000_000)
+    for contributor in thread.contributors:
+        usd = contributor.est_tokens * thread.write_prices[contributor.entry_call]
+        for i in range(contributor.entry_call + 1, contributor.end_call + 1):
+            usd += contributor.est_tokens * thread.read_prices[i]
+        contributor.accrued_usd = usd
+    return fully_priced
+
+
+def _carry_usd(thread: ThreadRec, tokens: int, entry_call: int, end_call: int) -> float:
+    """Read-cost of carrying `tokens` from after entry_call through end_call."""
+    return tokens * sum(thread.read_prices[entry_call + 1: end_call + 1])

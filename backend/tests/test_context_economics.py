@@ -144,3 +144,50 @@ def test_calibrate_many_items_still_sum_to_delta() -> None:
     items = {1: [RawItem(kind="user", label=f"m{n}", raw_chars=4_000) for n in range(7)]}
     contributors = [c for c in calibrate_contributors(calls, epochs, items) if c.kind != "baseline"]
     assert sum(c.est_tokens for c in contributors) == 10
+
+
+# ---------------------------------------------------------------------------
+# Tax accrual (pricing)
+# ---------------------------------------------------------------------------
+
+from ccfr.analysis.context_economics import ThreadRec, accrue_tax
+from ccfr.analysis.pricing import ModelPrice
+
+
+PRICE_TABLE = {
+    # $1/M for every category keeps the arithmetic in tests trivial:
+    # carry cost of T tokens over N calls = T*N / 1e6 dollars.
+    "claude-sonnet-4-6": ModelPrice(base_input=1, cache_write_5m=1, cache_write_1h=1,
+                                    cache_read=1, output=1),
+}
+
+
+def _thread(calls: list[CallRec], items: dict[int, list[RawItem]] | None = None) -> ThreadRec:
+    epochs = split_epochs([c.context_tokens for c in calls])
+    contributors = calibrate_contributors(calls, epochs, items or {})
+    return ThreadRec(session_db_id=1, session_title="t", project_name="p",
+                     agent_id=None, calls=calls, epochs=epochs, contributors=contributors)
+
+
+def test_accrue_tax_is_write_once_plus_read_per_carried_call() -> None:
+    calls = [_call(1, 10_000), _call(2, 16_000), _call(3, 16_000), _call(4, 16_000)]
+    items = {1: [RawItem(kind="tool_result", label="Read a.py", raw_chars=24_000)]}
+    thread = _thread(calls, items)
+    priced = accrue_tax(thread, PRICE_TABLE)
+
+    assert priced is True
+    read = next(c for c in thread.contributors if c.label == "Read a.py")
+    # 6k tokens: one 5m write at entry (call 1) + reads at calls 2 and 3.
+    assert read.est_tokens == 6_000
+    assert read.accrued_usd == pytest.approx((6_000 + 6_000 + 6_000) / 1e6)
+    baseline = next(c for c in thread.contributors if c.kind == "baseline")
+    # 10k tokens: write at call 0 + reads at calls 1, 2, 3.
+    assert baseline.accrued_usd == pytest.approx(40_000 / 1e6)
+
+
+def test_accrue_tax_unknown_model_reports_unpriced() -> None:
+    calls = [CallRec(event_id=1, ts=None, model="mystery-model", context_tokens=5_000,
+                     output_tokens=0)]
+    thread = _thread(calls)
+    assert accrue_tax(thread, PRICE_TABLE) is False
+    assert thread.contributors[0].accrued_usd == 0.0
