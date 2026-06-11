@@ -123,7 +123,11 @@ class FindingRec:
 
 
 def _percentile(values: list[float], pct: float) -> float:
-    """Nearest-rank percentile on an unsorted list; 0.0 for empty input."""
+    """Nearest-rank percentile on an unsorted list; 0.0 for empty input.
+
+    Nearest-rank, not the interpolating variant in discovery.py — same name,
+    deliberately different semantics.
+    """
     if not values:
         return 0.0
     ordered = sorted(values)
