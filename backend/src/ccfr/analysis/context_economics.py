@@ -774,7 +774,12 @@ ARCHETYPES: list[dict[str, str]] = [
 
 def _thumbnail(thread: ThreadRec, finding: FindingRec) -> dict[str, Any]:
     """Downsampled context series for an archetype card, with the finding's
-    contributor (when contributor-level) highlighted."""
+    contributor (when contributor-level) highlighted.
+
+    Context-level findings (late_compaction, stale_continuation) carry a call's
+    event_id rather than a contributor's, so no contributor matches and the
+    series renders without a highlight band — the curve alone is the evidence.
+    """
     highlight_entry, highlight_end, highlight_tokens = None, None, 0
     for contributor in thread.contributors:
         if contributor.event_id is not None and contributor.event_id == finding.event_id:
@@ -912,6 +917,10 @@ def context_economics_analytics(
         })
 
     total_usd = _corpus_total_usd(conn, project_id, table) if cost_available else 0.0
+    # avoidable is a subset of carry reads/writes that are themselves part of
+    # total, so it should not exceed total. The clamp is defense-in-depth against
+    # the estimate-vs-actual gap (savings use calibrated token estimates; total
+    # uses billed counts), keeping the headline honest if they ever disagree.
     avoidable = min(avoidable, total_usd) if cost_available else 0.0
     unattributed = sum(
         c.est_tokens for t in threads for c in t.contributors if c.kind == "unattributed"
@@ -921,7 +930,7 @@ def context_economics_analytics(
             "project_id": project_id,
             "min_support": min_support,
             "total_usd": round(total_usd, 6),
-            "necessary_usd": round(total_usd - avoidable, 6),
+            "necessary_usd": round(max(0.0, total_usd - avoidable), 6),
             "avoidable_usd": round(avoidable, 6),
             "unattributed_tokens": unattributed,
             "cost_available": cost_available,
