@@ -1,5 +1,6 @@
 import type {
   CacheStats,
+  ContextEconomicsResponse,
   CostAnalyticsFilters,
   CostAnalyticsResponse,
   DiscoveryFilters,
@@ -13,6 +14,7 @@ import type {
   RuntimeConfig,
   SearchResult,
   SessionCard,
+  SessionContextEconomicsResponse,
   Subagent,
   TimelineItem,
   TurnCostBreakdown,
@@ -145,4 +147,16 @@ export function getDiscoveryAnalytics(filters: DiscoveryFilters = {}) {
   if (filters.minSupport) params.set("min_support", String(filters.minSupport));
   const query = params.toString();
   return request<DiscoveryResponse>(`/analytics/discovery${query ? `?${query}` : ""}`);
+}
+
+export function getContextEconomics(filters: { projectId?: number | null; minSupport?: number } = {}) {
+  const params = new URLSearchParams();
+  if (filters.projectId != null) params.set("project_id", String(filters.projectId));
+  if (filters.minSupport != null) params.set("min_support", String(filters.minSupport));
+  const query = params.toString();
+  return request<ContextEconomicsResponse>(`/analytics/context-economics${query ? `?${query}` : ""}`);
+}
+
+export function getSessionContextEconomics(sessionId: number) {
+  return request<SessionContextEconomicsResponse>(`/sessions/${sessionId}/context-economics`);
 }
