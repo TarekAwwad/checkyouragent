@@ -716,7 +716,8 @@ def detect_stale_continuation(
             # before the gap, minus the fresh-session baseline). Constant across
             # tail calls: the follow-up's own new work happens in both worlds, so
             # only the pre-gap ballast is avoidable — crediting later growth would
-            # inflate the headline.
+            # inflate the headline. Exact when context grows through the tail (the
+            # usual case); conservative if context shrinks mildly between tail calls.
             avoidable_ctx = thread.calls[i - 1].context_tokens - baseline
             savings_usd = 0.0
             savings_tokens = 0

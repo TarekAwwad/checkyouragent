@@ -782,6 +782,35 @@ def test_corpus_payload_empty_db_is_stable(conn: sqlite3.Connection, tmp_path: P
     assert [a["findings"] for a in payload["archetypes"]] == [[], [], [], []]
 
 
+from ccfr.analysis.context_economics import run_detectors
+
+
+def test_run_detectors_composition_is_conservative() -> None:
+    # One thread that triggers BOTH a re-read (big.py read twice in one epoch) and
+    # late compaction (context above the pressure point for a long tail). Run all
+    # four detectors over the shared claims ledger and assert the summed savings
+    # never exceed the thread's actual accrued carry cost — the disjointness
+    # guarantee that keeps the hero's "avoidable" honest when archetypes overlap.
+    contexts = [60_000, 110_000, 150_000, 152_000, 154_000, 156_000, 158_000,
+                160_000, 162_000, 164_000, 166_000, 168_000]
+    calls = [_call(i + 1, c) for i, c in enumerate(contexts)]
+    items = {
+        2: [RawItem(kind="tool_result", label="Read result: big.py", raw_chars=160_000,
+                    event_id=21, tool_name="Read", detail="big.py")],
+        4: [RawItem(kind="tool_result", label="Read result: big.py", raw_chars=8_000,
+                    event_id=22, tool_name="Read", detail="big.py")],
+    }
+    thread = _priced_thread(calls, items)
+    results = run_detectors([thread])
+
+    fired = {key for key, (findings, _) in results.items() if findings}
+    assert {"rereads", "late_compaction"} <= fired  # both overlapping archetypes fire
+
+    total_savings = sum(f.savings_usd for findings, _ in results.values() for f in findings)
+    total_accrued = sum(c.accrued_usd for c in thread.contributors)
+    assert total_savings <= total_accrued + 1e-9
+
+
 from ccfr.analysis.context_economics import session_context_economics
 
 

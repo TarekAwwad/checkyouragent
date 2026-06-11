@@ -19,6 +19,12 @@ export default function TaxMeterHero({
   const total = Math.max(meta.total_usd, 1e-9);
   const supported = archetypes.filter((a) => a.meets_support && a.savings_usd > 0);
   const pct = meta.total_usd > 0 ? Math.round((meta.avoidable_usd / meta.total_usd) * 100) : 0;
+  // Scale segments so the colored portion sums to exactly meta.avoidable_usd.
+  // Normally avoidable equals the sum of supported savings (scale = 1), but if the
+  // backend clamped avoidable to total, this shrinks the segments to fit the bar
+  // instead of overflowing past 100%.
+  const supportedSum = supported.reduce((acc, a) => acc + a.savings_usd, 0);
+  const segmentScale = supportedSum > 0 ? meta.avoidable_usd / supportedSum : 0;
 
   return (
     <section className="tax-meter-hero">
@@ -42,7 +48,7 @@ export default function TaxMeterHero({
             <i
               key={archetype.key}
               style={{
-                width: `${(archetype.savings_usd / total) * 100}%`,
+                width: `${(archetype.savings_usd * segmentScale / total) * 100}%`,
                 background: ARCHETYPE_COLORS[archetype.key],
               }}
               title={`${archetype.title} ${formatUsd(archetype.savings_usd)}`}
