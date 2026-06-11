@@ -76,10 +76,12 @@ export function buildStreamBands(thread: ContextThread, maxBands: number): Strea
 
   // Calibration guarantee: per call, band sums must equal the observed context.
   // Rounding in the backend can leave a ±few-token residue; absorb it into the
-  // baseline band so the stream never lies about the total.
+  // baseline band so the stream never lies about the total. Clamp to 0 so a
+  // contributor-sum overshoot (should never exceed context by more than rounding)
+  // can't drive the baseline negative and invert its ribbon.
   for (let i = 0; i < callCount; i += 1) {
     const sum = bands.reduce((acc, band) => acc + band.values[i], 0);
-    bands[0].values[i] += thread.calls[i].context_tokens - sum;
+    bands[0].values[i] = Math.max(0, bands[0].values[i] + thread.calls[i].context_tokens - sum);
   }
   return bands;
 }

@@ -41,6 +41,24 @@ describe("buildStreamBands", () => {
     const read = bands.find((band) => band.id === "tool_result-1-1");
     expect(read?.values).toEqual([0, 11_500, 11_500]);
   });
+
+  it("never drives the baseline band negative when contributors overshoot context", () => {
+    // Contributor est_tokens (12k) exceed the call's context (10k) — a pathological
+    // backend residue. The baseline must clamp to 0, not invert.
+    const overshoot: ContextThread = {
+      ...thread,
+      calls: [{ turn: 0, ts: null, context_tokens: 10_000, model: "m" }],
+      epochs: [{ start_turn: 0, end_turn: 0, ended_by: "end" }],
+      contributors: [
+        { id: "baseline-0", kind: "baseline", label: "b", entry_turn: 0, end_turn: 0,
+          est_tokens: 10_000, accrued_usd: 0, event_id: null },
+        { id: "tool_result-0-1", kind: "tool_result", label: "huge", entry_turn: 0, end_turn: 0,
+          est_tokens: 12_000, accrued_usd: 0, event_id: 9 },
+      ],
+    };
+    const bands = buildStreamBands(overshoot, 8);
+    expect(bands.every((band) => band.values.every((v) => v >= 0))).toBe(true);
+  });
 });
 
 describe("stackedPaths", () => {
