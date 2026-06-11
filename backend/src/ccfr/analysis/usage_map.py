@@ -362,3 +362,44 @@ def detect_blind_retry(session_events: list[EventRec]) -> list[HabitFinding]:
             run = [call] if (call.is_error and call.signature is not None) else []
     close_run()
     return findings
+
+
+def detect_tdd_loop(session_events: list[EventRec]) -> list[HabitFinding]:
+    """Fail -> edit -> the same verify command passes. One finding per session
+    aggregating all cycles. Cost counts the two verify turns of each cycle (the
+    edits in between are Implement-phase work and are measured there)."""
+    if not session_events:
+        return []
+    head = session_events[0]
+    pending: dict[str, dict[str, Any]] = {}  # verify signature -> failing state
+    cycles = 0
+    cost = 0.0
+    exemplars: list[int] = []
+    for call in _flatten(session_events):
+        if call.phase == "implement":
+            for state in pending.values():
+                state["edited"] = True
+        elif call.phase == "verify" and call.signature:
+            if call.is_error:
+                pending[call.signature] = {
+                    "cost": call.cost_share, "edited": False, "event_id": call.event_id,
+                }
+            else:
+                state = pending.pop(call.signature, None)
+                if state and state["edited"]:
+                    cycles += 1
+                    cost += state["cost"] + call.cost_share
+                    exemplars.append(state["event_id"])
+    if cycles == 0:
+        return []
+    return [HabitFinding(
+        habit_key="tdd-loop",
+        phase="verify",
+        session_db_id=head.session_db_id,
+        session_title=head.session_title,
+        project_name=head.project_name,
+        cost_usd=cost,
+        count=cycles,
+        exemplar_event_ids=tuple(exemplars[:5]),
+        detail=f"{cycles} fail-edit-pass cycle{'s' if cycles != 1 else ''}",
+    )]

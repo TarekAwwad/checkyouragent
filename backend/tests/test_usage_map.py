@@ -14,6 +14,7 @@ from ccfr.analysis.usage_map import (
     aggregate_phases,
     classify_tool_call,
     detect_blind_retry,
+    detect_tdd_loop,
     event_phase_weights,
     load_events,
 )
@@ -368,3 +369,51 @@ def test_blind_retry_counts_longer_runs() -> None:
     findings = detect_blind_retry(events)
     assert findings[0].count == 4
     assert findings[0].cost_usd == pytest.approx(6.0)  # 3 repeats x $2
+
+
+# ---------------------------------------------------------------------------
+# Detector: TDD loop (fail -> edit -> same command passes)
+# ---------------------------------------------------------------------------
+
+def test_tdd_loop_detects_fail_edit_pass_cycle() -> None:
+    events = [
+        _flat_event(1, "Bash", {"command": "uv run pytest tests/test_a.py"}, True),
+        _flat_event(2, "Edit", {"file_path": "a.py"}, False),
+        _flat_event(3, "Bash", {"command": "uv run pytest tests/test_a.py"}, False),
+    ]
+    findings = detect_tdd_loop(events)
+    assert len(findings) == 1
+    finding = findings[0]
+    assert finding.habit_key == "tdd-loop"
+    assert finding.phase == "verify"
+    assert finding.count == 1
+    assert finding.cost_usd == pytest.approx(4.0)  # the two verify turns
+    assert finding.exemplar_event_ids == (1,)
+
+
+def test_tdd_loop_requires_an_edit_between_fail_and_pass() -> None:
+    events = [
+        _flat_event(1, "Bash", {"command": "uv run pytest"}, True),
+        _flat_event(2, "Bash", {"command": "uv run pytest"}, False),  # flaky rerun
+    ]
+    assert detect_tdd_loop(events) == []
+
+
+def test_tdd_loop_requires_same_command_to_pass() -> None:
+    events = [
+        _flat_event(1, "Bash", {"command": "uv run pytest tests/test_a.py"}, True),
+        _flat_event(2, "Edit", {"file_path": "a.py"}, False),
+        _flat_event(3, "Bash", {"command": "uv run pytest tests/test_b.py"}, False),
+    ]
+    assert detect_tdd_loop(events) == []
+
+
+def test_tdd_loop_counts_multiple_cycles_in_one_finding() -> None:
+    cycle = lambda n: [  # noqa: E731 - terse fixture builder
+        _flat_event(n, "Bash", {"command": f"uv run pytest tests/t{n}.py"}, True),
+        _flat_event(n + 1, "Edit", {"file_path": "a.py"}, False),
+        _flat_event(n + 2, "Bash", {"command": f"uv run pytest tests/t{n}.py"}, False),
+    ]
+    findings = detect_tdd_loop(cycle(1) + cycle(10))
+    assert len(findings) == 1
+    assert findings[0].count == 2
