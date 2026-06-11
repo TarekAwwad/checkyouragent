@@ -81,3 +81,57 @@ def classify_tool_call(tool_name: str | None, command: str | None = None) -> str
     if tool_name == "Bash":
         return "verify" if command and _VERIFY_COMMAND.search(command) else "operate"
     return _TOOL_PHASE.get(tool_name, "converse")
+
+
+# --- Event records and cost attribution --------------------------------------
+
+@dataclass(frozen=True)
+class ToolCallRec:
+    tool_name: str | None
+    command: str | None = None    # Bash command text when present
+    detail: str | None = None     # file_path for file tools when present
+    signature: str | None = None  # stable identity of the call's input
+    is_error: bool = False
+
+
+@dataclass(frozen=True)
+class EventRec:
+    event_id: int
+    session_db_id: int
+    session_title: str
+    project_name: str
+    ts: str | None
+    model: str
+    cost: float            # USD for this message; 0.0 when the model is unpriced
+    tokens: int            # total billed tokens on the message
+    priced: bool
+    tool_calls: tuple[ToolCallRec, ...] = ()
+
+
+def event_phase_weights(event: EventRec) -> dict[str, float]:
+    """Equal split of an event across its tool calls' phases; text-only events
+    are Converse. Weights always sum to 1.0 so attribution conserves cost."""
+    if not event.tool_calls:
+        return {"converse": 1.0}
+    weights: dict[str, float] = defaultdict(float)
+    share = 1.0 / len(event.tool_calls)
+    for call in event.tool_calls:
+        weights[classify_tool_call(call.tool_name, call.command)] += share
+    return dict(weights)
+
+
+def aggregate_phases(events: list[EventRec]) -> dict[str, dict[str, Any]]:
+    """Per-phase accumulation of cost, tokens, tool counts and sessions."""
+    acc: dict[str, dict[str, Any]] = {
+        key: {"cost_usd": 0.0, "tokens": 0.0, "tool_count": 0, "sessions": set()}
+        for key in PHASE_KEYS
+    }
+    for event in events:
+        for phase, weight in event_phase_weights(event).items():
+            bucket = acc[phase]
+            bucket["cost_usd"] += event.cost * weight
+            bucket["tokens"] += event.tokens * weight
+            bucket["sessions"].add(event.session_db_id)
+        for call in event.tool_calls:
+            acc[classify_tool_call(call.tool_name, call.command)]["tool_count"] += 1
+    return acc
