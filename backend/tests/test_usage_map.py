@@ -9,9 +9,11 @@ from fastapi.testclient import TestClient
 from ccfr.analysis.pricing import ModelPrice
 from ccfr.analysis.usage_map import (
     EventRec,
+    HabitFinding,
     ToolCallRec,
     aggregate_phases,
     classify_tool_call,
+    detect_blind_retry,
     event_phase_weights,
     load_events,
 )
@@ -285,3 +287,63 @@ def test_load_events_null_tool_use_id_results_are_ignored() -> None:
     events = load_events(conn, PRICE_TABLE)
     assert len(events[0].tool_calls) == 1
     assert events[0].tool_calls[0].is_error is False
+
+
+def _flat_event(event_id: int, tool: str, input_data: dict, is_error: bool,
+                cost: float = 2.0) -> EventRec:
+    sig = json.dumps(input_data, sort_keys=True)
+    command = input_data.get("command")
+    return _event(event_id, [ToolCallRec(tool_name=tool, command=command,
+                                         detail=input_data.get("file_path"),
+                                         signature=sig, is_error=is_error)],
+                  cost=cost)
+
+
+# ---------------------------------------------------------------------------
+# Detector: blind retry
+# ---------------------------------------------------------------------------
+
+def test_blind_retry_flags_three_identical_failures() -> None:
+    events = [
+        _flat_event(1, "Bash", {"command": "git push"}, True),
+        _flat_event(2, "Bash", {"command": "git push"}, True),
+        _flat_event(3, "Bash", {"command": "git push"}, True),
+    ]
+    findings = detect_blind_retry(events)
+    assert len(findings) == 1
+    finding = findings[0]
+    assert finding.habit_key == "blind-retry"
+    assert finding.phase == "operate"        # phase of the retried tool
+    assert finding.count == 3
+    assert finding.cost_usd == pytest.approx(4.0)  # every attempt after the first
+    assert finding.exemplar_event_ids == (1,)
+
+
+def test_blind_retry_requires_identical_input() -> None:
+    events = [
+        _flat_event(1, "Bash", {"command": "git push"}, True),
+        _flat_event(2, "Bash", {"command": "git push --force-with-lease"}, True),
+        _flat_event(3, "Bash", {"command": "git push -u origin main"}, True),
+    ]
+    assert detect_blind_retry(events) == []
+
+
+def test_blind_retry_requires_every_attempt_to_fail() -> None:
+    events = [
+        _flat_event(1, "Bash", {"command": "git push"}, True),
+        _flat_event(2, "Bash", {"command": "git push"}, True),
+        _flat_event(3, "Bash", {"command": "git push"}, False),  # finally worked
+    ]
+    assert detect_blind_retry(events) == []
+
+
+def test_blind_retry_two_failures_is_below_threshold() -> None:
+    events = [
+        _flat_event(1, "Bash", {"command": "x"}, True),
+        _flat_event(2, "Bash", {"command": "x"}, True),
+    ]
+    assert detect_blind_retry(events) == []
+
+
+def test_blind_retry_empty_session() -> None:
+    assert detect_blind_retry([]) == []

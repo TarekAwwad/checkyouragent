@@ -270,3 +270,94 @@ def load_events(
             tool_calls=tuple(calls_by_event.get(row["event_id"], [])),
         ))
     return events
+
+
+# --- Habit detectors ----------------------------------------------------------
+# Each detector is a pure function over one session's ordered EventRecs and
+# returns HabitFindings. New detectors (including future sequence-mining
+# proposals, which should emit status "candidate") register in
+# SESSION_DETECTORS below — the engine and API need no other change.
+
+BLIND_RETRY_MIN = 3   # identical failing attempts in a row to flag
+PLAN_BURST_MIN = 5    # edit calls after a plan step to count as a planned burst
+
+
+@dataclass(frozen=True)
+class HabitFinding:
+    habit_key: str
+    phase: str
+    session_db_id: int
+    session_title: str
+    project_name: str
+    cost_usd: float
+    count: int
+    exemplar_event_ids: tuple[int, ...]
+    detail: str
+
+
+@dataclass(frozen=True)
+class FlatCall:
+    """One tool call with its phase and equal share of its event's cost."""
+    event_id: int
+    phase: str
+    tool_name: str | None
+    signature: str | None
+    is_error: bool
+    cost_share: float
+
+
+def _flatten(events: list[EventRec]) -> list[FlatCall]:
+    calls: list[FlatCall] = []
+    for event in events:
+        if not event.tool_calls:
+            continue
+        share = event.cost / len(event.tool_calls)
+        for call in event.tool_calls:
+            calls.append(FlatCall(
+                event_id=event.event_id,
+                phase=classify_tool_call(call.tool_name, call.command),
+                tool_name=call.tool_name,
+                signature=call.signature,
+                is_error=call.is_error,
+                cost_share=share,
+            ))
+    return calls
+
+
+def detect_blind_retry(session_events: list[EventRec]) -> list[HabitFinding]:
+    """Same tool, identical input, >= BLIND_RETRY_MIN consecutive attempts, all
+    failing. Cost counts every attempt after the first (the first failure is
+    legitimate discovery; the repeats are the waste)."""
+    if not session_events:
+        return []
+    head = session_events[0]
+    findings: list[HabitFinding] = []
+    run: list[FlatCall] = []
+
+    def close_run() -> None:
+        if len(run) >= BLIND_RETRY_MIN:
+            findings.append(HabitFinding(
+                habit_key="blind-retry",
+                phase=run[0].phase,
+                session_db_id=head.session_db_id,
+                session_title=head.session_title,
+                project_name=head.project_name,
+                cost_usd=sum(c.cost_share for c in run[1:]),
+                count=len(run),
+                exemplar_event_ids=(run[0].event_id,),
+                detail=(f"{run[0].tool_name} retried {len(run)}x "
+                        "with identical input, all failing"),
+            ))
+
+    for call in _flatten(session_events):
+        same_run = (run and call.tool_name == run[0].tool_name
+                    and call.signature is not None
+                    and call.signature == run[0].signature
+                    and call.is_error)
+        if same_run:
+            run.append(call)
+        else:
+            close_run()
+            run = [call] if (call.is_error and call.signature is not None) else []
+    close_run()
+    return findings
