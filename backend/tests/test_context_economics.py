@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -764,6 +765,21 @@ def test_corpus_payload_gates_archetypes_below_support(economics_conn: sqlite3.C
     assert payload["meta"]["avoidable_usd"] == 0
 
 
+def test_corpus_payload_weekly_trend_buckets_total_and_avoidable(
+    economics_conn: sqlite3.Connection,
+) -> None:
+    payload = context_economics_analytics(economics_conn, min_support=3)
+    trend = payload["meta"]["trend"]
+    assert trend, "expected at least one weekly bucket"
+    for bucket in trend:
+        # week_start is the Monday of an ISO week
+        assert datetime.fromisoformat(bucket["week_start"]).weekday() == 0
+        assert 0 <= bucket["avoidable_usd"] <= bucket["total_usd"] + 1e-9
+    # weekly totals partition the corpus total (same pricing + skip rules)
+    assert sum(b["total_usd"] for b in trend) == pytest.approx(payload["meta"]["total_usd"])
+    assert sum(b["avoidable_usd"] for b in trend) > 0
+
+
 def test_corpus_payload_without_pricing_is_token_only(
     conn: sqlite3.Connection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -772,6 +788,7 @@ def test_corpus_payload_without_pricing_is_token_only(
     payload = context_economics_analytics(conn)
     assert payload["meta"]["cost_available"] is False
     assert payload["meta"]["total_usd"] == 0
+    assert payload["meta"]["trend"] == []
 
 
 def test_corpus_payload_empty_db_is_stable(conn: sqlite3.Connection, tmp_path: Path,

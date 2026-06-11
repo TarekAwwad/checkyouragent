@@ -14,10 +14,12 @@ import SubagentHeatTile from "../session/SubagentHeatTile";
 
 interface Props {
   session: SessionCard;
+  /** Event to select on entry (deep-link from analytics views); null = default. */
+  initialEventId?: number | null;
 }
 
-function SessionWorkspace({ session }: Props) {
-  const [selectedEventId, setSelectedEventId] = React.useState<number | null>(null);
+function SessionWorkspace({ session, initialEventId = null }: Props) {
+  const [selectedEventId, setSelectedEventId] = React.useState<number | null>(initialEventId);
   const [cursorIndex, setCursorIndex] = React.useState(0);
   const [playing, setPlaying] = React.useState(false);
   const [query, setQuery] = React.useState("");
@@ -81,10 +83,10 @@ function SessionWorkspace({ session }: Props) {
   }, [subagentFirstEventIds, timelineItems]);
 
   React.useEffect(() => {
-    setSelectedEventId(null);
+    setSelectedEventId(initialEventId);
     setCursorIndex(0);
     setPlaying(false);
-  }, [session.id]);
+  }, [session.id, initialEventId]);
 
   React.useEffect(() => {
     if (!selectedEventId && timelineItems.length) {

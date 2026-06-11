@@ -475,6 +475,12 @@ class ContextArchetype(BaseModel):
     findings: list[ContextFinding] = Field(default_factory=list)
 
 
+class ContextTrendBucket(BaseModel):
+    week_start: str
+    total_usd: float = 0
+    avoidable_usd: float = 0
+
+
 class ContextEconomicsMeta(BaseModel):
     project_id: int | None = None
     min_support: int = 3
@@ -485,6 +491,7 @@ class ContextEconomicsMeta(BaseModel):
     cost_available: bool = False
     sessions_analyzed: int = 0
     sessions_skipped: int = 0
+    trend: list[ContextTrendBucket] = Field(default_factory=list)
 
 
 class ContextEconomicsResponse(BaseModel):

@@ -1642,47 +1642,676 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
   }
 }
 
-/* Context economics */
-.context-economics { display: flex; flex-direction: column; gap: 16px; }
-.tax-meter-hero h2 { margin: 0 0 8px; }
-.tax-meter-bar { display: flex; height: 16px; border-radius: 8px; overflow: hidden; background: var(--raised, #1f2937); }
+/* ---- Context economics ---- */
+.context-economics { display: contents; }
+
+/* Tax meter hero — gradient card matching session-header chrome */
+.tax-meter-hero {
+  padding: 20px 22px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  background:
+    radial-gradient(130% 180% at 0% 0%, color-mix(in srgb, var(--warning) 10%, transparent), transparent 54%),
+    radial-gradient(120% 160% at 100% 100%, color-mix(in srgb, var(--danger) 7%, transparent), transparent 52%),
+    var(--raised);
+}
+
+.tax-meter-stats {
+  display: flex;
+  align-items: flex-end;
+  gap: 36px;
+  flex-wrap: wrap;
+}
+
+.tax-meter-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.tax-meter-stat > span {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--faint);
+}
+
+.tax-meter-stat > strong {
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  line-height: 1.05;
+}
+
+.tax-meter-stat > strong em {
+  font-style: normal;
+  font-size: 13px;
+  color: var(--muted);
+  margin-left: 3px;
+}
+
+.tax-meter-stat.is-avoidable > strong {
+  font-size: 32px;
+  color: var(--warning);
+}
+
+.tax-meter-stat.is-avoidable > strong em {
+  font-size: 15px;
+  color: color-mix(in srgb, var(--warning) 70%, var(--muted));
+}
+
+.tax-meter-unavailable {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.tax-meter-bar {
+  display: flex;
+  height: 12px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--track);
+  border: 1px solid var(--border);
+}
+
 .tax-meter-bar i { display: block; height: 100%; }
-.tax-meter-necessary { background: var(--neutral-visual, #374151); }
-.archetype-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
-.archetype-card { border: 1px solid; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
-.archetype-card.is-gated { opacity: 0.6; }
-.archetype-card header { display: flex; justify-content: space-between; align-items: baseline; }
-.archetype-thumb { width: 100%; height: 56px; border-radius: 4px; background: var(--raised, #0d1117); }
-.archetype-thumb .thumb-context { fill: var(--neutral-visual, #374151); }
-.archetype-findings { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.archetype-findings li { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
-.archetype-finding-actions { display: flex; gap: 6px; flex-shrink: 0; }
-.archetype-recommendation { font-style: italic; }
-.archetype-math { display: flex; flex-direction: column; gap: 4px; }
-.archetype-math code { font-size: 11px; }
-.archetype-math-toggle { align-self: flex-start; }
-.session-drilldown { border: 1px solid var(--neutral-visual, #30363d); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
-.session-drilldown header { display: flex; justify-content: space-between; align-items: center; }
-.session-drilldown header > div { display: flex; gap: 6px; }
-.context-stream svg { width: 100%; height: auto; background: var(--raised, #0d1117); border-radius: 6px; }
-.stream-baseline { fill: var(--neutral-visual, #374151); }
-.stream-tool { fill: var(--warning, #f59e0b); opacity: 0.85; }
-.stream-user { fill: var(--accent, #3b82f6); opacity: 0.7; }
-.stream-assistant { fill: var(--info, #60a5fa); opacity: 0.6; }
-.stream-attachment { fill: var(--subagent, #a78bfa); opacity: 0.7; }
-.stream-unattributed { fill: var(--neutral-visual, #4b5563); opacity: 0.45; }
-.stream-other { fill: var(--neutral-visual, #6b7280); opacity: 0.5; }
-.context-stream .is-highlighted { stroke: var(--danger, #ef4444); stroke-width: 1.5; }
-.stream-compaction { stroke: var(--success, #22c55e); stroke-width: 1.5; stroke-dasharray: 3 3; }
-.ballast-lanes { display: flex; flex-direction: column; gap: 4px; }
-.ballast-lane { display: grid; grid-template-columns: 180px 1fr 120px; gap: 8px; align-items: center; }
-.ballast-lane.is-highlighted .ballast-label { color: var(--danger, #ef4444); font-weight: 600; }
-.ballast-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
-.ballast-meta { font-size: 11px; text-align: right; }
-.ballast-lane svg { width: 100%; height: 24px; }
-.lane-baseline { fill: var(--neutral-visual, #374151); }
-.lane-tool_result { fill: var(--warning, #f59e0b); }
-.lane-user { fill: var(--accent, #3b82f6); }
-.lane-assistant_output { fill: var(--info, #60a5fa); }
-.lane-attachment { fill: var(--subagent, #a78bfa); }
-.lane-unattributed { fill: var(--neutral-visual, #4b5563); }
+.tax-meter-necessary { background: var(--neutral-visual); opacity: 0.35; }
+
+/* Bar segments are buttons: click jumps to the matching archetype card */
+.tax-meter-segment {
+  display: block;
+  height: 100%;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  transition: filter .12s ease;
+}
+
+.tax-meter-segment:hover { filter: brightness(1.18); }
+
+.tax-meter-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 14px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* Legend entries are the archetype navigation: chip-styled so they read as
+   clickable, with the selected archetype tinted in its color. */
+.tax-meter-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: border-color .12s ease, background .12s ease, color .12s ease;
+}
+
+.tax-meter-legend-item:not(.is-static):hover {
+  border-color: color-mix(in srgb, var(--archetype-color, var(--accent)) 55%, var(--border));
+  color: var(--text);
+}
+
+.tax-meter-legend-item.is-active {
+  border-color: color-mix(in srgb, var(--archetype-color, var(--accent)) 60%, var(--border));
+  background: color-mix(in srgb, var(--archetype-color, var(--accent)) 10%, var(--surface));
+  color: var(--text);
+}
+
+.tax-meter-legend-item.is-static {
+  cursor: default;
+  border-style: dashed;
+  background: transparent;
+}
+
+.tax-meter-legend-item:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.tax-meter-legend i { width: 9px; height: 9px; border-radius: 2px; flex: 0 0 auto; }
+.tax-meter-legend b {
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Weekly trend sparkline in the hero stat row */
+.tax-meter-trend {
+  margin-left: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  align-items: flex-end;
+}
+
+.tax-meter-trend > span {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--faint);
+}
+
+.tax-meter-trend svg {
+  width: 160px;
+  height: 40px;
+  display: block;
+}
+
+.trend-total { fill: var(--neutral-visual); opacity: 0.22; }
+.trend-avoidable { fill: var(--warning); opacity: 0.9; }
+.tax-meter-necessary-swatch { background: var(--neutral-visual); opacity: 0.35; }
+
+.archetype-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  margin-right: 7px;
+}
+
+.archetype-savings {
+  flex-shrink: 0;
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+/* Context board: brief + findings list left, session investigator right */
+.context-board {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.context-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.archetype-detail {
+  position: sticky;
+  top: 12px;
+  min-width: 0;
+}
+
+/* Brief: what the selected archetype means + what to do about it */
+.archetype-brief {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--raised);
+  padding: 12px 14px;
+  min-width: 0;
+}
+
+.archetype-brief-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.archetype-brief-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.archetype-brief-desc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.archetype-reco {
+  margin: 0;
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text);
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--accent) 7%, var(--bg));
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
+  border-radius: 8px;
+}
+
+.archetype-reco svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--accent);
+}
+
+/* Findings panel reuses the subgroup page's right-column list
+   (driver-list-card / driver-card); only deltas below. */
+.findings-panel .driver-card-grid {
+  max-height: 460px;
+}
+
+.findings-panel .driver-card-topline > span {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.findings-panel .driver-card-topline b { color: var(--success); }
+
+/* Methodology disclosure: quiet chevron toggle + definition rows */
+.archetype-math-toggle {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  padding: 2px 0;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--faint);
+  cursor: pointer;
+  transition: color .12s ease;
+}
+
+.archetype-math-toggle:hover { color: var(--accent); }
+.archetype-math-toggle svg { transition: transform .15s ease; }
+.archetype-math-toggle.is-open svg { transform: rotate(90deg); }
+
+.archetype-math {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+
+.archetype-math > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.archetype-math dt {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+
+.archetype-math dd {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.archetype-math dd span { color: var(--faint); font-size: 11px; }
+
+/* Session drilldown panel */
+.session-drilldown {
+  border: 1px solid var(--border-2);
+  border-radius: 13px;
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.session-drilldown-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--raised);
+  flex-shrink: 0;
+}
+
+.session-drilldown-title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-drilldown-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.session-drilldown-body {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Shared chart header (stream + ballast) */
+.stream-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.stream-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--faint);
+  cursor: help;
+}
+
+.stream-peak {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Context stream figure */
+.context-stream {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.context-stream > svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  background: var(--track);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.stream-grid { stroke: var(--grid); stroke-width: 1; }
+
+.stream-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10.5px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.stream-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.stream-legend > span { display: inline-flex; align-items: center; gap: 5px; }
+.stream-legend svg { display: block; border-radius: 2px; flex: 0 0 auto; }
+
+.stream-compaction-swatch {
+  width: 11px;
+  height: 0;
+  border-top: 2px dashed var(--success);
+  display: inline-block;
+  flex: 0 0 auto;
+}
+
+/* Stream band fills */
+.stream-baseline { fill: var(--neutral-visual); opacity: 0.28; }
+.stream-tool { fill: var(--warning); opacity: 0.85; }
+.stream-user { fill: var(--accent); opacity: 0.75; }
+.stream-assistant { fill: var(--info); opacity: 0.7; }
+.stream-attachment { fill: var(--subagent); opacity: 0.75; }
+.stream-unattributed { fill: var(--neutral-visual); opacity: 0.16; }
+.stream-other { fill: var(--neutral-visual); opacity: 0.4; }
+
+/* Hovering a band (or inspecting a finding) fades everything that isn't it.
+   The focused/dimmed classes are assigned in React: hover wins over highlight. */
+.context-stream svg path { transition: opacity .15s ease; }
+.context-stream .is-dimmed { opacity: 0.12; }
+.context-stream .is-focused { opacity: 1; }
+.context-stream .is-highlighted { stroke: var(--danger); stroke-width: 1.5; }
+.stream-compaction { stroke: var(--success); stroke-width: 1.5; stroke-dasharray: 3 3; opacity: 0.8; }
+
+/* Counterfactual ("if fixed") overlay line */
+.stream-counterfactual {
+  fill: none;
+  stroke: var(--text);
+  stroke-width: 1.6;
+  stroke-dasharray: 5 4;
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+.stream-counterfactual-swatch {
+  width: 12px;
+  height: 0;
+  border-top: 2px dashed var(--text);
+  opacity: 0.8;
+  display: inline-block;
+  flex: 0 0 auto;
+}
+
+/* Cursor-following chart tooltip (shared by stream + lanes) */
+.chart-tooltip-host { position: relative; }
+
+.chart-tooltip {
+  position: absolute;
+  z-index: 30;
+  transform: translate(12px, 14px);
+  max-width: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 10px;
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  background: var(--raised);
+  box-shadow: 0 6px 20px var(--shadow);
+  pointer-events: none;
+}
+
+.chart-tooltip.is-flipped { transform: translate(calc(-100% - 12px), 14px); }
+
+.chart-tooltip strong {
+  font-size: 11.5px;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.chart-tooltip span {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* "Inspecting" ribbon above the drill-down charts */
+.drilldown-inspecting {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 10px;
+  font-size: 12px;
+  border: 1px solid color-mix(in srgb, var(--danger) 28%, var(--border));
+  background: color-mix(in srgb, var(--danger) 7%, var(--bg));
+  border-radius: 8px;
+}
+
+.drilldown-inspecting-label {
+  color: var(--text);
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drilldown-inspecting strong {
+  flex: 0 0 auto;
+  color: var(--success);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Ballast lanes */
+.ballast-lanes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ballast-lane-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.ballast-lane {
+  display: grid;
+  grid-template-columns: 180px 1fr 110px;
+  gap: 10px;
+  align-items: center;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+
+.ballast-lane.is-highlighted {
+  background: color-mix(in srgb, var(--warning) 9%, transparent);
+}
+
+.ballast-lane.is-hovered {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.ballast-lane.is-hovered .ballast-label { color: var(--text); }
+
+.ballast-lane.is-highlighted .ballast-label {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.ballast-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.ballast-meta {
+  font-size: 11px;
+  text-align: right;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ballast-lane svg { width: 100%; height: 24px; display: block; }
+
+/* Axis header row above the lane list */
+.ballast-axis { padding-top: 0; padding-bottom: 0; }
+
+.ballast-axis .ballast-label,
+.ballast-axis .ballast-meta {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--faint);
+}
+
+.ballast-axis-scale {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.ballast-axis-scale i { font-style: normal; }
+
+.ballast-toggle {
+  align-self: flex-start;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--muted);
+  border-radius: 7px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color .12s ease, color .12s ease;
+}
+
+.ballast-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Lane fills */
+.lane-track { fill: var(--grid); }
+.lane-baseline { fill: var(--neutral-visual); opacity: 0.45; }
+.lane-tool_result { fill: var(--warning); opacity: 0.85; }
+.lane-user { fill: var(--accent); opacity: 0.75; }
+.lane-assistant_output { fill: var(--info); opacity: 0.7; }
+.lane-attachment { fill: var(--subagent); opacity: 0.75; }
+.lane-unattributed { fill: var(--neutral-visual); opacity: 0.25; }
+
+@media (max-width: 1100px) {
+  /* Not enough room for the two-column board: stack, findings list first
+     (it's the navigation), investigator below. */
+  .context-board { display: flex; flex-direction: column; }
+  .archetype-detail { position: static; width: 100%; }
+}
+
+@media (max-width: 760px) {
+  .ballast-lane { grid-template-columns: 130px 1fr 90px; }
+  .tax-meter-trend { margin-left: 0; align-items: flex-start; }
+}

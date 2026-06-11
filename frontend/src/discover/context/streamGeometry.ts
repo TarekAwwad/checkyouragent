@@ -1,6 +1,6 @@
 // Pure layout math for the context stream and ballast lanes. No React, no DOM:
 // everything here is unit-testable and reused by the archetype-card thumbnails.
-import type { ContextContributor, ContextThread } from "../../api/types";
+import type { ContextContributor, ContextFinding, ContextThread } from "../../api/types";
 
 export interface StreamBand {
   id: string;
@@ -115,6 +115,58 @@ export function stackedPaths(bands: StreamBand[], width: number, height: number)
     for (let i = 0; i < callCount; i += 1) cumulative[i] = tops[i];
   }
   return paths;
+}
+
+/**
+ * Reconstruct the per-turn context sizes the session would have had if the
+ * finding's counterfactual had been applied. Mirrors the backend's savings
+ * models (context_economics.py): outside the affected turns the series equals
+ * the observed context, so the gap between the two curves IS the claimed waste.
+ *
+ * Returns null when the counterfactual cannot be reconstructed (missing params
+ * or a finding that doesn't map onto this thread).
+ */
+export function counterfactualSeries(
+  thread: ContextThread,
+  finding: ContextFinding,
+): number[] | null {
+  const n = thread.calls.length;
+  const entry = finding.entry_turn;
+  if (n === 0 || entry < 0 || entry >= n) return null;
+  const actual = thread.calls.map((call) => call.context_tokens);
+  const cf = actual.slice();
+  const epoch = thread.epochs[finding.epoch];
+  const epochEnd = Math.min(epoch ? epoch.end_turn : n - 1, n - 1);
+  const params = finding.counterfactual?.params ?? {};
+
+  if (finding.archetype === "late_compaction") {
+    // Compaction at the eligible turn keeps `retained_tokens`; the dropped
+    // ballast is a fixed count carried through the rest of the epoch.
+    const retained = params.retained_tokens;
+    if (retained === undefined) return null;
+    const dropped = actual[entry] - retained;
+    if (dropped <= 0) return null;
+    for (let i = entry; i <= epochEnd; i += 1) cf[i] = Math.max(0, actual[i] - dropped);
+    return cf;
+  }
+
+  if (finding.archetype === "stale_continuation") {
+    // The follow-up runs in a fresh session at baseline context: the ballast
+    // carried across the idle gap disappears for every tail call.
+    const baseline = params.baseline_tokens;
+    if (baseline === undefined || entry === 0) return null;
+    const avoidable = actual[entry - 1] - baseline;
+    if (avoidable <= 0) return null;
+    for (let i = entry; i < n; i += 1) cf[i] = Math.max(0, actual[i] - avoidable);
+    return cf;
+  }
+
+  // Contributor-level archetypes (rereads, oversized): the saved tokens stop
+  // being carried from the entry turn through the end of the carry window.
+  if (finding.savings_tokens <= 0) return null;
+  const end = Math.min(entry + Math.max(0, finding.carried_turns), epochEnd);
+  for (let i = entry; i <= end; i += 1) cf[i] = Math.max(0, actual[i] - finding.savings_tokens);
+  return cf;
 }
 
 export function packLanes(contributors: ContextContributor[], callCount: number): Lane[] {

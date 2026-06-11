@@ -11,6 +11,10 @@ const corpusPayload: ContextEconomicsResponse = {
     total_usd: 660, necessary_usd: 457, avoidable_usd: 203,
     unattributed_tokens: 1200, cost_available: true,
     sessions_analyzed: 64, sessions_skipped: 2,
+    trend: [
+      { week_start: "2026-05-25", total_usd: 320, avoidable_usd: 110 },
+      { week_start: "2026-06-01", total_usd: 340, avoidable_usd: 93 },
+    ],
   },
   archetypes: [
     {
@@ -63,28 +67,41 @@ function renderPage() {
 describe("ContextEconomics", () => {
   it("renders the hero verdict and archetype cards", async () => {
     renderPage();
-    expect(await screen.findByText(/\$660 total/)).toBeInTheDocument();
-    expect(screen.getByText(/est\. \$203 avoidable/)).toBeInTheDocument();
-    expect(screen.getByText("Oversized tool results")).toBeInTheDocument();
+    // hero shows three separate stat cells: Total spend / Avoidable / Necessary
+    expect(await screen.findByText("Total spend")).toBeInTheDocument();
+    expect(screen.getByText("Avoidable")).toBeInTheDocument();
+    expect(screen.getByText("$660")).toBeInTheDocument();
+    // bar aria-label confirms both headline numbers
+    expect(screen.getByRole("group", { name: /\$203 of \$660/i })).toBeInTheDocument();
+    expect(screen.getAllByText("Oversized tool results").length).toBeGreaterThan(0);
     expect(screen.getByText(/Read result: dist\/bundle\.js/)).toBeInTheDocument();
   });
 
-  it("marks under-supported archetypes as needing more evidence", async () => {
+  it("disables under-supported archetypes in the legend with an evidence hint", async () => {
     renderPage();
-    await screen.findByText(/\$660 total/);
-    expect(screen.getByText(/needs more evidence/i)).toBeInTheDocument();
+    await screen.findByText("Total spend");
+    const chip = screen.getByRole("button", { name: /Redundant re-reads/ });
+    expect(chip).toBeDisabled();
+    expect(chip).toHaveAttribute("title", expect.stringMatching(/needs more evidence/i));
   });
 
-  it("renders hero segments per archetype with shares of total", async () => {
+  it("renders clickable hero segments per archetype", async () => {
     renderPage();
-    await screen.findByText(/\$660 total/);
-    const hero = screen.getByRole("img", { name: /avoidable spend breakdown/i });
+    await screen.findByText("Total spend");
+    const hero = screen.getByRole("group", { name: /avoidable spend breakdown/i });
     expect(hero).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Oversized tool results: $203" })).toBeInTheDocument();
+  });
+
+  it("renders the weekly trend sparkline", async () => {
+    renderPage();
+    await screen.findByText("Total spend");
+    expect(screen.getByRole("img", { name: /weekly avoidable spend trend/i })).toBeInTheDocument();
   });
 
   it("shows the counterfactual explanation when a finding is expanded", async () => {
     renderPage();
-    await screen.findByText(/\$660 total/);
+    await screen.findByText("Total spend");
     const toggle = screen.getByRole("button", { name: /how we estimated this/i });
     toggle.click();
     expect(await screen.findByText(/p95 of 4,812 tool results/)).toBeInTheDocument();

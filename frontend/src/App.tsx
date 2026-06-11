@@ -22,6 +22,8 @@ function App() {
   const [view, setView] = React.useState<View>("import");
   const [discoverTechnique, setDiscoverTechnique] = React.useState<string>(DEFAULT_TECHNIQUE);
   const [selectedSession, setSelectedSession] = React.useState<SessionCard | null>(null);
+  // Event to land on when a view deep-links into the session workspace.
+  const [focusEventId, setFocusEventId] = React.useState<number | null>(null);
   const { theme, toggle } = useTheme();
   const { collapsed, toggle: toggleCollapsed } = useCollapsed();
   const { seen: glossaryHintSeen, dismiss: dismissGlossaryHint } = useGlossaryHint();
@@ -38,13 +40,17 @@ function App() {
   }, [imports.data?.length]);
 
   const openSession = (session: SessionCard) => {
+    setFocusEventId(null);
     setSelectedSession(session);
     setView("session");
   };
 
-  const openSessionById = (sessionId: number) => {
+  const openSessionById = (sessionId: number, eventId?: number | null) => {
     const card = sessions.data?.find((s) => s.id === sessionId);
-    if (card) openSession(card);
+    if (!card) return;
+    setFocusEventId(eventId ?? null);
+    setSelectedSession(card);
+    setView("session");
   };
 
   const selectTechnique = (key: string) => {
@@ -96,7 +102,9 @@ function App() {
             technique={discoverTechnique}
           />
         )}
-        {view === "session" && selectedSession && <SessionWorkspace session={selectedSession} />}
+        {view === "session" && selectedSession && (
+          <SessionWorkspace session={selectedSession} initialEventId={focusEventId} />
+        )}
       </main>
     </div>
   );

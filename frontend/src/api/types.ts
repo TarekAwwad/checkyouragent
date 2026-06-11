@@ -484,6 +484,12 @@ export interface ContextArchetype {
   findings: ContextFinding[];
 }
 
+export interface ContextTrendBucket {
+  week_start: string;
+  total_usd: number;
+  avoidable_usd: number;
+}
+
 export interface ContextEconomicsMeta {
   project_id: number | null;
   min_support: number;
@@ -494,6 +500,7 @@ export interface ContextEconomicsMeta {
   cost_available: boolean;
   sessions_analyzed: number;
   sessions_skipped: number;
+  trend: ContextTrendBucket[];
 }
 
 export interface ContextEconomicsResponse {

@@ -3,7 +3,7 @@ import type { Project } from "../api/types";
 
 interface Props {
   projects: Project[];
-  onOpenSession: (sessionId: number) => void;
+  onOpenSession: (sessionId: number, eventId?: number | null) => void;
   technique: string;
 }
 

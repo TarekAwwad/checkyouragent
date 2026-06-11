@@ -16,7 +16,7 @@ import math
 import sqlite3
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from ccfr.analysis.pricing import load_price_table, match_price
@@ -120,6 +120,7 @@ class FindingRec:
     savings_usd: float
     counterfactual: dict[str, Any]
     event_id: int | None
+    ts: str | None = None  # entry-call timestamp, used for the weekly trend
 
 
 def _percentile(values: list[float], pct: float) -> float:
@@ -513,6 +514,7 @@ def detect_rereads(threads: list[ThreadRec], claims: Claims) -> list[FindingRec]
                     "params": {"copies": len(indexes), "first_entry_turn": first.entry_call},
                 },
                 event_id=duplicates[0].event_id,
+                ts=thread.calls[duplicates[0].entry_call].ts,
             ))
     return findings
 
@@ -575,6 +577,7 @@ def detect_oversized(
                     "params": {"cap_tokens": cap, "actual_tokens": contributor.est_tokens},
                 },
                 event_id=contributor.event_id,
+                ts=thread.calls[contributor.entry_call].ts,
             ))
     return findings, thresholds
 
@@ -650,6 +653,7 @@ def detect_late_compaction(
                     "params": {"eligible_turn": eligible, "retained_tokens": retained},
                 },
                 event_id=thread.calls[eligible].event_id,
+                ts=thread.calls[eligible].ts,
             ))
     return findings, thresholds
 
@@ -748,6 +752,7 @@ def detect_stale_continuation(
                     "params": {"baseline_tokens": baseline, "gap_minutes": gap_minutes},
                 },
                 event_id=thread.calls[i].event_id,
+                ts=thread.calls[i].ts,
             ))
             break  # one stale-continuation finding per thread
     return findings, thresholds
@@ -834,6 +839,60 @@ def _corpus_total_usd(conn: sqlite3.Connection, project_id: int | None,
     return total
 
 
+TREND_WEEKS = 12
+
+
+def _week_start(ts: str | None) -> str | None:
+    """ISO date of the Monday of ts's week; None for missing/unparseable input."""
+    if not ts:
+        return None
+    try:
+        day = datetime.fromisoformat(ts.replace("Z", "+00:00")).date()
+    except ValueError:
+        return None
+    return (day - timedelta(days=day.weekday())).isoformat()
+
+
+def _corpus_weekly_usd(conn: sqlite3.Connection, project_id: int | None,
+                       table: dict[str, Any]) -> dict[str, float]:
+    """Total billed spend bucketed by ISO week (Monday start).
+
+    Grouped by model+day in SQL to keep the row count small, then folded into
+    weeks in Python so the week logic matches _week_start exactly.
+    """
+    where, params = "", []
+    if project_id is not None:
+        where = "WHERE s.project_id = ?"
+        params.append(project_id)
+    rows = conn.execute(
+        f"""
+        SELECT m.model, date(e.timestamp) AS day,
+               SUM(m.base_input_tokens) AS base, SUM(m.cache_5m_tokens) AS c5,
+               SUM(m.cache_1h_tokens) AS c1, SUM(m.cache_read_tokens) AS cr,
+               SUM(m.output_tokens) AS out
+        FROM messages m
+        JOIN events e ON e.id = m.event_id
+        JOIN sessions s ON s.id = e.session_id
+        {where} GROUP BY m.model, day
+        """,
+        params,
+    ).fetchall()
+    weekly: dict[str, float] = defaultdict(float)
+    for row in rows:
+        week = _week_start(row["day"])
+        price = match_price(table, row["model"])
+        if week is None or price is None:
+            continue
+        weekly[week] += (
+            (row["base"] or 0) * price.base_input
+            + (row["c5"] or 0) * price.cache_write_5m
+            + (row["c1"] or 0) * price.cache_write_1h
+            + (row["cr"] or 0) * price.cache_read
+            + (row["out"] or 0) * price.output
+        ) / 1_000_000
+    return dict(weekly)
+
+
 def _finding_payload(finding: FindingRec) -> dict[str, Any]:
     return {
         "archetype": finding.archetype,
@@ -887,6 +946,7 @@ def context_economics_analytics(
 
     archetypes = []
     avoidable = 0.0
+    avoidable_weekly: dict[str, float] = defaultdict(float)
     for spec in ARCHETYPES:
         findings, thresholds = results[spec["key"]]
         findings = sorted(findings, key=lambda f: f.savings_usd, reverse=True)
@@ -895,6 +955,10 @@ def context_economics_analytics(
         savings_tokens = sum(f.savings_tokens for f in findings) if meets else 0
         if meets:
             avoidable += savings_usd
+            for finding in findings:
+                week = _week_start(finding.ts)
+                if week is not None:
+                    avoidable_weekly[week] += finding.savings_usd
         exemplar = None
         if meets and findings:
             top = findings[0]
@@ -927,6 +991,21 @@ def context_economics_analytics(
     unattributed = sum(
         c.est_tokens for t in threads for c in t.contributors if c.kind == "unattributed"
     )
+    trend: list[dict[str, Any]] = []
+    if cost_available:
+        weekly_total = _corpus_weekly_usd(conn, project_id, table)
+        weeks = sorted(set(weekly_total) | set(avoidable_weekly))[-TREND_WEEKS:]
+        trend = [
+            {
+                "week_start": week,
+                "total_usd": round(weekly_total.get(week, 0.0), 6),
+                # Same honesty clamp as the headline: avoidable is a subset of
+                # that week's billed spend.
+                "avoidable_usd": round(
+                    min(avoidable_weekly.get(week, 0.0), weekly_total.get(week, 0.0)), 6),
+            }
+            for week in weeks
+        ]
     return {
         "meta": {
             "project_id": project_id,
@@ -938,6 +1017,7 @@ def context_economics_analytics(
             "cost_available": cost_available,
             "sessions_analyzed": len({t.session_db_id for t in threads}),
             "sessions_skipped": skipped,
+            "trend": trend,
         },
         "archetypes": archetypes,
     }

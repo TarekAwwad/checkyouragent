@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildStreamBands, packLanes, stackedPaths } from "./streamGeometry";
-import type { ContextThread } from "../../api/types";
+import { buildStreamBands, counterfactualSeries, packLanes, stackedPaths } from "./streamGeometry";
+import type { ContextFinding, ContextThread } from "../../api/types";
 
 const thread: ContextThread = {
   agent_id: null,
@@ -70,6 +70,59 @@ describe("stackedPaths", () => {
       expect(path.d.startsWith("M")).toBe(true);
       expect(path.d.endsWith("Z")).toBe(true);
     }
+  });
+});
+
+describe("counterfactualSeries", () => {
+  const baseFinding: ContextFinding = {
+    archetype: "oversized",
+    session_id: 1, session_title: "t", project_name: "p",
+    epoch: 0, entry_turn: 1, label: "Read result: a.py (11,500 tok)",
+    carried_turns: 1, carried_tokens: 11_500, savings_tokens: 10_000,
+    savings_usd: 0.02,
+    counterfactual: { model: "capped", params: { cap_tokens: 1_500 } },
+    event_id: 5,
+  };
+
+  it("subtracts contributor savings over the carry window", () => {
+    expect(counterfactualSeries(thread, baseFinding)).toEqual([10_000, 12_000, 12_500]);
+  });
+
+  it("matches the observed series outside the affected turns", () => {
+    const cf = counterfactualSeries(thread, baseFinding)!;
+    expect(cf[0]).toBe(thread.calls[0].context_tokens);
+  });
+
+  it("drops a fixed ballast after the compaction-eligible turn", () => {
+    const finding: ContextFinding = {
+      ...baseFinding,
+      archetype: "late_compaction",
+      entry_turn: 1,
+      counterfactual: { model: "compact", params: { eligible_turn: 1, retained_tokens: 2_000 } },
+    };
+    // dropped = 22000 - 2000 = 20000 from turn 1 onward
+    expect(counterfactualSeries(thread, finding)).toEqual([10_000, 2_000, 2_500]);
+  });
+
+  it("removes the pre-gap ballast for stale continuations", () => {
+    const finding: ContextFinding = {
+      ...baseFinding,
+      archetype: "stale_continuation",
+      entry_turn: 2,
+      counterfactual: { model: "fresh session", params: { baseline_tokens: 10_000, gap_minutes: 90 } },
+    };
+    // avoidable = context[1] - baseline = 12000, removed from turn 2 onward
+    expect(counterfactualSeries(thread, finding)).toEqual([10_000, 22_000, 10_500]);
+  });
+
+  it("returns null when the finding cannot be reconstructed", () => {
+    expect(counterfactualSeries(thread, { ...baseFinding, entry_turn: 99 })).toBeNull();
+    expect(counterfactualSeries(thread, { ...baseFinding, savings_tokens: 0 })).toBeNull();
+    expect(counterfactualSeries(thread, {
+      ...baseFinding,
+      archetype: "late_compaction",
+      counterfactual: { model: "compact", params: {} },
+    })).toBeNull();
   });
 });
 

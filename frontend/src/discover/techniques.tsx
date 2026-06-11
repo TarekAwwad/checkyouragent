@@ -5,7 +5,8 @@ import ContextEconomics from "./context/ContextEconomics";
 
 export interface TechniqueProps {
   projects: Project[];
-  onOpenSession: (sessionId: number) => void;
+  /** Open the session workspace, optionally landing on a specific event. */
+  onOpenSession: (sessionId: number, eventId?: number | null) => void;
 }
 
 export interface Technique {
