@@ -19,6 +19,8 @@ import type {
   TimelineItem,
   TurnCostBreakdown,
   TraceResponse,
+  UsageMapResponse,
+  UsageMapEvidenceResponse,
 } from "./types";
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "http://localhost:8000/api").replace(/\/$/, "");
@@ -159,4 +161,29 @@ export function getContextEconomics(filters: { projectId?: number | null; minSup
 
 export function getSessionContextEconomics(sessionId: number) {
   return request<SessionContextEconomicsResponse>(`/sessions/${sessionId}/context-economics`);
+}
+
+export interface UsageMapFilters {
+  projectId?: number | null;
+  dateFrom?: string | null;
+  dateTo?: string | null;
+}
+
+function usageMapParams(filters: UsageMapFilters): URLSearchParams {
+  const params = new URLSearchParams();
+  if (filters.projectId != null) params.set("project_id", String(filters.projectId));
+  if (filters.dateFrom) params.set("date_from", filters.dateFrom);
+  if (filters.dateTo) params.set("date_to", filters.dateTo);
+  return params;
+}
+
+export function getUsageMap(filters: UsageMapFilters = {}) {
+  const query = usageMapParams(filters).toString();
+  return request<UsageMapResponse>(`/analytics/usage-map${query ? `?${query}` : ""}`);
+}
+
+export function getUsageMapEvidence(node: string, filters: UsageMapFilters = {}) {
+  const params = usageMapParams(filters);
+  params.set("node", node);
+  return request<UsageMapEvidenceResponse>(`/analytics/usage-map/evidence?${params}`);
 }

@@ -544,3 +544,62 @@ export interface SessionContextEconomicsResponse {
   threads: ContextThread[];
   cost_available: boolean;
 }
+
+// --- Usage Mindmap -----------------------------------------------------------
+
+export interface UsageHabit {
+  key: string;
+  phase: string;
+  label: string;
+  polarity: "good" | "anti";
+  status: string;
+  cost_usd: number;
+  count: number;
+  session_count: number;
+}
+
+export interface UsagePhase {
+  key: string;
+  label: string;
+  cost_usd: number;
+  tokens: number;
+  share: number;
+  tool_count: number;
+  session_count: number;
+  habits: UsageHabit[];
+}
+
+export interface UsageMapMeta {
+  project_id: number | null;
+  window: { date_from: string | null; date_to: string | null };
+  total_usd: number;
+  total_tokens: number;
+  cost_available: boolean;
+  costs_partial: boolean;
+  sessions_analyzed: number;
+  events_classified: number;
+  share_basis: "cost" | "tokens";
+}
+
+export interface UsageMapResponse {
+  meta: UsageMapMeta;
+  phases: UsagePhase[];
+}
+
+export interface UsageEvidenceSession {
+  session_id: number;
+  title: string;
+  project_name: string;
+  cost_usd: number;
+  count: number;
+  exemplar_event_ids: number[];
+  detail: string | null;
+}
+
+export interface UsageMapEvidenceResponse {
+  node: string;
+  label: string;
+  rule: string;
+  cost_usd: number;
+  sessions: UsageEvidenceSession[];
+}
