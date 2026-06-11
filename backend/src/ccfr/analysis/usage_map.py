@@ -461,3 +461,65 @@ def detect_plan_before_burst(session_events: list[EventRec]) -> list[HabitFindin
         exemplar_event_ids=(calls[first_plan].event_id,),
         detail=f"planning preceded {len(implements)} edit calls",
     )]
+
+
+# Context-economics archetypes surfaced as usage-map habit leaves.
+# Home phases per the spec: re-reads are Read-dominated (Explore); the other
+# two concern the whole context, so they live on Converse.
+_CONTEXT_HABIT_MAP: dict[str, tuple[str, str]] = {
+    "rereads": ("re-reads", "explore"),
+    "oversized": ("oversized-context", "converse"),
+    "late_compaction": ("late-compaction", "converse"),
+}
+
+
+def _in_window(ts: str | None, date_from: str | None, date_to: str | None) -> bool:
+    """Day-granular window test on an ISO timestamp. Undated items only pass
+    when no window is set (a window must never smuggle in undatable findings)."""
+    if not ts:
+        return not date_from and not date_to
+    day = ts[:10]
+    if date_from and day < date_from[:10]:
+        return False
+    if date_to and day > date_to[:10]:
+        return False
+    return True
+
+
+def detect_context_habits(
+    conn: sqlite3.Connection,
+    table: dict[str, ModelPrice],
+    *,
+    project_id: int | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> list[HabitFinding]:
+    """Adapter over the Context Economics detectors. Threads are loaded for the
+    whole project corpus (load_threads has no date filter — thresholds stay
+    corpus-calibrated); findings are then filtered to the window by their entry
+    timestamp. Finding cost is the detector's counterfactual savings claim."""
+    threads, _skipped = load_threads(conn, project_id=project_id)
+    for thread in threads:
+        accrue_tax(thread, table)
+    results = run_detectors(threads)
+    findings: list[HabitFinding] = []
+    for archetype, (recs, _thresholds) in results.items():
+        mapped = _CONTEXT_HABIT_MAP.get(archetype)
+        if mapped is None:
+            continue
+        habit_key, phase = mapped
+        for rec in recs:
+            if not _in_window(rec.ts, date_from, date_to):
+                continue
+            findings.append(HabitFinding(
+                habit_key=habit_key,
+                phase=phase,
+                session_db_id=rec.session_id,
+                session_title=rec.session_title,
+                project_name=rec.project_name,
+                cost_usd=rec.savings_usd,
+                count=1,
+                exemplar_event_ids=(rec.event_id,) if rec.event_id is not None else (),
+                detail=rec.label,
+            ))
+    return findings

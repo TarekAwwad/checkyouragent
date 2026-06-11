@@ -11,9 +11,11 @@ from ccfr.analysis.usage_map import (
     EventRec,
     HabitFinding,
     ToolCallRec,
+    _in_window,
     aggregate_phases,
     classify_tool_call,
     detect_blind_retry,
+    detect_context_habits,
     detect_delegation,
     detect_plan_before_burst,
     detect_tdd_loop,
@@ -502,3 +504,57 @@ def test_delegation_empty_session() -> None:
 
 def test_plan_before_burst_empty_session() -> None:
     assert detect_plan_before_burst([]) == []
+
+
+# ---------------------------------------------------------------------------
+# Context-economics adapter
+# ---------------------------------------------------------------------------
+
+def test_in_window_filters_by_day() -> None:
+    assert _in_window("2026-06-03T10:00:00Z", "2026-06-01", "2026-06-05") is True
+    assert _in_window("2026-05-30T10:00:00Z", "2026-06-01", None) is False
+    assert _in_window("2026-06-09T10:00:00Z", None, "2026-06-05") is False
+    assert _in_window(None, None, None) is True
+    assert _in_window(None, "2026-06-01", None) is False  # undated: excluded by a window
+
+
+def _seed_reread_session(conn: sqlite3.Connection) -> None:
+    """Three growing assistant calls; gaps 1 and 2 each carry a Read result for
+    the SAME file with no intervening edit -> one re-reads finding. Context
+    growth is large so the carry cost clears the $0.01 findings floor."""
+    _seed_base(conn)
+    for i, (event_id, base) in enumerate([(1, 200_000), (3, 400_000), (5, 600_000)]):
+        _add_assistant_event(
+            conn, event_id, 1, f"2026-06-01T10:0{i * 2}:00Z",
+            [("Read", {"file_path": "big.py"}, False)] if event_id != 5 else [],
+            base=base, out=1_000,
+        )
+    for event_id, ts, tool_use in [(2, "2026-06-01T10:01:00Z", "tu-1-0"),
+                                   (4, "2026-06-01T10:03:00Z", "tu-3-0")]:
+        conn.execute(
+            "INSERT INTO events (id, session_id, source_path, line_no, uuid, type, timestamp, raw_json) "
+            "VALUES (?, 1, 'x.jsonl', 1, ?, 'user', ?, ?)",
+            (event_id, f"uuid-{event_id}", ts, json.dumps({"big": "x" * 400_000})),
+        )
+        conn.execute(
+            "UPDATE tool_results SET event_id = ? WHERE tool_use_id = ?",
+            (event_id, tool_use),
+        )
+    conn.commit()
+
+
+def test_detect_context_habits_maps_rereads() -> None:
+    conn = _conn()
+    _seed_reread_session(conn)
+    findings = detect_context_habits(conn, PRICE_TABLE)
+    rereads = [f for f in findings if f.habit_key == "re-reads"]
+    assert len(rereads) == 1
+    assert rereads[0].phase == "explore"
+    assert rereads[0].cost_usd > 0
+    assert rereads[0].session_db_id == 1
+
+
+def test_detect_context_habits_respects_window() -> None:
+    conn = _conn()
+    _seed_reread_session(conn)
+    assert detect_context_habits(conn, PRICE_TABLE, date_from="2026-06-02") == []
