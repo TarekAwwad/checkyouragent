@@ -577,3 +577,72 @@ def detect_oversized(
                 event_id=contributor.event_id,
             ))
     return findings, thresholds
+
+
+# ---------------------------------------------------------------------------
+# Detector 3: late compaction
+# ---------------------------------------------------------------------------
+
+def detect_late_compaction(
+    threads: list[ThreadRec], claims: Claims,
+) -> tuple[list[FindingRec], list[dict[str, Any]]]:
+    """Context stayed above the compaction pressure point for a long tail.
+
+    Counterfactual: compaction at the first eligible call, retaining
+    COMPACTION_RETAINED_RATIO of the context. Savings = residual context above
+    the retained estimate for every later call, minus the one-off re-write of
+    the retained content. Residual = context minus tokens already claimed by
+    contributor-level findings (disjointness).
+    """
+    pressure = CONTEXT_WINDOW_TOKENS * COMPACTION_PRESSURE_RATIO
+    thresholds = [
+        {"name": "pressure_tokens", "value": pressure,
+         "provenance": f"{int(COMPACTION_PRESSURE_RATIO * 100)}% of an assumed "
+                       f"{CONTEXT_WINDOW_TOKENS:,}-token context window"},
+        {"name": "min_tail_calls", "value": float(COMPACTION_MIN_TAIL),
+         "provenance": "minimum calls after the pressure point to flag"},
+    ]
+    findings: list[FindingRec] = []
+    for thread_index, thread in enumerate(threads):
+        claimed = claims.tokens_by_call[thread_index]
+        for epoch_index, epoch in enumerate(thread.epochs):
+            eligible = next(
+                (i for i in range(epoch.start, epoch.end + 1)
+                 if thread.calls[i].context_tokens >= pressure),
+                None,
+            )
+            if eligible is None or epoch.end - eligible < COMPACTION_MIN_TAIL:
+                continue
+            retained = thread.calls[eligible].context_tokens * COMPACTION_RETAINED_RATIO
+            savings_usd = -retained * thread.write_prices[eligible]
+            savings_tokens = 0
+            for k in range(eligible + 1, epoch.end + 1):
+                residual = thread.calls[k].context_tokens - claimed[k] - retained
+                if residual > 0:
+                    savings_usd += residual * thread.read_prices[k]
+                    savings_tokens += int(residual)
+            if savings_usd < MIN_FINDING_USD:
+                continue
+            for k in range(eligible + 1, epoch.end + 1):
+                claims.calls[thread_index].add(k)
+            findings.append(FindingRec(
+                archetype="late_compaction",
+                session_id=thread.session_db_id,
+                session_title=thread.session_title,
+                project_name=thread.project_name,
+                epoch=epoch_index,
+                entry_turn=eligible,
+                label=(f"Context above {int(pressure / 1000)}k tokens for "
+                       f"{epoch.end - eligible} more turns without compaction"),
+                carried_turns=epoch.end - eligible,
+                carried_tokens=savings_tokens,
+                savings_tokens=savings_tokens,
+                savings_usd=savings_usd,
+                counterfactual={
+                    "model": "compact at the first eligible turn, retaining "
+                             f"{int(COMPACTION_RETAINED_RATIO * 100)}% of the context",
+                    "params": {"eligible_turn": eligible, "retained_tokens": retained},
+                },
+                event_id=thread.calls[eligible].event_id,
+            ))
+    return findings, thresholds

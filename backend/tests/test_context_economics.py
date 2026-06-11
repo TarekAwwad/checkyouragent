@@ -566,3 +566,57 @@ def test_detect_oversized_adaptive_threshold_governs_above_floor() -> None:
     labels = [f.label for f in findings]
     assert any("Giant" in label for label in labels)
     assert not any("Control 6k" in label for label in labels)
+
+
+# ---------------------------------------------------------------------------
+# Detector 3: late compaction
+# ---------------------------------------------------------------------------
+
+from ccfr.analysis.context_economics import detect_late_compaction
+
+
+def test_detect_late_compaction_flags_long_high_context_tail() -> None:
+    # 12 calls; context crosses 50% of the 200k window (100k) at call 2 and
+    # stays high for 9 more calls.
+    calls = [_call(i + 1, c) for i, c in enumerate(
+        [60_000, 90_000, 110_000, 112_000, 114_000, 116_000, 118_000,
+         120_000, 122_000, 124_000, 126_000, 128_000]
+    )]
+    thread = _priced_thread(calls)
+    claims = Claims.for_threads([thread])
+    findings, thresholds = detect_late_compaction([thread], claims)
+
+    assert len(findings) == 1
+    finding = findings[0]
+    assert finding.archetype == "late_compaction"
+    assert finding.entry_turn == 2
+    retained = 110_000 * 0.3
+    expected = sum(
+        (calls[k].context_tokens - retained) / 1e6 for k in range(3, 12)
+    ) - retained / 1e6  # minus the one-off re-write of retained content
+    assert finding.savings_usd == pytest.approx(expected, rel=1e-6)
+    assert claims.calls[0] == set(range(3, 12))
+    assert any(t["name"] == "pressure_tokens" for t in thresholds)
+
+
+def test_detect_late_compaction_short_tail_not_flagged() -> None:
+    calls = [_call(i + 1, c) for i, c in enumerate([60_000, 110_000, 112_000, 114_000])]
+    thread = _priced_thread(calls)
+    findings, _ = detect_late_compaction([thread], Claims.for_threads([thread]))
+    assert findings == []
+
+
+def test_detect_late_compaction_subtracts_contributor_claims() -> None:
+    calls = [_call(i + 1, c) for i, c in enumerate(
+        [60_000, 90_000, 110_000, 112_000, 114_000, 116_000, 118_000,
+         120_000, 122_000, 124_000, 126_000, 128_000]
+    )]
+    thread = _priced_thread(calls)
+    claims = Claims.for_threads([thread])
+    claims.tokens_by_call[0] = [10_000] * len(calls)  # pretend earlier detectors claimed 10k/call
+    findings, _ = detect_late_compaction([thread], claims)
+    retained = 110_000 * 0.3
+    expected = sum(
+        (calls[k].context_tokens - 10_000 - retained) / 1e6 for k in range(3, 12)
+    ) - retained / 1e6
+    assert findings[0].savings_usd == pytest.approx(expected, rel=1e-6)
