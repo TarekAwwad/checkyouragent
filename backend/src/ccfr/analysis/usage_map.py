@@ -537,9 +537,9 @@ HABITS: list[dict[str, str]] = [
      "rule": "Work dispatched to subagents (Task/Agent calls). Cost counts the "
              "dispatching turns; the delegated work is measured in its own phases."},
     {"key": "plan-before-burst", "label": "Plan before implementing", "polarity": "good",
-     "rule": f"A planning step (TodoWrite, plan mode) precedes a run of at least "
-             f"{PLAN_BURST_MIN} edit calls. Cost counts the planning turns plus "
-             "the planned edit burst."},
+     "rule": f"A planning step (TodoWrite, plan mode) precedes at least "
+             f"{PLAN_BURST_MIN} edit calls later in the session. Cost counts "
+             "the planning turns plus those edit calls."},
     {"key": "blind-retry", "label": "Blind retry loops", "polarity": "anti",
      "rule": f"The same tool called with identical input at least "
              f"{BLIND_RETRY_MIN} times in a row, every attempt failing. Cost "
@@ -585,12 +585,12 @@ def run_habit_detectors(
         by_session[event.session_db_id].append(event)
     findings: list[HabitFinding] = []
     for detector in SESSION_DETECTORS:
-        try:
-            for session_events in by_session.values():
+        for session_events in by_session.values():
+            try:
                 findings.extend(detector(session_events))
-        except Exception:
-            logger.exception("usage-map detector %s failed",
-                             getattr(detector, "__name__", repr(detector)))
+            except Exception:
+                logger.exception("usage-map detector %s failed",
+                                 getattr(detector, "__name__", repr(detector)))
     try:
         findings.extend(detect_context_habits(
             conn, table, project_id=project_id,

@@ -611,6 +611,32 @@ def test_run_habit_detectors_survives_a_broken_detector(monkeypatch) -> None:
     assert any(f.habit_key == "delegation" for f in findings)
 
 
+def test_run_habit_detectors_isolates_failures_per_session(monkeypatch) -> None:
+    # The SAME detector raises on session 1 but yields a finding for session 2:
+    # per-session isolation must keep the session-2 finding.
+    def flaky(session_events):
+        head = session_events[0]
+        if head.session_db_id == 1:
+            raise RuntimeError("boom on session 1")
+        return [HabitFinding(habit_key="delegation", phase="delegate",
+                             session_db_id=head.session_db_id,
+                             session_title=head.session_title,
+                             project_name=head.project_name,
+                             cost_usd=1.0, count=1,
+                             exemplar_event_ids=(head.event_id,), detail="d")]
+    monkeypatch.setattr(usage_map, "SESSION_DETECTORS", [flaky])
+    conn = _conn()
+    _seed_base(conn)
+    _add_assistant_event(conn, 1, 1, "2026-06-01T10:00:00Z",
+                         [("Task", {"prompt": "go"}, False)])
+    _add_assistant_event(conn, 2, 2, "2026-06-01T10:00:00Z",
+                         [("Task", {"prompt": "go"}, False)])
+    events = load_events(conn, PRICE_TABLE)
+    findings = run_habit_detectors(conn, PRICE_TABLE, events)
+    # the session-2 finding survives the same detector's failure on session 1
+    assert {f.session_db_id for f in findings if f.habit_key == "delegation"} == {2}
+
+
 def test_aggregate_habits_groups_by_key_and_phase() -> None:
     def finding(session: int, key: str = "blind-retry", phase: str = "operate",
                 cost: float = 1.0) -> HabitFinding:
