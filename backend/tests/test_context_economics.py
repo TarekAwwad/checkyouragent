@@ -443,6 +443,7 @@ def test_detect_rereads_flags_duplicate_reads_of_same_path() -> None:
     # Claimed: the duplicate contributor and its token-carry per call.
     assert (0, thread.contributors.index(duplicate)) in claims.contributors
     assert claims.tokens_by_call[0][3] == duplicate.est_tokens
+    assert claims.tokens_by_call[0][2] == duplicate.est_tokens
 
 
 def test_detect_rereads_ignores_reads_in_different_epochs() -> None:
@@ -450,6 +451,23 @@ def test_detect_rereads_ignores_reads_in_different_epochs() -> None:
     items = {
         1: [RawItem(kind="tool_result", label="Read result: a.py", raw_chars=40_000,
                     tool_name="Read", detail="a.py")],
+        3: [RawItem(kind="tool_result", label="Read result: a.py", raw_chars=40_000,
+                    tool_name="Read", detail="a.py")],
+    }
+    thread = _priced_thread(calls, items)
+    findings = detect_rereads([thread], Claims.for_threads([thread]))
+    assert findings == []
+
+
+def test_detect_rereads_ignores_read_after_edit() -> None:
+    # Read a.py, Edit a.py, then Read a.py again to verify the change: the second
+    # read is legitimate (content changed), so nothing is flagged.
+    calls = [_call(1, 10_000), _call(2, 20_000), _call(3, 30_000), _call(4, 40_000)]
+    items = {
+        1: [RawItem(kind="tool_result", label="Read result: a.py", raw_chars=40_000,
+                    tool_name="Read", detail="a.py")],
+        2: [RawItem(kind="tool_result", label="Edit result: a.py", raw_chars=200,
+                    tool_name="Edit", detail="a.py")],
         3: [RawItem(kind="tool_result", label="Read result: a.py", raw_chars=40_000,
                     tool_name="Read", detail="a.py")],
     }

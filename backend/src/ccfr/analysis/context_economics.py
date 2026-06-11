@@ -420,8 +420,11 @@ class Claims:
     """Disjointness bookkeeping: a token-carry belongs to at most one finding.
 
     contributors: (thread_index, contributor_index) pairs fully/partially claimed.
-    tokens_by_call: per thread, tokens-per-call already claimed by contributor-level
-        findings; context-level detectors (compaction, stale) subtract these.
+    tokens_by_call: per thread, token counts already claimed by contributor-level
+        findings, indexed by call. Context-level detectors (compaction, stale)
+        subtract these priced at the per-call cache-read rate. The small
+        write-vs-read price premium at a contributor's entry call is an accepted
+        approximation and keeps those detectors' savings conservative.
     calls: per thread, call indexes claimed by a context-level finding.
     """
 
@@ -439,6 +442,10 @@ class Claims:
 
     def claim_contributor(self, thread_index: int, contributor_index: int,
                           contributor: ContributorRec, tokens: int) -> None:
+        """Idempotent: re-claiming the same contributor is a no-op, so the four
+        detectors compose without double-incrementing tokens_by_call."""
+        if (thread_index, contributor_index) in self.contributors:
+            return
         self.contributors.add((thread_index, contributor_index))
         per_call = self.tokens_by_call[thread_index]
         for i in range(contributor.entry_call, contributor.end_call + 1):
@@ -450,24 +457,42 @@ class Claims:
 # ---------------------------------------------------------------------------
 
 def detect_rereads(threads: list[ThreadRec], claims: Claims) -> list[FindingRec]:
-    """Same file Read twice in one epoch: every copy after the first is waste."""
+    """Same file Read repeatedly in one epoch without an intervening edit: every
+    copy after the first (since the last edit) is waste. A Read that follows a
+    Write/Edit of the same path is a legitimate verify-read and is not flagged."""
     findings: list[FindingRec] = []
     for thread_index, thread in enumerate(threads):
-        groups: dict[tuple[int, str], list[int]] = defaultdict(list)
+        reads: dict[tuple[int, str], list[int]] = defaultdict(list)
+        mutations: dict[tuple[int, str], list[int]] = defaultdict(list)
         for contributor_index, contributor in enumerate(thread.contributors):
-            if (contributor.kind == "tool_result" and contributor.tool_name == "Read"
-                    and contributor.detail):
-                groups[(contributor.epoch, contributor.detail)].append(contributor_index)
-        for (epoch, path), indexes in groups.items():
+            if contributor.kind != "tool_result" or not contributor.detail:
+                continue
+            key = (contributor.epoch, contributor.detail)
+            if contributor.tool_name == "Read":
+                reads[key].append(contributor_index)
+            elif contributor.tool_name in ("Write", "Edit"):
+                mutations[key].append(contributor.entry_call)
+        for (epoch, path), indexes in reads.items():
             if len(indexes) < 2:
                 continue
             indexes.sort(key=lambda i: thread.contributors[i].entry_call)
-            duplicates = [thread.contributors[i] for i in indexes[1:]]
+            mutation_calls = sorted(mutations.get((epoch, path), []))
+            duplicate_indexes: list[int] = []
+            anchor_entry = thread.contributors[indexes[0]].entry_call
+            for i in indexes[1:]:
+                entry = thread.contributors[i].entry_call
+                if any(anchor_entry < m <= entry for m in mutation_calls):
+                    anchor_entry = entry  # legitimate re-read after an edit
+                else:
+                    duplicate_indexes.append(i)
+            if not duplicate_indexes:
+                continue
+            duplicates = [thread.contributors[i] for i in duplicate_indexes]
             savings_tokens = sum(d.est_tokens for d in duplicates)
             savings_usd = sum(d.accrued_usd for d in duplicates)
             if savings_usd < MIN_FINDING_USD:
                 continue
-            for i in indexes[1:]:
+            for i in duplicate_indexes:
                 claims.claim_contributor(thread_index, i, thread.contributors[i],
                                          thread.contributors[i].est_tokens)
             first = thread.contributors[indexes[0]]
