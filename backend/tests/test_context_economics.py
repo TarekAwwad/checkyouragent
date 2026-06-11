@@ -480,7 +480,7 @@ def test_detect_rereads_ignores_read_after_edit() -> None:
 # Detector 2: oversized tool results
 # ---------------------------------------------------------------------------
 
-from ccfr.analysis.context_economics import detect_oversized
+from ccfr.analysis.context_economics import OVERSIZED_FLOOR_TOKENS, detect_oversized
 
 
 def _corpus_with_one_giant() -> list[ThreadRec]:
@@ -540,3 +540,29 @@ def test_detect_oversized_floor_prevents_findings_on_small_corpora() -> None:
         threads.append(_priced_thread(calls, items))
     findings, _ = detect_oversized(threads, Claims.for_threads(threads))
     assert findings == []
+
+
+def test_detect_oversized_adaptive_threshold_governs_above_floor() -> None:
+    # Most results are 8k tokens (corpus p95 ~8k, above the 5k floor); a control
+    # result is 6k. The 6k result is above the floor but below the corpus p95,
+    # so the ADAPTIVE threshold keeps it unflagged while a 50k giant is flagged.
+    # Proves the detector adapts to the corpus rather than relying on the floor.
+    threads = []
+    for n in range(20):
+        calls = [_call(1, 10_000), _call(2, 18_000), _call(3, 18_100)]
+        items = {1: [RawItem(kind="tool_result", label=f"Bash {n}", raw_chars=32_000,
+                             tool_name="Bash")]}
+        threads.append(_priced_thread(calls, items))
+    control = {1: [RawItem(kind="tool_result", label="Control 6k", raw_chars=24_000,
+                           event_id=77, tool_name="Bash")]}
+    threads.append(_priced_thread([_call(1, 10_000), _call(2, 16_000), _call(3, 16_100)], control))
+    giant = {1: [RawItem(kind="tool_result", label="Giant", raw_chars=200_000,
+                         event_id=99, tool_name="Bash")]}
+    threads.append(_priced_thread([_call(1, 10_000), _call(2, 60_000), _call(3, 60_100)], giant))
+
+    findings, thresholds = detect_oversized(threads, Claims.for_threads(threads))
+    threshold = next(t for t in thresholds if t["name"] == "oversized_tokens")["value"]
+    assert threshold > OVERSIZED_FLOOR_TOKENS  # corpus p95 governs, not the floor
+    labels = [f.label for f in findings]
+    assert any("Giant" in label for label in labels)
+    assert not any("Control 6k" in label for label in labels)
