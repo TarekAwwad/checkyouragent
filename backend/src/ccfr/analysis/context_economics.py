@@ -147,3 +147,83 @@ def split_epochs(context_sizes: list[int]) -> list[EpochRec]:
             start = i
     epochs.append(EpochRec(start=start, end=len(context_sizes) - 1, ended_by="end"))
     return epochs
+
+
+def calibrate_contributors(
+    calls: list[CallRec],
+    epochs: list[EpochRec],
+    items_by_gap: dict[int, list[RawItem]],
+) -> list[ContributorRec]:
+    """Turn raw gap items into contributors whose sizes sum to observed growth.
+
+    Per positive delta, raw char-based estimates are scaled proportionally so
+    they sum exactly to the delta (the honesty calibration from the spec). A
+    positive delta with no candidates becomes an explicit "unattributed"
+    contributor that detectors must never claim.
+    """
+    if not calls:
+        return []
+    epoch_of: dict[int, int] = {}
+    end_of: dict[int, int] = {}
+    for index, epoch in enumerate(epochs):
+        for i in range(epoch.start, epoch.end + 1):
+            epoch_of[i] = index
+            end_of[i] = epoch.end
+    epoch_starts = {epoch.start for epoch in epochs}
+
+    contributors: list[ContributorRec] = []
+    for i, call in enumerate(calls):
+        if i in epoch_starts:
+            contributors.append(ContributorRec(
+                key=f"baseline-{i}",
+                kind="baseline",
+                label="System prompt + initial context" if i == 0 else "Context kept after compaction",
+                entry_call=i,
+                end_call=end_of[i],
+                est_tokens=call.context_tokens,
+                epoch=epoch_of[i],
+            ))
+            continue
+        delta = call.context_tokens - calls[i - 1].context_tokens
+        if delta <= 0:
+            continue
+        items = list(items_by_gap.get(i, []))
+        previous = calls[i - 1]
+        if previous.output_tokens > 0:
+            items.append(RawItem(
+                kind="assistant_output",
+                label="Assistant reply",
+                raw_chars=previous.output_tokens * CHARS_PER_TOKEN,
+                event_id=previous.event_id,
+            ))
+        raw_tokens = [max(1.0, item.raw_chars / CHARS_PER_TOKEN) for item in items]
+        total_raw = sum(raw_tokens)
+        if total_raw <= 0:
+            contributors.append(ContributorRec(
+                key=f"unattributed-{i}",
+                kind="unattributed",
+                label="Unattributed growth",
+                entry_call=i,
+                end_call=end_of[i],
+                est_tokens=delta,
+                epoch=epoch_of[i],
+            ))
+            continue
+        scale = delta / total_raw
+        for item, raw in zip(items, raw_tokens):
+            est = int(round(raw * scale))
+            if est <= 0:
+                continue
+            contributors.append(ContributorRec(
+                key=f"{item.kind}-{i}-{len(contributors)}",
+                kind=item.kind,
+                label=item.label,
+                entry_call=i,
+                end_call=end_of[i],
+                est_tokens=est,
+                epoch=epoch_of[i],
+                event_id=item.event_id,
+                tool_name=item.tool_name,
+                detail=item.detail,
+            ))
+    return contributors
