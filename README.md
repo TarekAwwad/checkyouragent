@@ -6,13 +6,15 @@ The app mounts raw exports read-only, indexes them into a rebuildable SQLite dat
 
 ## At a Glance
 
-Claude Analytics is built around high-signal views: a triage board for finding the sessions that deserve attention, cost analytics for understanding where Claude Code spend comes from, and subgroup discovery for surfacing the conditions that drive outcomes like high-cost sessions.
+Claude Analytics is built around high-signal views: a triage board for finding the sessions that deserve attention, cost analytics for understanding where Claude Code spend comes from, subgroup discovery for surfacing the conditions that drive outcomes like high-cost sessions, and context economics for separating the share of spend that avoidable context waste is responsible for.
 
 | Triage suspicious sessions | Understand cost and token behavior |
 | --- | --- |
 | ![Triage board showing session risk, findings, activity, fanout, volume, and cost](docs/screenshots/triage-board.png) | ![Cost analytics dashboard showing project spend, cache savings, model mix, and spend over time](docs/screenshots/cost-analytics-1.png) |
-| **Discover subgroups that drive outcomes** | **More exploration techniques** |
-| ![Subgroup discovery view showing which session conditions most increase the rate of high-cost sessions, ranked by lift over baseline](docs/screenshots/subgroup.png) | _Other exploration techniques coming soon._ |
+| **Discover subgroups that drive outcomes** | **Put a price on avoidable context** |
+| ![Subgroup discovery view showing which session conditions most increase the rate of high-cost sessions, ranked by lift over baseline](docs/screenshots/subgroup.png) | ![Context economics view showing avoidable versus necessary spend, waste archetypes with estimated savings, and a per-session investigator with context stream and contributor lanes](docs/screenshots/context-economics.png) |
+
+Context economics reconstructs how each session's context window filled up, attributes the carry cost to the content that caused it, and runs detectors for recurring waste patterns — redundant re-reads, oversized tool results, late compaction, and stale session continuation. Each finding comes with a counterfactual savings estimate, and the savings claims are kept disjoint so the avoidable total never double-counts.
 
 ## Research Foundation
 
@@ -26,6 +28,7 @@ That makes it a base for deeper work on coding-agent usage patterns, optimizatio
 2. Use the triage board to sort sessions by risk, errors, loops, fanout, volume, or cost.
 3. Open a session to inspect the event trace, timeline, subagents, tool usage, and raw evidence.
 4. Review cost analytics to spot expensive projects, model mix, cache savings, and costly turns.
+5. Open context economics to see how much spend was avoidable, which waste archetypes drive it, and the exact events behind each finding.
 
 | Import exports | Inspect a session | Investigate cost outliers |
 | --- | --- | --- |
