@@ -139,3 +139,113 @@ def aggregate_phases(events: list[EventRec]) -> dict[str, dict[str, Any]]:
         for call in event.tool_calls:
             acc[classify_tool_call(call.tool_name, call.command)]["tool_count"] += 1
     return acc
+
+
+def _parse_input(raw_json: str | None) -> dict[str, Any]:
+    if not raw_json:
+        return {}
+    try:
+        data = json.loads(raw_json)
+    except json.JSONDecodeError:
+        return {}
+    input_data = data.get("input")
+    return input_data if isinstance(input_data, dict) else {}
+
+
+def load_events(
+    conn: sqlite3.Connection,
+    table: dict[str, ModelPrice],
+    *,
+    project_id: int | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> list[EventRec]:
+    """All assistant events in the filtered corpus, with their tool calls,
+    result error flags, and priced cost. Order: session, then time."""
+    where = ["m.role = 'assistant'"]
+    params: list[Any] = []
+    if project_id is not None:
+        where.append("s.project_id = ?")
+        params.append(project_id)
+    if date_from:
+        where.append("date(e.timestamp) >= date(?)")
+        params.append(date_from)
+    if date_to:
+        where.append("date(e.timestamp) <= date(?)")
+        params.append(date_to)
+    clause = " AND ".join(where)
+
+    rows = conn.execute(
+        f"""
+        SELECT e.id AS event_id, e.session_id AS session_db_id, e.timestamp AS ts,
+               m.model,
+               COALESCE(m.base_input_tokens, 0) AS base,
+               COALESCE(m.cache_5m_tokens, 0) AS c5,
+               COALESCE(m.cache_1h_tokens, 0) AS c1,
+               COALESCE(m.cache_read_tokens, 0) AS cr,
+               COALESCE(m.output_tokens, 0) AS out,
+               s.title, p.export_name, p.inferred_cwd
+        FROM events e
+        JOIN messages m ON m.event_id = e.id
+        JOIN sessions s ON s.id = e.session_id
+        JOIN projects p ON p.id = s.project_id
+        WHERE {clause}
+        ORDER BY e.session_id, e.timestamp, e.id
+        """,
+        params,
+    ).fetchall()
+
+    call_rows = conn.execute(
+        f"""
+        SELECT tc.event_id, tc.tool_name, tc.input_preview, tc.raw_json,
+               COALESCE(tr.is_error, 0) AS is_error
+        FROM tool_calls tc
+        JOIN events e ON e.id = tc.event_id
+        JOIN messages m ON m.event_id = e.id
+        JOIN sessions s ON s.id = e.session_id
+        JOIN projects p ON p.id = s.project_id
+        LEFT JOIN tool_results tr
+            ON tr.session_id = tc.session_id AND tr.tool_use_id = tc.tool_use_id
+        WHERE {clause}
+        ORDER BY tc.event_id, tc.id
+        """,
+        params,
+    ).fetchall()
+
+    calls_by_event: dict[int, list[ToolCallRec]] = defaultdict(list)
+    for row in call_rows:
+        input_data = _parse_input(row["raw_json"])
+        signature = row["input_preview"] or (
+            json.dumps(input_data, sort_keys=True) if input_data else None
+        )
+        calls_by_event[row["event_id"]].append(ToolCallRec(
+            tool_name=row["tool_name"],
+            command=input_data.get("command"),
+            detail=input_data.get("file_path"),
+            signature=signature,
+            is_error=bool(row["is_error"]),
+        ))
+
+    events: list[EventRec] = []
+    for row in rows:
+        price = match_price(table, row["model"])
+        tokens = row["base"] + row["c5"] + row["c1"] + row["cr"] + row["out"]
+        usd = 0.0
+        if price is not None:
+            usd = cost_usd(price, TokenBreakdown(
+                base_input=row["base"], cache_write_5m=row["c5"],
+                cache_write_1h=row["c1"], cache_read=row["cr"], output=row["out"],
+            ))
+        events.append(EventRec(
+            event_id=row["event_id"],
+            session_db_id=row["session_db_id"],
+            session_title=row["title"] or "Untitled session",
+            project_name=project_display_name(row["export_name"], row["inferred_cwd"]),
+            ts=row["ts"],
+            model=row["model"] or "",
+            cost=usd,
+            tokens=tokens,
+            priced=price is not None or tokens == 0,
+            tool_calls=tuple(calls_by_event.get(row["event_id"], [])),
+        ))
+    return events
