@@ -350,7 +350,8 @@ def detect_blind_retry(session_events: list[EventRec]) -> list[HabitFinding]:
             ))
 
     for call in _flatten(session_events):
-        same_run = (run and call.tool_name == run[0].tool_name
+        same_run = (run and call.tool_name is not None
+                    and call.tool_name == run[0].tool_name
                     and call.signature is not None
                     and call.signature == run[0].signature
                     and call.is_error)

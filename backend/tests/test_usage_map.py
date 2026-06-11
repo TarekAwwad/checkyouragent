@@ -347,3 +347,24 @@ def test_blind_retry_two_failures_is_below_threshold() -> None:
 
 def test_blind_retry_empty_session() -> None:
     assert detect_blind_retry([]) == []
+
+
+def test_blind_retry_two_distinct_runs_yield_two_findings() -> None:
+    events = [
+        _flat_event(1, "Bash", {"command": "a"}, True),
+        _flat_event(2, "Bash", {"command": "a"}, True),
+        _flat_event(3, "Bash", {"command": "a"}, True),
+        _flat_event(4, "Edit", {"file_path": "x.py"}, True),
+        _flat_event(5, "Edit", {"file_path": "x.py"}, True),
+        _flat_event(6, "Edit", {"file_path": "x.py"}, True),
+    ]
+    findings = detect_blind_retry(events)
+    assert [f.exemplar_event_ids for f in findings] == [(1,), (4,)]
+    assert [f.phase for f in findings] == ["operate", "implement"]
+
+
+def test_blind_retry_counts_longer_runs() -> None:
+    events = [_flat_event(i, "Bash", {"command": "x"}, True) for i in range(1, 5)]
+    findings = detect_blind_retry(events)
+    assert findings[0].count == 4
+    assert findings[0].cost_usd == pytest.approx(6.0)  # 3 repeats x $2
