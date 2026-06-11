@@ -601,6 +601,63 @@ def run_habit_detectors(
     return findings
 
 
+# --- Corpus aggregation -------------------------------------------------------
+
+def usage_map_analytics(
+    conn: sqlite3.Connection,
+    *,
+    project_id: int | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> dict[str, Any]:
+    """The full usage-map tree for the filtered corpus. Shares are cost-based
+    when pricing is available (and non-zero), token-based otherwise; either way
+    the phases partition the corpus, so shares sum to 1."""
+    table = load_price_table(pricing_path())
+    cost_available = bool(table)
+    events = load_events(conn, table, project_id=project_id,
+                         date_from=date_from, date_to=date_to)
+    phase_acc = aggregate_phases(events)
+    leaves = aggregate_habits(run_habit_detectors(
+        conn, table, events, project_id=project_id,
+        date_from=date_from, date_to=date_to,
+    )) if events else []
+
+    total_usd = sum(bucket["cost_usd"] for bucket in phase_acc.values())
+    total_tokens = sum(bucket["tokens"] for bucket in phase_acc.values())
+    use_cost = cost_available and total_usd > 0
+    denominator = total_usd if use_cost else float(total_tokens)
+
+    phases: list[dict[str, Any]] = []
+    for spec in PHASES:
+        bucket = phase_acc[spec["key"]]
+        numerator = bucket["cost_usd"] if use_cost else bucket["tokens"]
+        phases.append({
+            "key": spec["key"],
+            "label": spec["label"],
+            "cost_usd": round(bucket["cost_usd"], 6),
+            "tokens": int(round(bucket["tokens"])),
+            "share": round(numerator / denominator, 6) if denominator > 0 else 0.0,
+            "tool_count": bucket["tool_count"],
+            "session_count": len(bucket["sessions"]),
+            "habits": [leaf for leaf in leaves if leaf["phase"] == spec["key"]],
+        })
+    return {
+        "meta": {
+            "project_id": project_id,
+            "window": {"date_from": date_from, "date_to": date_to},
+            "total_usd": round(total_usd, 6),
+            "total_tokens": int(round(total_tokens)),
+            "cost_available": cost_available,
+            "costs_partial": any(not e.priced for e in events),
+            "sessions_analyzed": len({e.session_db_id for e in events}),
+            "events_classified": len(events),
+            "share_basis": "cost" if use_cost else "tokens",
+        },
+        "phases": phases,
+    }
+
+
 def aggregate_habits(findings: list[HabitFinding]) -> list[dict[str, Any]]:
     """Fold findings into leaves keyed by (habit, home phase). A habit whose
     findings span phases (e.g. blind-retry) yields one leaf per phase."""

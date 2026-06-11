@@ -25,6 +25,7 @@ from ccfr.analysis.usage_map import (
     event_phase_weights,
     load_events,
     run_habit_detectors,
+    usage_map_analytics,
 )
 from ccfr.storage import init_db
 
@@ -664,3 +665,82 @@ def test_aggregate_habits_skips_unknown_keys() -> None:
                          session_db_id=1, session_title="S", project_name="a",
                          cost_usd=1.0, count=1, exemplar_event_ids=(), detail="d")
     assert aggregate_habits([rogue]) == []
+
+
+def _pricing_csv(tmp_path):
+    csv = tmp_path / "pricing.csv"
+    csv.write_text(
+        "model,base-input-tokens,5m-cache-writes,1h-cache-writes,"
+        "cache-hits-&-refreshes,output-tokens\n"
+        "claude-opus-4-8,5,6.25,10,0.50,25\n",
+        encoding="utf-8",
+    )
+    return csv
+
+
+# ---------------------------------------------------------------------------
+# Corpus payload
+# ---------------------------------------------------------------------------
+
+def test_usage_map_analytics_payload_shape_and_honest_totals(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(usage_map, "pricing_path", lambda: _pricing_csv(tmp_path))
+    conn = _conn()
+    _seed_base(conn)
+    _add_assistant_event(conn, 1, 1, "2026-06-01T10:00:00Z",
+                         [("Read", {"file_path": "a.py"}, False)])
+    _add_assistant_event(conn, 2, 1, "2026-06-01T10:01:00Z",
+                         [("Edit", {"file_path": "a.py"}, False)])
+    _add_assistant_event(conn, 3, 1, "2026-06-01T10:02:00Z", [])
+
+    payload = usage_map_analytics(conn)
+
+    meta = payload["meta"]
+    assert meta["cost_available"] is True
+    assert meta["costs_partial"] is False
+    assert meta["sessions_analyzed"] == 1
+    assert meta["events_classified"] == 3
+    assert meta["total_usd"] == pytest.approx(6.0)
+    assert meta["share_basis"] == "cost"
+
+    phases = {p["key"]: p for p in payload["phases"]}
+    assert set(phases) == set(usage_map.PHASE_KEYS)  # all phases always present
+    # Every dollar lands in exactly one phase: shares sum to 1, costs to total.
+    assert sum(p["cost_usd"] for p in payload["phases"]) == pytest.approx(6.0)
+    assert sum(p["share"] for p in payload["phases"]) == pytest.approx(1.0, abs=1e-4)
+    assert phases["explore"]["share"] == pytest.approx(1 / 3, abs=1e-4)
+    assert phases["explore"]["session_count"] == 1
+
+
+def test_usage_map_analytics_attaches_habit_leaves(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(usage_map, "pricing_path", lambda: _pricing_csv(tmp_path))
+    conn = _conn()
+    _seed_base(conn)
+    _add_assistant_event(conn, 1, 1, "2026-06-01T10:00:00Z",
+                         [("Task", {"prompt": "go"}, False)])
+    payload = usage_map_analytics(conn)
+    delegate = next(p for p in payload["phases"] if p["key"] == "delegate")
+    assert [h["key"] for h in delegate["habits"]] == ["delegation"]
+    assert delegate["habits"][0]["polarity"] == "good"
+
+
+def test_usage_map_analytics_token_fallback_without_pricing(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(usage_map, "pricing_path", lambda: tmp_path / "missing.csv")
+    conn = _conn()
+    _seed_base(conn)
+    _add_assistant_event(conn, 1, 1, "2026-06-01T10:00:00Z",
+                         [("Read", {"file_path": "a.py"}, False)])
+    payload = usage_map_analytics(conn)
+    assert payload["meta"]["cost_available"] is False
+    assert payload["meta"]["share_basis"] == "tokens"
+    explore = next(p for p in payload["phases"] if p["key"] == "explore")
+    assert explore["share"] == pytest.approx(1.0, abs=1e-4)
+    assert explore["tokens"] == 240_000
+
+
+def test_usage_map_analytics_empty_corpus(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(usage_map, "pricing_path", lambda: _pricing_csv(tmp_path))
+    conn = _conn()
+    payload = usage_map_analytics(conn)
+    assert payload["meta"]["sessions_analyzed"] == 0
+    assert payload["meta"]["total_usd"] == 0.0
+    assert all(p["share"] == 0.0 for p in payload["phases"])
