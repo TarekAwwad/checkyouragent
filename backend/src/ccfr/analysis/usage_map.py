@@ -57,12 +57,16 @@ _TOOL_PHASE: dict[str, str] = {
 }
 
 # Test/build/lint commands that mark a Bash call as Verify. Anchored to token
-# boundaries so "pytest" never matches inside an unrelated word.
+# boundaries so "pytest" never matches inside an unrelated word; a leading
+# "/" or "." also counts as a boundary so path-prefixed runners ("./pytest",
+# "/usr/bin/pytest") are recognized. npm script names only count when the
+# known prefix is the whole name or is followed by -, :, or . ("test:unit",
+# "lint-fix", "build.prod") so "buildstories"/"linting" stay Operate.
 _VERIFY_COMMAND = re.compile(
-    r"(?:^|[\s;&|(])("
+    r"(?:^|[\s;&|(./])("
     r"pytest|vitest|jest|mocha|tsc|eslint|ruff|mypy|flake8"
     r"|cargo\s+(?:test|check|clippy)|go\s+(?:test|vet)"
-    r"|npm\s+(?:test|run\s+(?:test|lint|build|check)\S*)"
+    r"|npm\s+(?:test|run\s+(?:test|lint|build|check)(?:[-:.]\S*)?)"
     r"|npx\s+(?:vitest|jest|tsc|eslint)"
     r"|make\s+(?:test|check|lint)|tox|gradle\s+test|mvn\s+test"
     r")(?:$|[\s;&|)])"

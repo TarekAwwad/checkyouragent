@@ -36,6 +36,10 @@ def test_classify_known_tools(tool: str, phase: str) -> None:
     "ruff check src",
     "cargo test",
     "go test ./...",
+    "./pytest -x",
+    "/usr/local/bin/pytest",
+    "npm run build",
+    "npm run lint-fix",
 ])
 def test_classify_bash_verify_commands(command: str) -> None:
     assert classify_tool_call("Bash", command) == "verify"
@@ -47,6 +51,8 @@ def test_classify_bash_verify_commands(command: str) -> None:
     "mkdir build",
     "python script.py",       # plain run, not a test runner
     "echo pytestish",         # word boundary: not a verify command
+    "npm run buildstories",   # script-name prefix only counts before -, :, or .
+    "npm run linting",
 ])
 def test_classify_bash_other_commands_are_operate(command: str) -> None:
     assert classify_tool_call("Bash", command) == "operate"
