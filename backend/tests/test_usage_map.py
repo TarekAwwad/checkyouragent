@@ -516,6 +516,8 @@ def test_in_window_filters_by_day() -> None:
     assert _in_window("2026-06-09T10:00:00Z", None, "2026-06-05") is False
     assert _in_window(None, None, None) is True
     assert _in_window(None, "2026-06-01", None) is False  # undated: excluded by a window
+    assert _in_window("2026-06-01T00:00:00Z", "2026-06-01", "2026-06-01") is True
+    assert _in_window("2026-06-05T23:59:00Z", "2026-06-01", "2026-06-05") is True
 
 
 def _seed_reread_session(conn: sqlite3.Connection) -> None:
@@ -527,7 +529,8 @@ def _seed_reread_session(conn: sqlite3.Connection) -> None:
         _add_assistant_event(
             conn, event_id, 1, f"2026-06-01T10:0{i * 2}:00Z",
             [("Read", {"file_path": "big.py"}, False)] if event_id != 5 else [],
-            base=base, out=1_000,
+            base=base,
+            out=1_000,  # small output: context growth comes from the base escalation, not output
         )
     for event_id, ts, tool_use in [(2, "2026-06-01T10:01:00Z", "tu-1-0"),
                                    (4, "2026-06-01T10:03:00Z", "tu-3-0")]:
@@ -558,3 +561,9 @@ def test_detect_context_habits_respects_window() -> None:
     conn = _conn()
     _seed_reread_session(conn)
     assert detect_context_habits(conn, PRICE_TABLE, date_from="2026-06-02") == []
+
+
+def test_detect_context_habits_respects_project_filter() -> None:
+    conn = _conn()
+    _seed_reread_session(conn)  # finding lives in project 1
+    assert detect_context_habits(conn, PRICE_TABLE, project_id=2) == []

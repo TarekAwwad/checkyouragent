@@ -466,6 +466,8 @@ def detect_plan_before_burst(session_events: list[EventRec]) -> list[HabitFindin
 # Context-economics archetypes surfaced as usage-map habit leaves.
 # Home phases per the spec: re-reads are Read-dominated (Explore); the other
 # two concern the whole context, so they live on Converse.
+# stale_continuation is intentionally excluded — the usage-map spec surfaces
+# only these three as habit leaves.
 _CONTEXT_HABIT_MAP: dict[str, tuple[str, str]] = {
     "rereads": ("re-reads", "explore"),
     "oversized": ("oversized-context", "converse"),
@@ -497,7 +499,9 @@ def detect_context_habits(
     """Adapter over the Context Economics detectors. Threads are loaded for the
     whole project corpus (load_threads has no date filter — thresholds stay
     corpus-calibrated); findings are then filtered to the window by their entry
-    timestamp. Finding cost is the detector's counterfactual savings claim."""
+    timestamp. Finding cost is the detector's counterfactual savings claim.
+    Performance: runs the full context-economics pipeline on every call;
+    memoise at the call site if this ends up on a hot path."""
     threads, _skipped = load_threads(conn, project_id=project_id)
     for thread in threads:
         accrue_tax(thread, table)
