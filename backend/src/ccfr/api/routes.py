@@ -10,8 +10,13 @@ from ccfr.api import analytics, repository
 from ccfr.api.deps import get_db
 from ccfr.api.import_progress import import_progress_store
 from ccfr.analysis.discovery import discovery_analytics
+from ccfr.analysis.context_economics import (
+    context_economics_analytics,
+    session_context_economics,
+)
 from ccfr.api.schemas import (
     CacheStatsResponse,
+    ContextEconomicsResponse,
     CostAnalyticsResponse,
     DiscoveryResponse,
     DiscoveredProjectResponse,
@@ -24,6 +29,7 @@ from ccfr.api.schemas import (
     RuntimeConfigResponse,
     SearchResult,
     SessionCard,
+    SessionContextEconomicsResponse,
     SubagentResponse,
     TimelineItem,
     TurnCostBreakdown,
@@ -251,3 +257,23 @@ def get_discovery_analytics(
     return DiscoveryResponse(
         **discovery_analytics(conn, project_id=project_id, min_support=min_support)
     )
+
+
+@router.get("/analytics/context-economics", response_model=ContextEconomicsResponse)
+def get_context_economics(
+    project_id: int | None = None,
+    min_support: int = Query(default=3, ge=1),
+    conn: Connection = Depends(get_db),
+) -> ContextEconomicsResponse:
+    return ContextEconomicsResponse(
+        **context_economics_analytics(conn, project_id=project_id, min_support=min_support)
+    )
+
+
+@router.get("/sessions/{session_id}/context-economics",
+            response_model=SessionContextEconomicsResponse)
+def get_session_context_economics(
+    session_id: int,
+    conn: Connection = Depends(get_db),
+) -> SessionContextEconomicsResponse:
+    return SessionContextEconomicsResponse(**session_context_economics(conn, session_id))

@@ -221,6 +221,38 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     definition:
       "The \"stays at or above X%\" figure. Even on a pessimistic reading of a small sample, the subgroup's rate must still beat the baseline — and the bar rises with the number of conditions tested (a Bonferroni adjustment), so a long screen doesn't manufacture false positives. The gate is conservative: weak real effects can be hidden. Treat results as leads to investigate, not proof of cause.",
   },
+  {
+    category: "Discovery",
+    term: "Context tax",
+    definition:
+      "The recurring cost of re-sending content that is already in the context: every token kept in the context is re-paid (at the cache-read rate) on every subsequent API call until compaction or session end.",
+    detail: ["tax(contributor) = est_tokens × Σ cache_read_price(model_t) for each later call t in its epoch"],
+  },
+  {
+    category: "Discovery",
+    term: "Ballast",
+    definition:
+      "Content that entered the context and keeps being carried (and paid for) on every turn — large tool results, pasted logs, repeated file reads.",
+  },
+  {
+    category: "Discovery",
+    term: "Epoch",
+    definition:
+      "A stretch of a session between compactions. Contributor lifetimes never cross epoch boundaries: compaction drops the carried content.",
+    detail: ["A new epoch starts when a call's context drops below 60% of the previous call's."],
+  },
+  {
+    category: "Discovery",
+    term: "Avoidable spend",
+    definition:
+      "The portion of total spend claimed by Context Economics findings under explicit counterfactuals (capped reads, deduplicated re-reads, earlier compaction, fresh sessions). Claims are disjoint: a token-carry is never counted twice.",
+  },
+  {
+    category: "Discovery",
+    term: "Calibration",
+    definition:
+      "Contributor sizes are estimated from stored content (~4 chars/token) and then scaled so they sum exactly to the observed context growth of that turn. Growth that nothing explains is shown as 'unattributed' and never counted as avoidable.",
+  },
 
   // Cost — token usage and spend.
   {
