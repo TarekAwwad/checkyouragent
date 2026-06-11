@@ -4,6 +4,7 @@ import { getContextEconomics } from "../../api/client";
 import type { ContextArchetype, ContextFinding, Project } from "../../api/types";
 import TaxMeterHero from "./TaxMeterHero";
 import ArchetypeCard from "./ArchetypeCard";
+import SessionDrilldown from "./SessionDrilldown";
 
 interface Props {
   projects: Project[];
@@ -90,8 +91,15 @@ export default function ContextEconomics({ projects, onOpenSession }: Props) {
           />
         ))}
       </div>
-      {/* Task 15: SessionDrilldown */}
-      {drilldown && <div data-testid="drilldown-pending" hidden />}
+      {drilldown && (
+        <SessionDrilldown
+          sessionId={drilldown.sessionId}
+          sessionTitle={drilldown.title}
+          highlightEventId={drilldown.eventId}
+          onOpenSession={onOpenSession}
+          onClose={() => setDrilldown(null)}
+        />
+      )}
     </div>
   );
 }
