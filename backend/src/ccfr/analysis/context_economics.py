@@ -664,9 +664,9 @@ def _gap_seconds(a: str | None, b: str | None) -> float:
     try:
         start = datetime.fromisoformat(a.replace("Z", "+00:00"))
         end = datetime.fromisoformat(b.replace("Z", "+00:00"))
-    except ValueError:
+        return max(0.0, (end - start).total_seconds())
+    except (ValueError, TypeError):
         return 0.0
-    return max(0.0, (end - start).total_seconds())
 
 
 def detect_stale_continuation(
@@ -677,6 +677,9 @@ def detect_stale_continuation(
     Counterfactual: the follow-up runs in a fresh session whose context is the
     thread's first-call baseline; savings = residual context above baseline for
     each follow-up call. Calls already claimed by late-compaction are skipped.
+
+    Must run AFTER detect_late_compaction so compaction-claimed calls (in
+    claims.calls) are excluded here.
     """
     all_gaps = [
         _gap_seconds(thread.calls[i - 1].ts, thread.calls[i].ts)
@@ -709,10 +712,16 @@ def detect_stale_continuation(
             if not tail_calls:
                 continue
             baseline = thread.calls[0].context_tokens
+            # Avoidable = the stale ballast carried across the gap (context just
+            # before the gap, minus the fresh-session baseline). Constant across
+            # tail calls: the follow-up's own new work happens in both worlds, so
+            # only the pre-gap ballast is avoidable — crediting later growth would
+            # inflate the headline.
+            avoidable_ctx = thread.calls[i - 1].context_tokens - baseline
             savings_usd = 0.0
             savings_tokens = 0
             for k in tail_calls:
-                residual = thread.calls[k].context_tokens - claimed_tokens[k] - baseline
+                residual = avoidable_ctx - claimed_tokens[k]
                 if residual > 0:
                     savings_usd += residual * thread.read_prices[k]
                     savings_tokens += int(residual)

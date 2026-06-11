@@ -671,8 +671,9 @@ def test_detect_stale_continuation_flags_gap_resume() -> None:
     finding = findings[0]
     assert finding.archetype == "stale_continuation"
     assert finding.entry_turn == 8
-    baseline = 20_000  # fresh-session baseline = first call's context
-    expected = ((161_000 - baseline) + (162_000 - baseline)) / 1e6
+    baseline = 20_000
+    avoidable = 160_000 - baseline  # context just before the gap, minus baseline
+    expected = (avoidable + avoidable) / 1e6  # constant per tail call, 2 tail calls
     assert finding.savings_usd == pytest.approx(expected, rel=1e-6)
     assert claims.calls[0] == {8, 9}
     assert any(t["name"] == "gap_seconds" for t in thresholds)
@@ -683,4 +684,20 @@ def test_detect_stale_continuation_skips_calls_claimed_by_compaction() -> None:
     claims = Claims.for_threads(threads)
     claims.calls[0].update({8, 9})
     findings, _ = detect_stale_continuation(threads, claims)
+    assert findings == []
+
+
+def test_detect_stale_continuation_skips_small_resumed_context() -> None:
+    # Long gap but a small resumed context (below corpus p75): not flagged.
+    small = _thread([
+        CallRec(event_id=1, ts=_ts(1), model="claude-sonnet-4-6",
+                context_tokens=5_000, output_tokens=0),
+        CallRec(event_id=2, ts=_ts(200), model="claude-sonnet-4-6",
+                context_tokens=6_000, output_tokens=0),
+    ])
+    accrue_tax(small, PRICE_TABLE)
+    threads = [small]
+    for n in range(9):  # pad so corpus p75 context is large
+        threads.append(_priced_thread([_call(1, 200_000), _call(2, 200_000)]))
+    findings, _ = detect_stale_continuation(threads, Claims.for_threads(threads))
     assert findings == []
