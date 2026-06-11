@@ -27,27 +27,29 @@ export default function TaxMeterHero({
           ? <>{formatUsd(meta.total_usd)} total · est. {formatUsd(meta.avoidable_usd)} avoidable ({pct}%)</>
           : <>Cost unavailable — token-only view</>}
       </h2>
-      <div
-        className="tax-meter-bar"
-        role="img"
-        aria-label={`Avoidable spend breakdown: ${formatUsd(meta.avoidable_usd)} of ${formatUsd(meta.total_usd)}`}
-      >
-        <i
-          className="tax-meter-necessary"
-          style={{ width: `${(meta.necessary_usd / total) * 100}%` }}
-          title={`Necessary ${formatUsd(meta.necessary_usd)}`}
-        />
-        {supported.map((archetype) => (
+      {meta.cost_available && (
+        <div
+          className="tax-meter-bar"
+          role="img"
+          aria-label={`Avoidable spend breakdown: ${formatUsd(meta.avoidable_usd)} of ${formatUsd(meta.total_usd)}`}
+        >
           <i
-            key={archetype.key}
-            style={{
-              width: `${(archetype.savings_usd / total) * 100}%`,
-              background: ARCHETYPE_COLORS[archetype.key],
-            }}
-            title={`${archetype.title} ${formatUsd(archetype.savings_usd)}`}
+            className="tax-meter-necessary"
+            style={{ width: `${(meta.necessary_usd / total) * 100}%` }}
+            title={`Necessary ${formatUsd(meta.necessary_usd)}`}
           />
-        ))}
-      </div>
+          {supported.map((archetype) => (
+            <i
+              key={archetype.key}
+              style={{
+                width: `${(archetype.savings_usd / total) * 100}%`,
+                background: ARCHETYPE_COLORS[archetype.key],
+              }}
+              title={`${archetype.title} ${formatUsd(archetype.savings_usd)}`}
+            />
+          ))}
+        </div>
+      )}
       <p className="discover-muted">
         {meta.sessions_analyzed} sessions analyzed
         {meta.sessions_skipped > 0 && ` · ${meta.sessions_skipped} skipped (no usage data)`}

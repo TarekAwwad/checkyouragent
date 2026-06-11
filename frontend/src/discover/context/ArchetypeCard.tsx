@@ -81,7 +81,7 @@ export default function ArchetypeCard({
             <div className="archetype-finding-actions">
               <button type="button" onClick={() => onInspectFinding(finding)}>Inspect</button>
               <button type="button" onClick={() => onOpenSession(finding.session_id)}>
-                <ExternalLink size={13} /> Open session
+                <ExternalLink size={13} aria-hidden={true} /> Open session
               </button>
             </div>
           </li>
