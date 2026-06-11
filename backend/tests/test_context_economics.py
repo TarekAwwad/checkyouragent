@@ -701,3 +701,82 @@ def test_detect_stale_continuation_skips_small_resumed_context() -> None:
         threads.append(_priced_thread([_call(1, 200_000), _call(2, 200_000)]))
     findings, _ = detect_stale_continuation(threads, Claims.for_threads(threads))
     assert findings == []
+
+
+# ---------------------------------------------------------------------------
+# Corpus aggregation: context_economics_analytics
+# ---------------------------------------------------------------------------
+
+from ccfr.analysis.context_economics import context_economics_analytics
+
+
+@pytest.fixture()
+def economics_conn(conn: sqlite3.Connection, tmp_path: Path,
+                   monkeypatch: pytest.MonkeyPatch) -> sqlite3.Connection:
+    csv = tmp_path / "pricing.csv"
+    csv.write_text(
+        "model,base-input-tokens,5m-cache-writes,1h-cache-writes,cache-hits-&-refreshes,output-tokens\n"
+        "claude-sonnet-4-6,1,1,1,1,1\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(context_economics, "pricing_path", lambda: csv)
+    # Three sessions that each re-read the same file once (clears min_support=3).
+    for n in range(3):
+        add_session(conn, uuid=f"re-{n}", title=f"Re-reader {n}", calls=[
+            {"context": 10_000, "minute": 1}, {"context": 30_000, "minute": 2},
+            {"context": 50_000, "minute": 3}, {"context": 50_500, "minute": 4},
+        ], gap_items={
+            1: [{"kind": "tool_result", "chars": 80_000, "tool_name": "Read", "path": "big.py"}],
+            2: [{"kind": "tool_result", "chars": 80_000, "tool_name": "Read", "path": "big.py"}],
+        })
+    return conn
+
+
+def test_corpus_payload_hero_math_is_consistent(economics_conn: sqlite3.Connection) -> None:
+    payload = context_economics_analytics(economics_conn, min_support=3)
+    meta = payload["meta"]
+
+    assert meta["cost_available"] is True
+    assert meta["sessions_analyzed"] == 3 and meta["sessions_skipped"] == 0
+    assert meta["total_usd"] > 0
+    assert meta["avoidable_usd"] == pytest.approx(
+        sum(a["savings_usd"] for a in payload["archetypes"] if a["meets_support"])
+    )
+    assert meta["necessary_usd"] == pytest.approx(meta["total_usd"] - meta["avoidable_usd"])
+    assert meta["avoidable_usd"] <= meta["total_usd"]
+
+    keys = [a["key"] for a in payload["archetypes"]]
+    assert keys == ["rereads", "oversized", "late_compaction", "stale_continuation"]
+    rereads = payload["archetypes"][0]
+    assert rereads["meets_support"] is True
+    assert rereads["findings_count"] == 3
+    assert all(f["savings_usd"] > 0 for f in rereads["findings"])
+    assert rereads["exemplar"] is not None
+    assert 0 < len(rereads["exemplar"]["series"]) <= 40
+    assert all("provenance" in t for t in rereads["thresholds"])
+
+
+def test_corpus_payload_gates_archetypes_below_support(economics_conn: sqlite3.Connection) -> None:
+    payload = context_economics_analytics(economics_conn, min_support=10)
+    rereads = payload["archetypes"][0]
+    assert rereads["meets_support"] is False
+    assert rereads["findings"] == [] and rereads["savings_usd"] == 0
+    assert payload["meta"]["avoidable_usd"] == 0
+
+
+def test_corpus_payload_without_pricing_is_token_only(
+    conn: sqlite3.Connection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(context_economics, "pricing_path", lambda: tmp_path / "missing.csv")
+    add_session(conn, uuid="np", calls=[{"context": 10_000, "minute": 1}])
+    payload = context_economics_analytics(conn)
+    assert payload["meta"]["cost_available"] is False
+    assert payload["meta"]["total_usd"] == 0
+
+
+def test_corpus_payload_empty_db_is_stable(conn: sqlite3.Connection, tmp_path: Path,
+                                           monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(context_economics, "pricing_path", lambda: tmp_path / "missing.csv")
+    payload = context_economics_analytics(conn)
+    assert payload["meta"]["sessions_analyzed"] == 0
+    assert [a["findings"] for a in payload["archetypes"]] == [[], [], [], []]

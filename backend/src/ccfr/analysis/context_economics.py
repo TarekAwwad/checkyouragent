@@ -750,3 +750,183 @@ def detect_stale_continuation(
             ))
             break  # one stale-continuation finding per thread
     return findings, thresholds
+
+
+# ---------------------------------------------------------------------------
+# Corpus aggregation
+# ---------------------------------------------------------------------------
+
+ARCHETYPES: list[dict[str, str]] = [
+    {"key": "rereads", "title": "Redundant re-reads",
+     "description": "The same file was read into the context more than once in one epoch.",
+     "recommendation": "Re-read only the changed region (offset/limit) or rely on the copy already in context."},
+    {"key": "oversized", "title": "Oversized tool results",
+     "description": "Single tool results far above this corpus's norm entered the context and were re-paid every turn.",
+     "recommendation": "Read large files with limit/offset, filter command output, or offload to a subagent and keep only its summary."},
+    {"key": "late_compaction", "title": "Late compaction",
+     "description": "The context stayed near the window limit for many turns without compaction.",
+     "recommendation": "Compact (or let auto-compact run) once the context stops earning its keep."},
+    {"key": "stale_continuation", "title": "Stale continuation",
+     "description": "A short follow-up after a long break re-paid a huge accumulated context.",
+     "recommendation": "Start short follow-ups in a fresh session instead of resuming a heavyweight one."},
+]
+
+
+def _thumbnail(thread: ThreadRec, finding: FindingRec) -> dict[str, Any]:
+    """Downsampled context series for an archetype card, with the finding's
+    contributor (when contributor-level) highlighted."""
+    highlight_entry, highlight_end, highlight_tokens = None, None, 0
+    for contributor in thread.contributors:
+        if contributor.event_id is not None and contributor.event_id == finding.event_id:
+            highlight_entry, highlight_end = contributor.entry_call, contributor.end_call
+            highlight_tokens = contributor.est_tokens
+            break
+    n = len(thread.calls)
+    step = max(1, math.ceil(n / THUMBNAIL_POINTS))
+    series = []
+    for i in range(0, n, step):
+        call = thread.calls[i]
+        alive = (highlight_entry is not None and highlight_entry <= i <= highlight_end)
+        series.append({
+            "turn": i,
+            "context_tokens": call.context_tokens,
+            "highlight_tokens": highlight_tokens if alive else 0,
+        })
+    return {"session_id": thread.session_db_id, "series": series}
+
+
+def _corpus_total_usd(conn: sqlite3.Connection, project_id: int | None,
+                      table: dict[str, Any]) -> float:
+    where, params = "", []
+    if project_id is not None:
+        where = "WHERE s.project_id = ?"
+        params.append(project_id)
+    rows = conn.execute(
+        f"""
+        SELECT m.model, SUM(m.base_input_tokens) AS base, SUM(m.cache_5m_tokens) AS c5,
+               SUM(m.cache_1h_tokens) AS c1, SUM(m.cache_read_tokens) AS cr,
+               SUM(m.output_tokens) AS out
+        FROM messages m
+        JOIN events e ON e.id = m.event_id
+        JOIN sessions s ON s.id = e.session_id
+        {where} GROUP BY m.model
+        """,
+        params,
+    ).fetchall()
+    total = 0.0
+    for row in rows:
+        price = match_price(table, row["model"])
+        if price is None:
+            continue
+        total += (
+            (row["base"] or 0) * price.base_input
+            + (row["c5"] or 0) * price.cache_write_5m
+            + (row["c1"] or 0) * price.cache_write_1h
+            + (row["cr"] or 0) * price.cache_read
+            + (row["out"] or 0) * price.output
+        ) / 1_000_000
+    return total
+
+
+def _finding_payload(finding: FindingRec) -> dict[str, Any]:
+    return {
+        "session_id": finding.session_id,
+        "session_title": finding.session_title,
+        "project_name": finding.project_name,
+        "epoch": finding.epoch,
+        "entry_turn": finding.entry_turn,
+        "label": finding.label,
+        "carried_turns": finding.carried_turns,
+        "carried_tokens": finding.carried_tokens,
+        "savings_tokens": finding.savings_tokens,
+        "savings_usd": round(finding.savings_usd, 6),
+        "counterfactual": finding.counterfactual,
+        "event_id": finding.event_id,
+    }
+
+
+def run_detectors(threads: list[ThreadRec]) -> dict[str, tuple[list[FindingRec], list[dict[str, Any]]]]:
+    """All four detectors in claim-priority order over already-taxed threads."""
+    claims = Claims.for_threads(threads)
+    rereads = detect_rereads(threads, claims)
+    oversized, oversized_thresholds = detect_oversized(threads, claims)
+    compaction, compaction_thresholds = detect_late_compaction(threads, claims)
+    stale, stale_thresholds = detect_stale_continuation(threads, claims)
+    return {
+        "rereads": (rereads, []),
+        "oversized": (oversized, oversized_thresholds),
+        "late_compaction": (compaction, compaction_thresholds),
+        "stale_continuation": (stale, stale_thresholds),
+    }
+
+
+def context_economics_analytics(
+    conn: sqlite3.Connection,
+    *,
+    project_id: int | None = None,
+    min_support: int = 3,
+) -> dict[str, Any]:
+    """Corpus-level Context Economics payload (Discover landing view)."""
+    min_support = max(1, int(min_support or 1))
+    table = load_price_table(pricing_path())
+    cost_available = bool(table)
+    threads, skipped = load_threads(conn, project_id=project_id)
+    for thread in threads:
+        accrue_tax(thread, table)
+    results = run_detectors(threads)
+    thread_by_session: dict[tuple[int, str | None], ThreadRec] = {
+        (t.session_db_id, t.agent_id): t for t in threads
+    }
+
+    archetypes = []
+    avoidable = 0.0
+    for spec in ARCHETYPES:
+        findings, thresholds = results[spec["key"]]
+        findings = sorted(findings, key=lambda f: f.savings_usd, reverse=True)
+        meets = len(findings) >= min_support
+        savings_usd = sum(f.savings_usd for f in findings) if meets else 0.0
+        savings_tokens = sum(f.savings_tokens for f in findings) if meets else 0
+        if meets:
+            avoidable += savings_usd
+        exemplar = None
+        if meets and findings:
+            top = findings[0]
+            thread = next(
+                (t for (sid, _aid), t in thread_by_session.items() if sid == top.session_id),
+                None,
+            )
+            if thread is not None:
+                exemplar = _thumbnail(thread, top)
+        archetypes.append({
+            "key": spec["key"],
+            "title": spec["title"],
+            "description": spec["description"],
+            "recommendation": spec["recommendation"],
+            "meets_support": meets,
+            "findings_count": len(findings),
+            "savings_usd": round(savings_usd, 6) if cost_available else 0.0,
+            "savings_tokens": savings_tokens,
+            "thresholds": thresholds,
+            "exemplar": exemplar,
+            "findings": [_finding_payload(f) for f in findings[:FINDINGS_LIMIT]] if meets else [],
+        })
+
+    total_usd = _corpus_total_usd(conn, project_id, table) if cost_available else 0.0
+    avoidable = min(avoidable, total_usd) if cost_available else 0.0
+    unattributed = sum(
+        c.est_tokens for t in threads for c in t.contributors if c.kind == "unattributed"
+    )
+    return {
+        "meta": {
+            "project_id": project_id,
+            "min_support": min_support,
+            "total_usd": round(total_usd, 6),
+            "necessary_usd": round(total_usd - avoidable, 6),
+            "avoidable_usd": round(avoidable, 6),
+            "unattributed_tokens": unattributed,
+            "cost_available": cost_available,
+            "sessions_analyzed": len({t.session_db_id for t in threads}),
+            "sessions_skipped": skipped,
+        },
+        "archetypes": archetypes,
+    }
