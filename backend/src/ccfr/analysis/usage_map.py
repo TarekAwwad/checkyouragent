@@ -680,3 +680,83 @@ def usage_map_analytics(
         },
         "phases": phases,
     }
+
+
+EVIDENCE_SESSIONS_LIMIT = 50
+EVIDENCE_EXEMPLARS = 5
+
+
+def usage_map_evidence(
+    conn: sqlite3.Connection,
+    *,
+    node: str,
+    project_id: int | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> dict[str, Any]:
+    """Receipts for one map node: the rule that put it there, and the sessions
+    that fed it (cost-descending). Raises KeyError for unknown nodes."""
+    kind, _, key = node.partition(":")
+    table = load_price_table(pricing_path())
+    events = load_events(conn, table, project_id=project_id,
+                         date_from=date_from, date_to=date_to)
+
+    sessions: dict[int, dict[str, Any]] = {}
+
+    def entry_for(session_id: int, title: str, project: str) -> dict[str, Any]:
+        return sessions.setdefault(session_id, {
+            "session_id": session_id, "title": title, "project_name": project,
+            "cost_usd": 0.0, "count": 0, "exemplar_event_ids": [], "detail": None,
+        })
+
+    if kind == "phase":
+        spec = next((p for p in PHASES if p["key"] == key), None)
+        if spec is None:
+            raise KeyError(node)
+        label, rule = spec["label"], (
+            f"Assistant turns whose tool calls classify as {spec['label']} "
+            "(cost split equally across each turn's tool calls)."
+        )
+        for event in events:
+            weight = event_phase_weights(event).get(key, 0.0)
+            if weight <= 0:
+                continue
+            entry = entry_for(event.session_db_id, event.session_title,
+                              event.project_name)
+            entry["cost_usd"] += event.cost * weight
+            entry["count"] += 1
+            if len(entry["exemplar_event_ids"]) < EVIDENCE_EXEMPLARS:
+                entry["exemplar_event_ids"].append(event.event_id)
+    elif kind == "habit":
+        spec = HABIT_BY_KEY.get(key)
+        if spec is None:
+            raise KeyError(node)
+        label, rule = spec["label"], spec["rule"]
+        findings = [
+            f for f in run_habit_detectors(
+                conn, table, events, project_id=project_id,
+                date_from=date_from, date_to=date_to,
+            )
+            if f.habit_key == key
+        ]
+        for finding in findings:
+            entry = entry_for(finding.session_db_id, finding.session_title,
+                              finding.project_name)
+            entry["cost_usd"] += finding.cost_usd
+            entry["count"] += finding.count
+            merged = entry["exemplar_event_ids"] + list(finding.exemplar_event_ids)
+            entry["exemplar_event_ids"] = list(dict.fromkeys(merged))[:EVIDENCE_EXEMPLARS]
+            entry["detail"] = finding.detail
+    else:
+        raise KeyError(node)
+
+    rows = sorted(sessions.values(), key=lambda s: s["cost_usd"], reverse=True)
+    for entry in rows:
+        entry["cost_usd"] = round(entry["cost_usd"], 6)
+    return {
+        "node": node,
+        "label": label,
+        "rule": rule,
+        "cost_usd": round(sum(e["cost_usd"] for e in rows), 6),
+        "sessions": rows[:EVIDENCE_SESSIONS_LIMIT],
+    }

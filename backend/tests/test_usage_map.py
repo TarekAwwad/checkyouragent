@@ -26,6 +26,7 @@ from ccfr.analysis.usage_map import (
     load_events,
     run_habit_detectors,
     usage_map_analytics,
+    usage_map_evidence,
 )
 from ccfr.storage import init_db
 
@@ -744,3 +745,55 @@ def test_usage_map_analytics_empty_corpus(tmp_path, monkeypatch) -> None:
     assert payload["meta"]["sessions_analyzed"] == 0
     assert payload["meta"]["total_usd"] == 0.0
     assert all(p["share"] == 0.0 for p in payload["phases"])
+
+
+# ---------------------------------------------------------------------------
+# Evidence drill-down
+# ---------------------------------------------------------------------------
+
+def test_phase_evidence_lists_sessions_by_cost(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(usage_map, "pricing_path", lambda: _pricing_csv(tmp_path))
+    conn = _conn()
+    _seed_base(conn)
+    _add_assistant_event(conn, 1, 1, "2026-06-01T10:00:00Z",
+                         [("Read", {"file_path": "a.py"}, False)])
+    _add_assistant_event(conn, 2, 2, "2026-06-01T10:00:00Z",
+                         [("Read", {"file_path": "b.py"}, False)])
+    _add_assistant_event(conn, 3, 2, "2026-06-01T10:01:00Z",
+                         [("Read", {"file_path": "c.py"}, False)])
+
+    payload = usage_map_evidence(conn, node="phase:explore")
+
+    assert payload["node"] == "phase:explore"
+    assert payload["label"] == "Explore"
+    assert payload["rule"]
+    assert payload["cost_usd"] == pytest.approx(6.0)
+    assert [s["session_id"] for s in payload["sessions"]] == [2, 1]  # cost desc
+    assert payload["sessions"][0]["cost_usd"] == pytest.approx(4.0)
+    assert payload["sessions"][0]["exemplar_event_ids"] == [2, 3]
+
+
+def test_habit_evidence_returns_rule_and_sessions(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(usage_map, "pricing_path", lambda: _pricing_csv(tmp_path))
+    conn = _conn()
+    _seed_base(conn)
+    _add_assistant_event(conn, 1, 1, "2026-06-01T10:00:00Z",
+                         [("Task", {"prompt": "go"}, False)])
+    payload = usage_map_evidence(conn, node="habit:delegation")
+    assert payload["label"] == "Subagent delegation"
+    assert "dispatch" in payload["rule"].lower()
+    assert len(payload["sessions"]) == 1
+    assert payload["sessions"][0]["session_id"] == 1
+    assert payload["sessions"][0]["detail"]
+
+
+def test_evidence_unknown_node_raises_key_error(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(usage_map, "pricing_path", lambda: _pricing_csv(tmp_path))
+    conn = _conn()
+    _seed_base(conn)
+    with pytest.raises(KeyError):
+        usage_map_evidence(conn, node="phase:nonsense")
+    with pytest.raises(KeyError):
+        usage_map_evidence(conn, node="habit:nonsense")
+    with pytest.raises(KeyError):
+        usage_map_evidence(conn, node="garbage")
