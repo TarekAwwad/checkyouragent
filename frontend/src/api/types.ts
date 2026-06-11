@@ -431,3 +431,116 @@ export interface CostAnalyticsFilters {
   projectId?: number | null;
   model?: string | null;
 }
+
+export interface ContextThreshold {
+  name: string;
+  value: number;
+  provenance: string;
+}
+
+export interface ContextCounterfactual {
+  model: string;
+  params: Record<string, number>;
+}
+
+export interface ContextFinding {
+  archetype: string;
+  session_id: number;
+  session_title: string | null;
+  project_name: string | null;
+  epoch: number;
+  entry_turn: number;
+  label: string;
+  carried_turns: number;
+  carried_tokens: number;
+  savings_tokens: number;
+  savings_usd: number;
+  counterfactual: ContextCounterfactual;
+  event_id: number | null;
+}
+
+export interface ContextThumbnailPoint {
+  turn: number;
+  context_tokens: number;
+  highlight_tokens: number;
+}
+
+export interface ContextExemplar {
+  session_id: number;
+  series: ContextThumbnailPoint[];
+}
+
+export interface ContextArchetype {
+  key: string;
+  title: string;
+  description: string;
+  recommendation: string;
+  meets_support: boolean;
+  findings_count: number;
+  savings_usd: number;
+  savings_tokens: number;
+  thresholds: ContextThreshold[];
+  exemplar: ContextExemplar | null;
+  findings: ContextFinding[];
+}
+
+export interface ContextTrendBucket {
+  week_start: string;
+  total_usd: number;
+  avoidable_usd: number;
+}
+
+export interface ContextEconomicsMeta {
+  project_id: number | null;
+  min_support: number;
+  total_usd: number;
+  necessary_usd: number;
+  avoidable_usd: number;
+  unattributed_tokens: number;
+  cost_available: boolean;
+  sessions_analyzed: number;
+  sessions_skipped: number;
+  trend: ContextTrendBucket[];
+}
+
+export interface ContextEconomicsResponse {
+  meta: ContextEconomicsMeta;
+  archetypes: ContextArchetype[];
+}
+
+export interface ContextCall {
+  turn: number;
+  ts: string | null;
+  context_tokens: number;
+  model: string | null;
+}
+
+export interface ContextEpoch {
+  start_turn: number;
+  end_turn: number;
+  ended_by: string;
+}
+
+export interface ContextContributor {
+  id: string;
+  kind: string;
+  label: string;
+  entry_turn: number;
+  end_turn: number;
+  est_tokens: number;
+  accrued_usd: number;
+  event_id: number | null;
+}
+
+export interface ContextThread {
+  agent_id: string | null;
+  calls: ContextCall[];
+  epochs: ContextEpoch[];
+  contributors: ContextContributor[];
+  findings: ContextFinding[];
+}
+
+export interface SessionContextEconomicsResponse {
+  threads: ContextThread[];
+  cost_available: boolean;
+}

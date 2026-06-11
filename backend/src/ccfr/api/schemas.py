@@ -423,6 +423,119 @@ class DiscoveryResponse(BaseModel):
     sections: dict[str, DiscoverySection] = Field(default_factory=dict)
 
 
+class ContextThreshold(BaseModel):
+    name: str
+    value: float = 0
+    provenance: str = ""
+
+
+class ContextCounterfactual(BaseModel):
+    model: str = ""
+    params: dict[str, float] = Field(default_factory=dict)
+
+
+class ContextFinding(BaseModel):
+    archetype: str = ""
+    session_id: int
+    session_title: str | None = None
+    project_name: str | None = None
+    epoch: int = 0
+    entry_turn: int = 0
+    label: str
+    carried_turns: int = 0
+    carried_tokens: int = 0
+    savings_tokens: int = 0
+    savings_usd: float = 0
+    counterfactual: ContextCounterfactual = Field(default_factory=ContextCounterfactual)
+    event_id: int | None = None
+
+
+class ContextThumbnailPoint(BaseModel):
+    turn: int
+    context_tokens: int = 0
+    highlight_tokens: int = 0
+
+
+class ContextExemplar(BaseModel):
+    session_id: int
+    series: list[ContextThumbnailPoint] = Field(default_factory=list)
+
+
+class ContextArchetype(BaseModel):
+    key: str
+    title: str
+    description: str = ""
+    recommendation: str = ""
+    meets_support: bool = False
+    findings_count: int = 0
+    savings_usd: float = 0
+    savings_tokens: int = 0
+    thresholds: list[ContextThreshold] = Field(default_factory=list)
+    exemplar: ContextExemplar | None = None
+    findings: list[ContextFinding] = Field(default_factory=list)
+
+
+class ContextTrendBucket(BaseModel):
+    week_start: str
+    total_usd: float = 0
+    avoidable_usd: float = 0
+
+
+class ContextEconomicsMeta(BaseModel):
+    project_id: int | None = None
+    min_support: int = 3
+    total_usd: float = 0
+    necessary_usd: float = 0
+    avoidable_usd: float = 0
+    unattributed_tokens: int = 0
+    cost_available: bool = False
+    sessions_analyzed: int = 0
+    sessions_skipped: int = 0
+    trend: list[ContextTrendBucket] = Field(default_factory=list)
+
+
+class ContextEconomicsResponse(BaseModel):
+    meta: ContextEconomicsMeta = Field(default_factory=ContextEconomicsMeta)
+    archetypes: list[ContextArchetype] = Field(default_factory=list)
+
+
+class ContextCall(BaseModel):
+    turn: int
+    ts: str | None = None
+    context_tokens: int = 0
+    model: str | None = None
+
+
+class ContextEpoch(BaseModel):
+    start_turn: int
+    end_turn: int
+    ended_by: str = "end"
+
+
+class ContextContributor(BaseModel):
+    id: str
+    kind: str
+    label: str
+    entry_turn: int = 0
+    end_turn: int = 0
+    est_tokens: int = 0
+    accrued_usd: float = 0
+    event_id: int | None = None
+
+
+class ContextThreadResponse(BaseModel):
+    agent_id: str | None = None
+    calls: list[ContextCall] = Field(default_factory=list)
+    epochs: list[ContextEpoch] = Field(default_factory=list)
+    contributors: list[ContextContributor] = Field(default_factory=list)
+    findings: list[ContextFinding] = Field(default_factory=list)
+
+
+class SessionContextEconomicsResponse(BaseModel):
+    threads: list[ContextThreadResponse] = Field(default_factory=list)
+    cost_available: bool = False
+
+
 class AvailableProject(BaseModel):
     id: int
     name: str

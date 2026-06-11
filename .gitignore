@@ -27,3 +27,5 @@ AGENT.md
 CLAUDE.md
 docs/superpowers/*
 .DS_Store
+docs/PROJECT_STATE.md
+docker-compose-local.yml
