@@ -14,6 +14,8 @@ from ccfr.analysis.usage_map import (
     aggregate_phases,
     classify_tool_call,
     detect_blind_retry,
+    detect_delegation,
+    detect_plan_before_burst,
     detect_tdd_loop,
     event_phase_weights,
     load_events,
@@ -443,3 +445,52 @@ def test_tdd_loop_refail_then_edit_counts_one_cycle() -> None:
     assert len(findings) == 1
     assert findings[0].count == 1
     assert findings[0].exemplar_event_ids == (3,)  # the failure that got fixed
+
+
+# ---------------------------------------------------------------------------
+# Detectors: delegation, plan-before-burst
+# ---------------------------------------------------------------------------
+
+def test_delegation_counts_dispatches() -> None:
+    events = [
+        _flat_event(1, "Task", {"prompt": "explore the codebase"}, False),
+        _flat_event(2, "Read", {"file_path": "a.py"}, False),
+        _flat_event(3, "Agent", {"prompt": "review the diff"}, False),
+    ]
+    findings = detect_delegation(events)
+    assert len(findings) == 1
+    finding = findings[0]
+    assert (finding.habit_key, finding.phase) == ("delegation", "delegate")
+    assert finding.count == 2
+    assert finding.cost_usd == pytest.approx(4.0)  # the two dispatch turns
+    assert finding.exemplar_event_ids == (1, 3)
+
+
+def test_delegation_absent_without_dispatches() -> None:
+    assert detect_delegation([_flat_event(1, "Read", {"file_path": "a.py"}, False)]) == []
+
+
+def test_plan_before_burst_flags_planned_edit_run() -> None:
+    events = [_flat_event(1, "TodoWrite", {"todos": "..."}, False)]
+    events += [_flat_event(i, "Edit", {"file_path": f"f{i}.py"}, False)
+               for i in range(2, 8)]  # 6 edits after the plan step
+    findings = detect_plan_before_burst(events)
+    assert len(findings) == 1
+    finding = findings[0]
+    assert (finding.habit_key, finding.phase) == ("plan-before-burst", "plan")
+    assert finding.count == 6
+    # plan turn ($2) + six edit turns ($12)
+    assert finding.cost_usd == pytest.approx(14.0)
+    assert finding.exemplar_event_ids == (1,)
+
+
+def test_plan_before_burst_needs_enough_edits() -> None:
+    events = [_flat_event(1, "TodoWrite", {"todos": "..."}, False),
+              _flat_event(2, "Edit", {"file_path": "a.py"}, False)]
+    assert detect_plan_before_burst(events) == []
+
+
+def test_plan_before_burst_needs_a_plan_step() -> None:
+    events = [_flat_event(i, "Edit", {"file_path": f"f{i}.py"}, False)
+              for i in range(1, 8)]
+    assert detect_plan_before_burst(events) == []

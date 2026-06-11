@@ -407,3 +407,56 @@ def detect_tdd_loop(session_events: list[EventRec]) -> list[HabitFinding]:
         exemplar_event_ids=tuple(exemplars[:5]),
         detail=f"{cycles} fail-edit-pass cycle{'s' if cycles != 1 else ''}",
     )]
+
+
+def detect_delegation(session_events: list[EventRec]) -> list[HabitFinding]:
+    """Work dispatched to subagents. Cost counts the dispatching turns only —
+    the delegated work itself appears in its own phases (its events carry the
+    subagent's agent_id and classify normally)."""
+    if not session_events:
+        return []
+    head = session_events[0]
+    dispatches = [c for c in _flatten(session_events) if c.phase == "delegate"]
+    if not dispatches:
+        return []
+    return [HabitFinding(
+        habit_key="delegation",
+        phase="delegate",
+        session_db_id=head.session_db_id,
+        session_title=head.session_title,
+        project_name=head.project_name,
+        cost_usd=sum(c.cost_share for c in dispatches),
+        count=len(dispatches),
+        exemplar_event_ids=tuple(c.event_id for c in dispatches[:5]),
+        detail=(f"{len(dispatches)} subagent "
+                f"dispatch{'es' if len(dispatches) != 1 else ''}"),
+    )]
+
+
+def detect_plan_before_burst(session_events: list[EventRec]) -> list[HabitFinding]:
+    """A planning step (TodoWrite / plan mode) precedes a run of at least
+    PLAN_BURST_MIN edit calls. Cost counts the planning turns plus the planned
+    edit burst — the size of the behavior, not a counterfactual saving."""
+    if not session_events:
+        return []
+    head = session_events[0]
+    calls = _flatten(session_events)
+    first_plan = next((i for i, c in enumerate(calls) if c.phase == "plan"), None)
+    if first_plan is None:
+        return []
+    implements = [c for c in calls[first_plan + 1:] if c.phase == "implement"]
+    if len(implements) < PLAN_BURST_MIN:
+        return []
+    plan_calls = [c for c in calls if c.phase == "plan"]
+    return [HabitFinding(
+        habit_key="plan-before-burst",
+        phase="plan",
+        session_db_id=head.session_db_id,
+        session_title=head.session_title,
+        project_name=head.project_name,
+        cost_usd=(sum(c.cost_share for c in plan_calls)
+                  + sum(c.cost_share for c in implements)),
+        count=len(implements),
+        exemplar_event_ids=(calls[first_plan].event_id,),
+        detail=f"planning preceded {len(implements)} edit calls",
+    )]
