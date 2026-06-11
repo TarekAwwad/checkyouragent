@@ -633,3 +633,54 @@ def test_detect_late_compaction_skips_fully_claimed_tail_calls() -> None:
     findings, _ = detect_late_compaction([thread], claims)
     assert 5 not in claims.calls[0]
     assert claims.calls[0] == set(range(3, 12)) - {5}
+
+
+# ---------------------------------------------------------------------------
+# Detector 4: stale session continuation
+# ---------------------------------------------------------------------------
+
+from ccfr.analysis.context_economics import detect_stale_continuation
+
+
+def _gapped_thread() -> ThreadRec:
+    # 8 calls 1 minute apart with a large context, then a 2-hour gap before
+    # 2 short follow-up calls that still pay the full context.
+    calls = []
+    for i in range(8):
+        calls.append(CallRec(event_id=i + 1, ts=_ts(i + 1), model="claude-sonnet-4-6",
+                             context_tokens=20_000 + i * 20_000, output_tokens=0))
+    for j, minute in enumerate([130, 131]):
+        calls.append(CallRec(event_id=9 + j, ts=_ts(minute), model="claude-sonnet-4-6",
+                             context_tokens=161_000 + j * 1_000, output_tokens=0))
+    thread = _thread(calls)
+    accrue_tax(thread, PRICE_TABLE)
+    return thread
+
+
+def test_detect_stale_continuation_flags_gap_resume() -> None:
+    threads = [_gapped_thread()]
+    # Pad the corpus with gapless threads so the p90 gap threshold is small.
+    for n in range(9):
+        threads.append(_priced_thread(
+            [_call(1, 50_000), _call(2, 52_000), _call(3, 54_000)]
+        ))
+    claims = Claims.for_threads(threads)
+    findings, thresholds = detect_stale_continuation(threads, claims)
+
+    assert len(findings) == 1
+    finding = findings[0]
+    assert finding.archetype == "stale_continuation"
+    assert finding.entry_turn == 8
+    baseline = 20_000  # fresh-session baseline = first call's context
+    expected = ((161_000 - baseline) + (162_000 - baseline)) / 1e6
+    assert finding.savings_usd == pytest.approx(expected, rel=1e-6)
+    assert claims.calls[0] == {8, 9}
+    assert any(t["name"] == "gap_seconds" for t in thresholds)
+
+
+def test_detect_stale_continuation_skips_calls_claimed_by_compaction() -> None:
+    threads = [_gapped_thread()]
+    claims = Claims.for_threads(threads)
+    claims.calls[0].update({8, 9})
+    findings, _ = detect_stale_continuation(threads, claims)
+    assert findings == []

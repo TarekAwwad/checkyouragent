@@ -652,3 +652,92 @@ def detect_late_compaction(
                 event_id=thread.calls[eligible].event_id,
             ))
     return findings, thresholds
+
+
+# ---------------------------------------------------------------------------
+# Detector 4: stale session continuation
+# ---------------------------------------------------------------------------
+
+def _gap_seconds(a: str | None, b: str | None) -> float:
+    if not a or not b:
+        return 0.0
+    try:
+        start = datetime.fromisoformat(a.replace("Z", "+00:00"))
+        end = datetime.fromisoformat(b.replace("Z", "+00:00"))
+    except ValueError:
+        return 0.0
+    return max(0.0, (end - start).total_seconds())
+
+
+def detect_stale_continuation(
+    threads: list[ThreadRec], claims: Claims,
+) -> tuple[list[FindingRec], list[dict[str, Any]]]:
+    """A short follow-up burst after a long idle gap re-pays a huge context.
+
+    Counterfactual: the follow-up runs in a fresh session whose context is the
+    thread's first-call baseline; savings = residual context above baseline for
+    each follow-up call. Calls already claimed by late-compaction are skipped.
+    """
+    all_gaps = [
+        _gap_seconds(thread.calls[i - 1].ts, thread.calls[i].ts)
+        for thread in threads for i in range(1, len(thread.calls))
+    ]
+    all_contexts = [float(c.context_tokens) for t in threads for c in t.calls]
+    gap_threshold = max(_percentile(all_gaps, STALE_GAP_PERCENTILE),
+                        float(STALE_GAP_FLOOR_SECONDS))
+    context_threshold = _percentile(all_contexts, STALE_CONTEXT_PERCENTILE)
+    thresholds = [
+        {"name": "gap_seconds", "value": gap_threshold,
+         "provenance": f"p90 of {len(all_gaps)} call gaps, floor "
+                       f"{STALE_GAP_FLOOR_SECONDS // 60} min"},
+        {"name": "context_tokens", "value": context_threshold,
+         "provenance": f"p75 of {len(all_contexts)} call context sizes"},
+    ]
+    findings: list[FindingRec] = []
+    for thread_index, thread in enumerate(threads):
+        n = len(thread.calls)
+        claimed_tokens = claims.tokens_by_call[thread_index]
+        for i in range(1, n):
+            tail = n - i
+            if tail > max(1, int(n * STALE_MAX_TAIL_FRACTION)):
+                continue
+            if _gap_seconds(thread.calls[i - 1].ts, thread.calls[i].ts) < gap_threshold:
+                continue
+            if thread.calls[i - 1].context_tokens < context_threshold:
+                continue
+            tail_calls = [k for k in range(i, n) if k not in claims.calls[thread_index]]
+            if not tail_calls:
+                continue
+            baseline = thread.calls[0].context_tokens
+            savings_usd = 0.0
+            savings_tokens = 0
+            for k in tail_calls:
+                residual = thread.calls[k].context_tokens - claimed_tokens[k] - baseline
+                if residual > 0:
+                    savings_usd += residual * thread.read_prices[k]
+                    savings_tokens += int(residual)
+            if savings_usd < MIN_FINDING_USD:
+                continue
+            claims.calls[thread_index].update(tail_calls)
+            gap_minutes = int(_gap_seconds(thread.calls[i - 1].ts, thread.calls[i].ts) // 60)
+            findings.append(FindingRec(
+                archetype="stale_continuation",
+                session_id=thread.session_db_id,
+                session_title=thread.session_title,
+                project_name=thread.project_name,
+                epoch=next((e for e, ep in enumerate(thread.epochs) if ep.start <= i <= ep.end), 0),
+                entry_turn=i,
+                label=(f"Resumed a {thread.calls[i - 1].context_tokens // 1000}k-token "
+                       f"context after {gap_minutes} min for {tail} short turns"),
+                carried_turns=tail,
+                carried_tokens=savings_tokens,
+                savings_tokens=savings_tokens,
+                savings_usd=savings_usd,
+                counterfactual={
+                    "model": "run the follow-up in a fresh session at the thread's baseline context",
+                    "params": {"baseline_tokens": baseline, "gap_minutes": gap_minutes},
+                },
+                event_id=thread.calls[i].event_id,
+            ))
+            break  # one stale-continuation finding per thread
+    return findings, thresholds
