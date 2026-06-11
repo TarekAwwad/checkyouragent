@@ -409,3 +409,84 @@ def _raw_item(row: sqlite3.Row) -> RawItem:
     label = "Attachment" if kind == "attachment" else "User message"
     return RawItem(kind=kind, label=label, raw_chars=row["raw_len"] or 0,
                    event_id=row["event_id"])
+
+
+# ---------------------------------------------------------------------------
+# Claims bookkeeping (disjoint findings ledger)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class Claims:
+    """Disjointness bookkeeping: a token-carry belongs to at most one finding.
+
+    contributors: (thread_index, contributor_index) pairs fully/partially claimed.
+    tokens_by_call: per thread, tokens-per-call already claimed by contributor-level
+        findings; context-level detectors (compaction, stale) subtract these.
+    calls: per thread, call indexes claimed by a context-level finding.
+    """
+
+    contributors: set[tuple[int, int]] = field(default_factory=set)
+    tokens_by_call: dict[int, list[int]] = field(default_factory=dict)
+    calls: dict[int, set[int]] = field(default_factory=dict)
+
+    @classmethod
+    def for_threads(cls, threads: list[ThreadRec]) -> "Claims":
+        claims = cls()
+        for index, thread in enumerate(threads):
+            claims.tokens_by_call[index] = [0] * len(thread.calls)
+            claims.calls[index] = set()
+        return claims
+
+    def claim_contributor(self, thread_index: int, contributor_index: int,
+                          contributor: ContributorRec, tokens: int) -> None:
+        self.contributors.add((thread_index, contributor_index))
+        per_call = self.tokens_by_call[thread_index]
+        for i in range(contributor.entry_call, contributor.end_call + 1):
+            per_call[i] += tokens
+
+
+# ---------------------------------------------------------------------------
+# Detector 1: redundant re-reads
+# ---------------------------------------------------------------------------
+
+def detect_rereads(threads: list[ThreadRec], claims: Claims) -> list[FindingRec]:
+    """Same file Read twice in one epoch: every copy after the first is waste."""
+    findings: list[FindingRec] = []
+    for thread_index, thread in enumerate(threads):
+        groups: dict[tuple[int, str], list[int]] = defaultdict(list)
+        for contributor_index, contributor in enumerate(thread.contributors):
+            if (contributor.kind == "tool_result" and contributor.tool_name == "Read"
+                    and contributor.detail):
+                groups[(contributor.epoch, contributor.detail)].append(contributor_index)
+        for (epoch, path), indexes in groups.items():
+            if len(indexes) < 2:
+                continue
+            indexes.sort(key=lambda i: thread.contributors[i].entry_call)
+            duplicates = [thread.contributors[i] for i in indexes[1:]]
+            savings_tokens = sum(d.est_tokens for d in duplicates)
+            savings_usd = sum(d.accrued_usd for d in duplicates)
+            if savings_usd < MIN_FINDING_USD:
+                continue
+            for i in indexes[1:]:
+                claims.claim_contributor(thread_index, i, thread.contributors[i],
+                                         thread.contributors[i].est_tokens)
+            first = thread.contributors[indexes[0]]
+            findings.append(FindingRec(
+                archetype="rereads",
+                session_id=thread.session_db_id,
+                session_title=thread.session_title,
+                project_name=thread.project_name,
+                epoch=epoch,
+                entry_turn=duplicates[0].entry_call,
+                label=f"{path} read {len(indexes)}× in one epoch",
+                carried_turns=max(d.end_call - d.entry_call for d in duplicates),
+                carried_tokens=savings_tokens,
+                savings_tokens=savings_tokens,
+                savings_usd=savings_usd,
+                counterfactual={
+                    "model": "drop duplicate copies; only the first read is kept",
+                    "params": {"copies": len(indexes), "first_entry_turn": first.entry_call},
+                },
+                event_id=duplicates[0].event_id,
+            ))
+    return findings

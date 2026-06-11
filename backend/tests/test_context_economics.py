@@ -405,3 +405,54 @@ def test_load_threads_separates_sidechain_from_main(conn: sqlite3.Connection) ->
     assert set(by_agent) == {None, "sub-1"}
     assert [c.context_tokens for c in by_agent[None].calls] == [10_000, 14_000]
     assert [c.context_tokens for c in by_agent["sub-1"].calls] == [8_000, 9_000]
+
+
+# ---------------------------------------------------------------------------
+# Claims bookkeeping + redundant re-read detector
+# ---------------------------------------------------------------------------
+
+from ccfr.analysis.context_economics import Claims, detect_rereads
+
+
+def _priced_thread(calls, items=None) -> ThreadRec:
+    thread = _thread(calls, items)
+    accrue_tax(thread, PRICE_TABLE)
+    return thread
+
+
+def test_detect_rereads_flags_duplicate_reads_of_same_path() -> None:
+    calls = [_call(1, 10_000), _call(2, 20_000), _call(3, 30_000), _call(4, 30_500)]
+    items = {
+        1: [RawItem(kind="tool_result", label="Read result: src/a.py", raw_chars=40_000,
+                    event_id=11, tool_name="Read", detail="src/a.py")],
+        2: [RawItem(kind="tool_result", label="Read result: src/a.py", raw_chars=40_000,
+                    event_id=12, tool_name="Read", detail="src/a.py")],
+    }
+    thread = _priced_thread(calls, items)
+    claims = Claims.for_threads([thread])
+    findings = detect_rereads([thread], claims)
+
+    assert len(findings) == 1
+    finding = findings[0]
+    assert finding.archetype == "rereads"
+    assert "src/a.py" in finding.label and "2×" in finding.label
+    duplicate = next(c for c in thread.contributors if c.entry_call == 2 and c.kind == "tool_result")
+    # The duplicate (second) copy is fully avoidable: its whole accrued tax.
+    assert finding.savings_tokens == duplicate.est_tokens
+    assert finding.savings_usd == pytest.approx(duplicate.accrued_usd)
+    # Claimed: the duplicate contributor and its token-carry per call.
+    assert (0, thread.contributors.index(duplicate)) in claims.contributors
+    assert claims.tokens_by_call[0][3] == duplicate.est_tokens
+
+
+def test_detect_rereads_ignores_reads_in_different_epochs() -> None:
+    calls = [_call(1, 100_000), _call(2, 120_000), _call(3, 30_000), _call(4, 40_000)]
+    items = {
+        1: [RawItem(kind="tool_result", label="Read result: a.py", raw_chars=40_000,
+                    tool_name="Read", detail="a.py")],
+        3: [RawItem(kind="tool_result", label="Read result: a.py", raw_chars=40_000,
+                    tool_name="Read", detail="a.py")],
+    }
+    thread = _priced_thread(calls, items)
+    findings = detect_rereads([thread], Claims.for_threads([thread]))
+    assert findings == []
