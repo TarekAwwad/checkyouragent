@@ -269,3 +269,137 @@ def _carry_usd(thread: ThreadRec, tokens: int, entry_call: int, end_call: int) -
     want the marginal forward cost that compaction/capping could have avoided.
     """
     return tokens * sum(thread.read_prices[entry_call + 1: end_call + 1])
+
+
+_SYNTHETIC_MODELS = {"<synthetic>"}
+
+
+def _order_key(row: sqlite3.Row) -> tuple[str, int]:
+    return (row["timestamp"] or "", row["event_id"])
+
+
+def load_threads(
+    conn: sqlite3.Connection,
+    *,
+    project_id: int | None = None,
+    session_db_id: int | None = None,
+) -> tuple[list[ThreadRec], int]:
+    """Build calibrated, taxed-later threads for every qualifying session.
+
+    Returns (threads, sessions_skipped) where skipped sessions had no
+    assistant call with usable usage (e.g. synthetic-only models).
+    """
+    where = ["1=1"]
+    params: list[Any] = []
+    if project_id is not None:
+        where.append("s.project_id = ?")
+        params.append(project_id)
+    if session_db_id is not None:
+        where.append("s.id = ?")
+        params.append(session_db_id)
+    sessions = conn.execute(
+        f"""
+        SELECT s.id, s.title, p.export_name, p.inferred_cwd
+        FROM sessions s JOIN projects p ON p.id = s.project_id
+        WHERE {' AND '.join(where)} ORDER BY s.id
+        """,
+        params,
+    ).fetchall()
+
+    threads: list[ThreadRec] = []
+    skipped = 0
+    for session in sessions:
+        calls_by_agent: dict[str | None, list[CallRec]] = defaultdict(list)
+        call_rows = conn.execute(
+            """
+            SELECT e.id AS event_id, e.agent_id, e.timestamp, m.model, m.output_tokens,
+                   m.base_input_tokens + m.cache_5m_tokens + m.cache_1h_tokens
+                     + m.cache_read_tokens AS context_tokens
+            FROM events e JOIN messages m ON m.event_id = e.id
+            WHERE e.session_id = ? AND m.role = 'assistant'
+            ORDER BY e.timestamp, e.id
+            """,
+            (session["id"],),
+        ).fetchall()
+        call_keys_by_agent: dict[str | None, list[tuple[str, int]]] = defaultdict(list)
+        for row in call_rows:
+            model = row["model"] or ""
+            if row["context_tokens"] <= 0 or not model or model in _SYNTHETIC_MODELS:
+                continue
+            calls_by_agent[row["agent_id"]].append(CallRec(
+                event_id=row["event_id"],
+                ts=row["timestamp"],
+                model=model,
+                context_tokens=row["context_tokens"],
+                output_tokens=row["output_tokens"] or 0,
+            ))
+            call_keys_by_agent[row["agent_id"]].append(_order_key(row))
+        if not calls_by_agent:
+            skipped += 1
+            continue
+
+        item_rows = conn.execute(
+            """
+            SELECT e.id AS event_id, e.agent_id, e.timestamp, e.type,
+                   length(e.raw_json) AS raw_len,
+                   tr.id AS tool_result_id, po.size_bytes,
+                   tc.tool_name, tc.raw_json AS call_json
+            FROM events e
+            LEFT JOIN tool_results tr ON tr.event_id = e.id
+            LEFT JOIN persisted_outputs po ON po.id = tr.persisted_output_id
+            LEFT JOIN tool_calls tc
+                ON tc.session_id = e.session_id AND tc.tool_use_id = tr.tool_use_id
+            WHERE e.session_id = ? AND e.type IN ('user', 'attachment')
+            ORDER BY e.timestamp, e.id
+            """,
+            (session["id"],),
+        ).fetchall()
+
+        title = session["title"] or "Untitled session"
+        name = project_display_name(session["export_name"], session["inferred_cwd"])
+        for agent_id, calls in calls_by_agent.items():
+            call_keys = call_keys_by_agent[agent_id]
+            items_by_gap: dict[int, list[RawItem]] = defaultdict(list)
+            for row in item_rows:
+                if row["agent_id"] != agent_id:
+                    continue
+                key = _order_key(row)
+                gap = None
+                for index, call_key in enumerate(call_keys):
+                    if key <= call_key:
+                        gap = index
+                        break
+                if gap is None or gap == 0:
+                    continue  # before the first call there is no delta to explain
+                items_by_gap[gap].append(_raw_item(row))
+            epochs = split_epochs([c.context_tokens for c in calls])
+            contributors = calibrate_contributors(calls, epochs, items_by_gap)
+            threads.append(ThreadRec(
+                session_db_id=session["id"],
+                session_title=title,
+                project_name=name,
+                agent_id=agent_id,
+                calls=calls,
+                epochs=epochs,
+                contributors=contributors,
+            ))
+    return threads, skipped
+
+
+def _raw_item(row: sqlite3.Row) -> RawItem:
+    if row["tool_result_id"] is not None:
+        tool_name = row["tool_name"] or "Tool"
+        detail = None
+        if row["call_json"]:
+            try:
+                detail = json.loads(row["call_json"]).get("input", {}).get("file_path")
+            except (json.JSONDecodeError, AttributeError):
+                detail = None
+        label = f"{tool_name} result" + (f": {detail}" if detail else "")
+        chars = row["size_bytes"] if row["size_bytes"] else row["raw_len"]
+        return RawItem(kind="tool_result", label=label, raw_chars=chars or 0,
+                       event_id=row["event_id"], tool_name=tool_name, detail=detail)
+    kind = "attachment" if row["type"] == "attachment" else "user"
+    label = "Attachment" if kind == "attachment" else "User message"
+    return RawItem(kind=kind, label=label, raw_chars=row["raw_len"] or 0,
+                   event_id=row["event_id"])

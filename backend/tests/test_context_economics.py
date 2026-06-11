@@ -219,3 +219,161 @@ def test_carry_usd_is_reads_only_over_the_span() -> None:
     assert _carry_usd(thread, 1_000, 0, 2) == pytest.approx(2_000 / 1e6)
     # A single-call span has no reads after entry: $0.
     assert _carry_usd(thread, 1_000, 2, 2) == 0.0
+
+
+# ---------------------------------------------------------------------------
+# load_threads — DB integration
+# ---------------------------------------------------------------------------
+
+import json
+
+from ccfr.analysis import context_economics
+from ccfr.analysis.context_economics import load_threads
+from ccfr.storage import init_db
+
+
+def _ts(minute: int, second: int = 0) -> str:
+    return f"2026-01-01T{minute // 60:02d}:{minute % 60:02d}:{second:02d}Z"
+
+
+@pytest.fixture()
+def conn() -> sqlite3.Connection:
+    connection = sqlite3.connect(":memory:", check_same_thread=False)
+    connection.row_factory = sqlite3.Row
+    init_db(connection)
+    connection.execute(
+        "INSERT INTO imports(source_path, imported_at, file_count, status, error_count)"
+        " VALUES ('fixture', '2026-01-01T00:00:00Z', 0, 'completed', 0)"
+    )
+    connection.execute(
+        "INSERT INTO projects(import_id, export_name, inferred_cwd) VALUES (1, 'alpha', NULL)"
+    )
+    return connection
+
+
+def add_session(
+    conn: sqlite3.Connection,
+    *,
+    project_id: int = 1,
+    uuid: str,
+    title: str = "Fixture session",
+    calls: list[dict],
+    gap_items: dict[int, list[dict]] | None = None,
+) -> int:
+    """Insert a session whose assistant calls and gap events drive the loader.
+
+    calls: [{"context": int, "output": int, "model": str, "minute": int}]
+    gap_items: gap index -> [{"kind": "tool_result"|"user"|"attachment",
+                              "chars": int, "tool_name": str|None,
+                              "path": str|None, "persisted_bytes": int|None}]
+    Gap g events are timestamped between call g-1 and call g.
+    """
+    session_id = int(conn.execute(
+        "INSERT INTO sessions(project_id, session_id, title, first_ts, last_ts)"
+        " VALUES (?, ?, ?, ?, ?)",
+        (project_id, uuid, title, _ts(calls[0]["minute"]), _ts(calls[-1]["minute"])),
+    ).lastrowid)
+    line = 0
+    call_event_ids: list[int] = []
+    for index, call in enumerate(calls):
+        for item in (gap_items or {}).get(index, []):
+            line += 1
+            # Gap events sit 30s before their call.
+            event_id = int(conn.execute(
+                "INSERT INTO events(session_id, source_path, line_no, type, timestamp, raw_json)"
+                " VALUES (?, 'fixture.jsonl', ?, ?, ?, ?)",
+                (session_id, line, "attachment" if item["kind"] == "attachment" else "user",
+                 _ts(call["minute"] - 1, 30), "x" * item["chars"]),
+            ).lastrowid)
+            if item["kind"] == "tool_result":
+                tool_use_id = f"{uuid}-tu-{line}"
+                persisted_id = None
+                if item.get("persisted_bytes"):
+                    persisted_id = int(conn.execute(
+                        "INSERT INTO persisted_outputs(session_id, path, size_bytes)"
+                        " VALUES (?, 'out.txt', ?)",
+                        (session_id, item["persisted_bytes"]),
+                    ).lastrowid)
+                conn.execute(
+                    "INSERT INTO tool_results(event_id, session_id, tool_use_id, is_error,"
+                    " persisted_output_id, raw_json) VALUES (?, ?, ?, 0, ?, '{}')",
+                    (event_id, session_id, tool_use_id, persisted_id),
+                )
+                if item.get("tool_name"):
+                    call_raw = json.dumps({"input": {"file_path": item.get("path")}})
+                    anchor = call_event_ids[-1] if call_event_ids else event_id
+                    conn.execute(
+                        "INSERT INTO tool_calls(event_id, session_id, tool_use_id, tool_name, raw_json)"
+                        " VALUES (?, ?, ?, ?, ?)",
+                        (anchor, session_id, tool_use_id, item["tool_name"], call_raw),
+                    )
+        line += 1
+        event_id = int(conn.execute(
+            "INSERT INTO events(session_id, source_path, line_no, type, timestamp, raw_json)"
+            " VALUES (?, 'fixture.jsonl', ?, 'assistant', ?, '{}')",
+            (session_id, line, _ts(call["minute"])),
+        ).lastrowid)
+        call_event_ids.append(event_id)
+        context = call["context"]
+        conn.execute(
+            "INSERT INTO messages(event_id, role, model, input_tokens, output_tokens,"
+            " base_input_tokens, cache_5m_tokens, cache_1h_tokens, cache_read_tokens)"
+            " VALUES (?, 'assistant', ?, ?, ?, 0, ?, 0, ?)",
+            (event_id, call.get("model", "claude-sonnet-4-6"), context,
+             call.get("output", 0), max(0, context - call.get("cached", context - 1000)),
+             call.get("cached", context - 1000) if context else 0),
+        )
+    conn.commit()
+    return session_id
+
+
+def test_load_threads_reconstructs_calls_and_contributors(conn: sqlite3.Connection) -> None:
+    add_session(conn, uuid="s1", calls=[
+        {"context": 10_000, "output": 500, "minute": 1},
+        {"context": 22_000, "output": 0, "minute": 2},
+    ], gap_items={1: [
+        {"kind": "tool_result", "chars": 40_000, "tool_name": "Read", "path": "src/a.py"},
+    ]})
+    threads, skipped = load_threads(conn)
+
+    assert skipped == 0
+    assert len(threads) == 1
+    thread = threads[0]
+    assert [c.context_tokens for c in thread.calls] == [10_000, 22_000]
+    read = next(c for c in thread.contributors if c.kind == "tool_result")
+    assert read.tool_name == "Read" and read.detail == "src/a.py"
+    reply = next(c for c in thread.contributors if c.kind == "assistant_output")
+    # 40k chars = 10k raw + 500 output raw -> scaled to 12k delta.
+    assert read.est_tokens + reply.est_tokens == 12_000
+
+
+def test_load_threads_uses_persisted_size_when_available(conn: sqlite3.Connection) -> None:
+    add_session(conn, uuid="s2", calls=[
+        {"context": 10_000, "minute": 1},
+        {"context": 30_000, "minute": 2},
+    ], gap_items={1: [
+        {"kind": "tool_result", "chars": 10, "tool_name": "Bash", "persisted_bytes": 400_000},
+        {"kind": "user", "chars": 4_000},
+    ]})
+    threads, _ = load_threads(conn)
+    tool = next(c for c in threads[0].contributors if c.kind == "tool_result")
+    user = next(c for c in threads[0].contributors if c.kind == "user")
+    # Persisted 400k chars dominates the 4k user message ~100:1 after calibration.
+    assert tool.est_tokens > user.est_tokens * 50
+
+
+def test_load_threads_skips_sessions_without_usage(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        "INSERT INTO sessions(project_id, session_id, title) VALUES (1, 'empty', 'Empty')"
+    )
+    conn.commit()
+    threads, skipped = load_threads(conn)
+    assert threads == [] and skipped == 1
+
+
+def test_load_threads_filters_by_project(conn: sqlite3.Connection) -> None:
+    conn.execute("INSERT INTO projects(import_id, export_name, inferred_cwd) VALUES (1, 'beta', NULL)")
+    add_session(conn, uuid="s3", calls=[{"context": 5_000, "minute": 1}])
+    add_session(conn, project_id=2, uuid="s4", calls=[{"context": 5_000, "minute": 1}])
+    threads, _ = load_threads(conn, project_id=2)
+    assert len(threads) == 1 and threads[0].project_name
