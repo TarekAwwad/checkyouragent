@@ -474,3 +474,69 @@ def test_detect_rereads_ignores_read_after_edit() -> None:
     thread = _priced_thread(calls, items)
     findings = detect_rereads([thread], Claims.for_threads([thread]))
     assert findings == []
+
+
+# ---------------------------------------------------------------------------
+# Detector 2: oversized tool results
+# ---------------------------------------------------------------------------
+
+from ccfr.analysis.context_economics import detect_oversized
+
+
+def _corpus_with_one_giant() -> list[ThreadRec]:
+    threads = []
+    # 20 threads with modest 1k results -> p95 stays low but the floor governs.
+    for n in range(20):
+        calls = [_call(1, 10_000), _call(2, 11_000), _call(3, 11_200)]
+        items = {1: [RawItem(kind="tool_result", label=f"Read result: f{n}.py",
+                             raw_chars=4_000, tool_name="Read", detail=f"f{n}.py")]}
+        threads.append(_priced_thread(calls, items))
+    giant_calls = [_call(1, 10_000), _call(2, 60_000), _call(3, 60_100), _call(4, 60_200)]
+    giant_items = {1: [RawItem(kind="tool_result", label="Bash result", raw_chars=200_000,
+                               event_id=99, tool_name="Bash")]}
+    threads.append(_priced_thread(giant_calls, giant_items))
+    return threads
+
+
+def test_detect_oversized_flags_only_the_giant_result() -> None:
+    threads = _corpus_with_one_giant()
+    claims = Claims.for_threads(threads)
+    findings, thresholds = detect_oversized(threads, claims)
+
+    assert len(findings) == 1
+    finding = findings[0]
+    assert finding.archetype == "oversized"
+    giant = next(c for c in threads[-1].contributors if c.kind == "tool_result")
+    cap = next(t for t in thresholds if t["name"] == "cap_tokens")["value"]
+    assert finding.savings_tokens == giant.est_tokens - cap
+    # Savings = saved tokens carried over calls 2..3 plus the entry write, all at $1/M.
+    assert finding.savings_usd == pytest.approx((giant.est_tokens - cap) * 3 / 1e6)
+    assert any(t["name"] == "oversized_tokens" and "p95" in t["provenance"] for t in thresholds)
+
+
+def test_detect_oversized_skips_contributors_claimed_by_rereads() -> None:
+    threads = _corpus_with_one_giant()
+    claims = Claims.for_threads(threads)
+    giant_index = len(threads) - 1
+    contributor_index = next(
+        i for i, c in enumerate(threads[giant_index].contributors) if c.kind == "tool_result"
+    )
+    claims.claim_contributor(
+        giant_index, contributor_index,
+        threads[giant_index].contributors[contributor_index],
+        threads[giant_index].contributors[contributor_index].est_tokens,
+    )
+    findings, _ = detect_oversized(threads, claims)
+    assert findings == []
+
+
+def test_detect_oversized_floor_prevents_findings_on_small_corpora() -> None:
+    # Every result is tiny: p95 < floor, nothing flagged.
+    threads = []
+    for n in range(10):
+        calls = [_call(1, 5_000), _call(2, 5_400)]
+        items = {1: [RawItem(kind="tool_result", label="Read result: t.py",
+                             raw_chars=1_600, tool_name="Read", detail="t.py")]}
+        threads.append(_priced_thread(calls, items))
+    findings, _ = detect_oversized(threads, Claims.for_threads(threads))
+    assert findings == []

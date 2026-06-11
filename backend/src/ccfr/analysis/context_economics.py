@@ -515,3 +515,65 @@ def detect_rereads(threads: list[ThreadRec], claims: Claims) -> list[FindingRec]
                 event_id=duplicates[0].event_id,
             ))
     return findings
+
+
+# ---------------------------------------------------------------------------
+# Detector 2: oversized tool results (corpus-adaptive)
+# ---------------------------------------------------------------------------
+
+def detect_oversized(
+    threads: list[ThreadRec], claims: Claims,
+) -> tuple[list[FindingRec], list[dict[str, Any]]]:
+    """Single tool results above the corpus p95 (and an absolute floor).
+
+    Counterfactual: the result is capped at the corpus median result size
+    (a limit/offset read or persisted output); the difference stops being
+    carried from its entry call onward.
+    """
+    sizes = [
+        float(c.est_tokens)
+        for thread in threads for c in thread.contributors
+        if c.kind == "tool_result"
+    ]
+    threshold = max(_percentile(sizes, OVERSIZED_PERCENTILE), float(OVERSIZED_FLOOR_TOKENS))
+    cap = max(_percentile(sizes, 0.5), float(CAP_FLOOR_TOKENS))
+    thresholds = [
+        {"name": "oversized_tokens", "value": threshold,
+         "provenance": f"p95 of {len(sizes)} tool results, floor {OVERSIZED_FLOOR_TOKENS:,} tok"},
+        {"name": "cap_tokens", "value": cap,
+         "provenance": f"median tool result size, floor {CAP_FLOOR_TOKENS:,} tok"},
+    ]
+    findings: list[FindingRec] = []
+    for thread_index, thread in enumerate(threads):
+        for contributor_index, contributor in enumerate(thread.contributors):
+            if contributor.kind != "tool_result" or contributor.est_tokens < threshold:
+                continue
+            if (thread_index, contributor_index) in claims.contributors:
+                continue
+            saved_tokens = int(contributor.est_tokens - cap)
+            savings_usd = (
+                _carry_usd(thread, saved_tokens, contributor.entry_call, contributor.end_call)
+                + saved_tokens * thread.write_prices[contributor.entry_call]
+            )
+            if savings_usd < MIN_FINDING_USD:
+                continue
+            claims.claim_contributor(thread_index, contributor_index, contributor, saved_tokens)
+            findings.append(FindingRec(
+                archetype="oversized",
+                session_id=thread.session_db_id,
+                session_title=thread.session_title,
+                project_name=thread.project_name,
+                epoch=contributor.epoch,
+                entry_turn=contributor.entry_call,
+                label=f"{contributor.label} ({contributor.est_tokens:,} tok)",
+                carried_turns=contributor.end_call - contributor.entry_call,
+                carried_tokens=contributor.est_tokens,
+                savings_tokens=saved_tokens,
+                savings_usd=savings_usd,
+                counterfactual={
+                    "model": "result capped at the corpus median size (limit/offset or persisted output)",
+                    "params": {"cap_tokens": cap, "actual_tokens": contributor.est_tokens},
+                },
+                event_id=contributor.event_id,
+            ))
+    return findings, thresholds
