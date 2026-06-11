@@ -253,3 +253,35 @@ def test_load_events_unpriced_model_costs_zero_and_flags() -> None:
     assert event.cost == 0.0
     assert event.priced is False
     assert event.tokens == 240_000
+
+
+def test_load_events_duplicate_tool_results_do_not_fan_out() -> None:
+    conn = _conn()
+    _seed_base(conn)
+    _add_assistant_event(conn, 1, 1, "2026-06-01T10:00:00Z",
+                         [("Bash", {"command": "git push"}, False)])
+    # A second result row for the same tool_use_id (e.g. odd re-import) must not
+    # duplicate the call; is_error folds with MAX.
+    conn.execute(
+        "INSERT INTO tool_results (event_id, session_id, tool_use_id, is_error, raw_json) "
+        "VALUES (1, 1, 'tu-1-0', 1, '{}')",
+    )
+    conn.commit()
+    events = load_events(conn, PRICE_TABLE)
+    assert len(events[0].tool_calls) == 1
+    assert events[0].tool_calls[0].is_error is True
+
+
+def test_load_events_null_tool_use_id_results_are_ignored() -> None:
+    conn = _conn()
+    _seed_base(conn)
+    _add_assistant_event(conn, 1, 1, "2026-06-01T10:00:00Z",
+                         [("Read", {"file_path": "a.py"}, False)])
+    conn.execute(
+        "INSERT INTO tool_results (event_id, session_id, tool_use_id, is_error, raw_json) "
+        "VALUES (1, 1, NULL, 1, '{}')",
+    )
+    conn.commit()
+    events = load_events(conn, PRICE_TABLE)
+    assert len(events[0].tool_calls) == 1
+    assert events[0].tool_calls[0].is_error is False

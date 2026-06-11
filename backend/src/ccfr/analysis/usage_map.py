@@ -195,21 +195,40 @@ def load_events(
         params,
     ).fetchall()
 
+    # tool_calls rows exist only for assistant events, so the messages/projects
+    # joins from the events query add nothing here — filter on the optional
+    # project/date terms only. tool_results is pre-aggregated per
+    # (session_id, tool_use_id) so duplicate result rows never fan out calls.
+    call_where = ["1=1"]
+    call_params: list[Any] = []
+    if project_id is not None:
+        call_where.append("s.project_id = ?")
+        call_params.append(project_id)
+    if date_from:
+        call_where.append("date(e.timestamp) >= date(?)")
+        call_params.append(date_from)
+    if date_to:
+        call_where.append("date(e.timestamp) <= date(?)")
+        call_params.append(date_to)
+    call_clause = " AND ".join(call_where)
+
     call_rows = conn.execute(
         f"""
         SELECT tc.event_id, tc.tool_name, tc.input_preview, tc.raw_json,
                COALESCE(tr.is_error, 0) AS is_error
         FROM tool_calls tc
         JOIN events e ON e.id = tc.event_id
-        JOIN messages m ON m.event_id = e.id
         JOIN sessions s ON s.id = e.session_id
-        JOIN projects p ON p.id = s.project_id
-        LEFT JOIN tool_results tr
-            ON tr.session_id = tc.session_id AND tr.tool_use_id = tc.tool_use_id
-        WHERE {clause}
+        LEFT JOIN (
+            SELECT session_id, tool_use_id, MAX(is_error) AS is_error
+            FROM tool_results
+            WHERE tool_use_id IS NOT NULL
+            GROUP BY session_id, tool_use_id
+        ) tr ON tr.session_id = tc.session_id AND tr.tool_use_id = tc.tool_use_id
+        WHERE {call_clause}
         ORDER BY tc.event_id, tc.id
         """,
-        params,
+        call_params,
     ).fetchall()
 
     calls_by_event: dict[int, list[ToolCallRec]] = defaultdict(list)
@@ -229,6 +248,8 @@ def load_events(
     events: list[EventRec] = []
     for row in rows:
         price = match_price(table, row["model"])
+        # Total billed tokens (all four input categories + output) — same definition
+        # as context_economics' context_tokens; used for the token-fallback shares.
         tokens = row["base"] + row["c5"] + row["c1"] + row["cr"] + row["out"]
         usd = 0.0
         if price is not None:
