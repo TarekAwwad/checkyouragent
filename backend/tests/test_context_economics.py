@@ -150,7 +150,7 @@ def test_calibrate_many_items_still_sum_to_delta() -> None:
 # Tax accrual (pricing)
 # ---------------------------------------------------------------------------
 
-from ccfr.analysis.context_economics import ThreadRec, accrue_tax
+from ccfr.analysis.context_economics import ThreadRec, _carry_usd, accrue_tax
 from ccfr.analysis.pricing import ModelPrice
 
 
@@ -191,3 +191,31 @@ def test_accrue_tax_unknown_model_reports_unpriced() -> None:
     thread = _thread(calls)
     assert accrue_tax(thread, PRICE_TABLE) is False
     assert thread.contributors[0].accrued_usd == 0.0
+
+
+def test_accrue_tax_mixed_pricing_keeps_known_costs() -> None:
+    # Calls 0-1 priced, call 2 on an unpriced model: fully_priced is False but
+    # the baseline still accrues real cost over the priced calls (write at 0,
+    # reads at 1, plus a $0 read at the unpriced call 2).
+    calls = [
+        _call(1, 10_000), _call(2, 14_000),
+        CallRec(event_id=3, ts="2026-01-01T00:00:00Z", model="mystery-model",
+                context_tokens=14_000, output_tokens=0),
+    ]
+    thread = _thread(calls)
+    assert accrue_tax(thread, PRICE_TABLE) is False
+    assert thread.read_prices == [1 / 1e6, 1 / 1e6, 0.0]
+    baseline = next(c for c in thread.contributors if c.kind == "baseline")
+    # 10k tokens: write at 0 + read at 1 + $0 read at the unpriced call 2.
+    assert baseline.accrued_usd == pytest.approx(20_000 / 1e6)
+
+
+def test_carry_usd_is_reads_only_over_the_span() -> None:
+    calls = [_call(1, 10_000), _call(2, 12_000), _call(3, 13_000), _call(4, 14_000)]
+    thread = _thread(calls)
+    accrue_tax(thread, PRICE_TABLE)
+    # 1000 tokens carried from after call 0 through call 2 = reads at calls 1,2
+    # only (no entry write): 1000 * (1 + 1) / 1e6.
+    assert _carry_usd(thread, 1_000, 0, 2) == pytest.approx(2_000 / 1e6)
+    # A single-call span has no reads after entry: $0.
+    assert _carry_usd(thread, 1_000, 2, 2) == 0.0

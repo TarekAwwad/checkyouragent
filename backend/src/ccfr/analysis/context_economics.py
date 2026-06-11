@@ -263,5 +263,9 @@ def accrue_tax(thread: ThreadRec, table: dict[str, Any]) -> bool:
 
 
 def _carry_usd(thread: ThreadRec, tokens: int, entry_call: int, end_call: int) -> float:
-    """Read-cost of carrying `tokens` from after entry_call through end_call."""
+    """Read-cost of carrying `tokens` from after entry_call through end_call.
+
+    Reads only — excludes the entry-call write, which is a sunk cost. Detectors
+    want the marginal forward cost that compaction/capping could have avoided.
+    """
     return tokens * sum(thread.read_prices[entry_call + 1: end_call + 1])
