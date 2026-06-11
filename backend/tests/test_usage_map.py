@@ -28,6 +28,8 @@ from ccfr.analysis.usage_map import (
     usage_map_analytics,
     usage_map_evidence,
 )
+from ccfr.api.deps import get_db
+from ccfr.main import create_app
 from ccfr.storage import init_db
 
 
@@ -797,3 +799,54 @@ def test_evidence_unknown_node_raises_key_error(tmp_path, monkeypatch) -> None:
         usage_map_evidence(conn, node="habit:nonsense")
     with pytest.raises(KeyError):
         usage_map_evidence(conn, node="garbage")
+
+
+@pytest.fixture()
+def api_client(tmp_path, monkeypatch):
+    monkeypatch.setattr(usage_map, "pricing_path", lambda: _pricing_csv(tmp_path))
+    monkeypatch.setattr("ccfr.main.database_path", lambda: tmp_path / "startup.sqlite3")
+    conn = _conn()
+    _seed_base(conn)
+    _add_assistant_event(conn, 1, 1, "2026-06-01T10:00:00Z",
+                         [("Read", {"file_path": "a.py"}, False)])
+    _add_assistant_event(conn, 2, 2, "2026-06-05T10:00:00Z",
+                         [("Task", {"prompt": "go"}, False)])
+    app = create_app()
+    app.dependency_overrides[get_db] = lambda: conn
+    with TestClient(app) as c:
+        yield c
+    conn.close()
+
+
+# ---------------------------------------------------------------------------
+# API contract
+# ---------------------------------------------------------------------------
+
+def test_usage_map_endpoint_returns_payload(api_client: TestClient) -> None:
+    resp = api_client.get("/api/analytics/usage-map")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["meta"]["total_usd"] == pytest.approx(4.0)
+    assert {p["key"] for p in body["phases"]} == set(usage_map.PHASE_KEYS)
+    delegate = next(p for p in body["phases"] if p["key"] == "delegate")
+    assert delegate["habits"][0]["key"] == "delegation"
+
+
+def test_usage_map_endpoint_applies_filters(api_client: TestClient) -> None:
+    resp = api_client.get("/api/analytics/usage-map",
+                          params={"project_id": 1, "date_to": "2026-06-02"})
+    assert resp.status_code == 200
+    assert resp.json()["meta"]["total_usd"] == pytest.approx(2.0)
+
+
+def test_usage_map_evidence_endpoint(api_client: TestClient) -> None:
+    resp = api_client.get("/api/analytics/usage-map/evidence",
+                          params={"node": "phase:explore"})
+    assert resp.status_code == 200
+    assert resp.json()["label"] == "Explore"
+
+
+def test_usage_map_evidence_unknown_node_is_404(api_client: TestClient) -> None:
+    resp = api_client.get("/api/analytics/usage-map/evidence",
+                          params={"node": "phase:nonsense"})
+    assert resp.status_code == 404

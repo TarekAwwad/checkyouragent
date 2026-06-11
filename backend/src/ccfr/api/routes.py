@@ -9,11 +9,12 @@ from sqlite3 import Connection
 from ccfr.api import analytics, repository
 from ccfr.api.deps import get_db
 from ccfr.api.import_progress import import_progress_store
-from ccfr.analysis.discovery import discovery_analytics
 from ccfr.analysis.context_economics import (
     context_economics_analytics,
     session_context_economics,
 )
+from ccfr.analysis.discovery import discovery_analytics
+from ccfr.analysis.usage_map import usage_map_analytics, usage_map_evidence
 from ccfr.api.schemas import (
     CacheStatsResponse,
     ContextEconomicsResponse,
@@ -34,6 +35,8 @@ from ccfr.api.schemas import (
     TimelineItem,
     TurnCostBreakdown,
     TraceResponse,
+    UsageMapEvidenceResponse,
+    UsageMapResponse,
 )
 from ccfr.config import (
     database_path,
@@ -277,3 +280,32 @@ def get_session_context_economics(
     conn: Connection = Depends(get_db),
 ) -> SessionContextEconomicsResponse:
     return SessionContextEconomicsResponse(**session_context_economics(conn, session_id))
+
+
+@router.get("/analytics/usage-map", response_model=UsageMapResponse)
+def get_usage_map(
+    project_id: int | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    conn: Connection = Depends(get_db),
+) -> UsageMapResponse:
+    return UsageMapResponse(
+        **usage_map_analytics(conn, project_id=project_id,
+                              date_from=date_from, date_to=date_to)
+    )
+
+
+@router.get("/analytics/usage-map/evidence", response_model=UsageMapEvidenceResponse)
+def get_usage_map_evidence(
+    node: str,
+    project_id: int | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    conn: Connection = Depends(get_db),
+) -> UsageMapEvidenceResponse:
+    try:
+        payload = usage_map_evidence(conn, node=node, project_id=project_id,
+                                     date_from=date_from, date_to=date_to)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Unknown node: {node}")
+    return UsageMapEvidenceResponse(**payload)
