@@ -1,7 +1,9 @@
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getContextEconomics } from "../../api/client";
-import type { ContextArchetype, Project } from "../../api/types";
+import type { ContextArchetype, ContextFinding, Project } from "../../api/types";
+import TaxMeterHero from "./TaxMeterHero";
+import ArchetypeCard from "./ArchetypeCard";
 
 interface Props {
   projects: Project[];
@@ -23,6 +25,7 @@ export function formatTokens(value: number): string {
 export default function ContextEconomics({ projects, onOpenSession }: Props) {
   const [projectId, setProjectId] = React.useState<number | null>(null);
   const [minSupport, setMinSupport] = React.useState(3);
+  const [drilldown, setDrilldown] = React.useState<{ sessionId: number; title: string; eventId: number | null } | null>(null);
   const query = useQuery({
     queryKey: ["context-economics", projectId, minSupport],
     queryFn: () => getContextEconomics({ projectId, minSupport }),
@@ -69,39 +72,26 @@ export default function ContextEconomics({ projects, onOpenSession }: Props) {
         <div className="empty-state">Price table unavailable — showing token counts only.</div>
       )}
 
-      <section className="tax-meter-hero">
-        <h2>
-          {formatUsd(meta.total_usd)} total · est. {formatUsd(meta.avoidable_usd)} avoidable
-          {meta.total_usd > 0 && ` (${Math.round((meta.avoidable_usd / meta.total_usd) * 100)}%)`}
-        </h2>
-      </section>
+      <TaxMeterHero meta={meta} archetypes={archetypes} />
 
       <div className="archetype-grid">
         {archetypes.map((archetype: ContextArchetype) => (
-          <article key={archetype.key} className="archetype-card">
-            <h3>{archetype.title}</h3>
-            {archetype.meets_support ? (
-              <>
-                <strong>{formatUsd(archetype.savings_usd)}</strong>
-                <ul>
-                  {archetype.findings.slice(0, 3).map((finding) => (
-                    <li key={`${finding.session_id}-${finding.entry_turn}-${finding.label}`}>
-                      {finding.label}
-                      <button type="button" onClick={() => onOpenSession(finding.session_id)}>
-                        Open session
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            ) : (
-              <p className="discover-muted">
-                Needs more evidence ({archetype.findings_count} finding{archetype.findings_count === 1 ? "" : "s"}, min {meta.min_support}).
-              </p>
-            )}
-          </article>
+          <ArchetypeCard
+            key={archetype.key}
+            archetype={archetype}
+            minSupport={meta.min_support}
+            costAvailable={meta.cost_available}
+            onOpenSession={onOpenSession}
+            onInspectFinding={(finding: ContextFinding) => setDrilldown({
+              sessionId: finding.session_id,
+              title: finding.session_title ?? "Untitled session",
+              eventId: finding.event_id,
+            })}
+          />
         ))}
       </div>
+      {/* Task 15: SessionDrilldown */}
+      {drilldown && <div data-testid="drilldown-pending" hidden />}
     </div>
   );
 }

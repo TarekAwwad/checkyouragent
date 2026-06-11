@@ -1641,3 +1641,23 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
     height: 360px;
   }
 }
+
+/* Context economics */
+.context-economics { display: flex; flex-direction: column; gap: 16px; }
+.tax-meter-hero h2 { margin: 0 0 8px; }
+.tax-meter-bar { display: flex; height: 16px; border-radius: 8px; overflow: hidden; background: var(--raised, #1f2937); }
+.tax-meter-bar i { display: block; height: 100%; }
+.tax-meter-necessary { background: var(--neutral-visual, #374151); }
+.archetype-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.archetype-card { border: 1px solid; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.archetype-card.is-gated { opacity: 0.6; }
+.archetype-card header { display: flex; justify-content: space-between; align-items: baseline; }
+.archetype-thumb { width: 100%; height: 56px; border-radius: 4px; background: var(--raised, #0d1117); }
+.archetype-thumb .thumb-context { fill: var(--neutral-visual, #374151); }
+.archetype-findings { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.archetype-findings li { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.archetype-finding-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.archetype-recommendation { font-style: italic; }
+.archetype-math { display: flex; flex-direction: column; gap: 4px; }
+.archetype-math code { font-size: 11px; }
+.archetype-math-toggle { align-self: flex-start; }

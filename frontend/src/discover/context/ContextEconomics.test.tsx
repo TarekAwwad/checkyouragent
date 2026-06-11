@@ -71,4 +71,19 @@ describe("ContextEconomics", () => {
     await screen.findByText(/\$203/);
     expect(screen.getByText(/needs more evidence/i)).toBeInTheDocument();
   });
+
+  it("renders hero segments per archetype with shares of total", async () => {
+    renderPage();
+    await screen.findByText(/\$203/);
+    const hero = screen.getByRole("img", { name: /avoidable spend breakdown/i });
+    expect(hero).toBeInTheDocument();
+  });
+
+  it("shows the counterfactual explanation when a finding is expanded", async () => {
+    renderPage();
+    await screen.findByText(/\$203/);
+    const toggle = screen.getByRole("button", { name: /how we estimated this/i });
+    toggle.click();
+    expect(await screen.findByText(/p95 of 4,812 tool results/)).toBeInTheDocument();
+  });
 });
