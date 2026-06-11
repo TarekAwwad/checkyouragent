@@ -427,16 +427,17 @@ def detect_delegation(session_events: list[EventRec]) -> list[HabitFinding]:
         project_name=head.project_name,
         cost_usd=sum(c.cost_share for c in dispatches),
         count=len(dispatches),
-        exemplar_event_ids=tuple(c.event_id for c in dispatches[:5]),
+        exemplar_event_ids=tuple(dict.fromkeys(c.event_id for c in dispatches))[:5],
         detail=(f"{len(dispatches)} subagent "
                 f"dispatch{'es' if len(dispatches) != 1 else ''}"),
     )]
 
 
 def detect_plan_before_burst(session_events: list[EventRec]) -> list[HabitFinding]:
-    """A planning step (TodoWrite / plan mode) precedes a run of at least
-    PLAN_BURST_MIN edit calls. Cost counts the planning turns plus the planned
-    edit burst — the size of the behavior, not a counterfactual saving."""
+    """A planning step (TodoWrite / plan mode) precedes at least PLAN_BURST_MIN
+    edit calls anywhere later in the session. Cost counts the planning turns
+    plus those edit calls — the size of the behavior, not a counterfactual
+    saving."""
     if not session_events:
         return []
     head = session_events[0]

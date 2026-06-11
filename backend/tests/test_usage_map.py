@@ -494,3 +494,11 @@ def test_plan_before_burst_needs_a_plan_step() -> None:
     events = [_flat_event(i, "Edit", {"file_path": f"f{i}.py"}, False)
               for i in range(1, 8)]
     assert detect_plan_before_burst(events) == []
+
+
+def test_delegation_empty_session() -> None:
+    assert detect_delegation([]) == []
+
+
+def test_plan_before_burst_empty_session() -> None:
+    assert detect_plan_before_burst([]) == []
