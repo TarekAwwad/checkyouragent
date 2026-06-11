@@ -377,3 +377,31 @@ def test_load_threads_filters_by_project(conn: sqlite3.Connection) -> None:
     add_session(conn, project_id=2, uuid="s4", calls=[{"context": 5_000, "minute": 1}])
     threads, _ = load_threads(conn, project_id=2)
     assert len(threads) == 1 and threads[0].project_name
+
+
+def test_load_threads_separates_sidechain_from_main(conn: sqlite3.Connection) -> None:
+    session_id = add_session(conn, uuid="multi", calls=[
+        {"context": 10_000, "minute": 1},
+        {"context": 14_000, "minute": 2},
+    ])
+    # Two sidechain (agent_id='sub-1') assistant calls in the same session.
+    for n, (minute, context) in enumerate([(1, 8_000), (2, 9_000)]):
+        event_id = int(conn.execute(
+            "INSERT INTO events(session_id, source_path, line_no, type, timestamp,"
+            " agent_id, raw_json) VALUES (?, 'side.jsonl', ?, 'assistant', ?, 'sub-1', '{}')",
+            (session_id, 100 + n, _ts(minute, 15)),
+        ).lastrowid)
+        conn.execute(
+            "INSERT INTO messages(event_id, role, model, input_tokens, output_tokens,"
+            " base_input_tokens, cache_5m_tokens, cache_1h_tokens, cache_read_tokens)"
+            " VALUES (?, 'assistant', 'claude-sonnet-4-6', ?, 0, 0, 0, 0, ?)",
+            (event_id, context, context),
+        )
+    conn.commit()
+
+    threads, skipped = load_threads(conn)
+    assert skipped == 0
+    by_agent = {t.agent_id: t for t in threads}
+    assert set(by_agent) == {None, "sub-1"}
+    assert [c.context_tokens for c in by_agent[None].calls] == [10_000, 14_000]
+    assert [c.context_tokens for c in by_agent["sub-1"].calls] == [8_000, 9_000]

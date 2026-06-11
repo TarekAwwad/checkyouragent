@@ -349,6 +349,8 @@ def load_threads(
             LEFT JOIN persisted_outputs po ON po.id = tr.persisted_output_id
             LEFT JOIN tool_calls tc
                 ON tc.session_id = e.session_id AND tc.tool_use_id = tr.tool_use_id
+            -- tool_result content blocks live on user-type events in the export, so the
+            -- type filter still captures them via the tool_results join below.
             WHERE e.session_id = ? AND e.type IN ('user', 'attachment')
             ORDER BY e.timestamp, e.id
             """,
@@ -370,7 +372,9 @@ def load_threads(
                         gap = index
                         break
                 if gap is None or gap == 0:
-                    continue  # before the first call there is no delta to explain
+                    # gap 0 = before the first call (no delta to explain); gap None = after the
+                    # last call (no later call re-pays it). Both are intentionally dropped.
+                    continue
                 items_by_gap[gap].append(_raw_item(row))
             epochs = split_epochs([c.context_tokens for c in calls])
             contributors = calibrate_contributors(calls, epochs, items_by_gap)
@@ -396,7 +400,9 @@ def _raw_item(row: sqlite3.Row) -> RawItem:
             except (json.JSONDecodeError, AttributeError):
                 detail = None
         label = f"{tool_name} result" + (f": {detail}" if detail else "")
-        chars = row["size_bytes"] if row["size_bytes"] else row["raw_len"]
+        # `is not None`, not truthiness: a genuinely empty (0-byte) persisted output
+        # must not fall back to the raw_json wrapper length.
+        chars = row["size_bytes"] if row["size_bytes"] is not None else row["raw_len"]
         return RawItem(kind="tool_result", label=label, raw_chars=chars or 0,
                        event_id=row["event_id"], tool_name=tool_name, detail=detail)
     kind = "attachment" if row["type"] == "attachment" else "user"
