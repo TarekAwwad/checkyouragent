@@ -588,11 +588,13 @@ def detect_late_compaction(
 ) -> tuple[list[FindingRec], list[dict[str, Any]]]:
     """Context stayed above the compaction pressure point for a long tail.
 
-    Counterfactual: compaction at the first eligible call, retaining
-    COMPACTION_RETAINED_RATIO of the context. Savings = residual context above
-    the retained estimate for every later call, minus the one-off re-write of
-    the retained content. Residual = context minus tokens already claimed by
-    contributor-level findings (disjointness).
+    Counterfactual: compaction at the first eligible call retains
+    COMPACTION_RETAINED_RATIO of that call's context and drops the rest. The
+    dropped tokens are a FIXED count — post-compaction work would regrow context
+    identically in both worlds, so only the dropped ballast is avoidable, not the
+    later growth. Savings = dropped tokens (minus any already claimed by
+    contributor-level findings) read-priced over the tail, minus the one-off
+    re-write of the retained content.
     """
     pressure = CONTEXT_WINDOW_TOKENS * COMPACTION_PRESSURE_RATIO
     thresholds = [
@@ -613,17 +615,21 @@ def detect_late_compaction(
             )
             if eligible is None or epoch.end - eligible < COMPACTION_MIN_TAIL:
                 continue
-            retained = thread.calls[eligible].context_tokens * COMPACTION_RETAINED_RATIO
+            eligible_ctx = thread.calls[eligible].context_tokens
+            retained = eligible_ctx * COMPACTION_RETAINED_RATIO
+            dropped = eligible_ctx - retained  # fixed avoidable tokens per tail call
             savings_usd = -retained * thread.write_prices[eligible]
             savings_tokens = 0
+            covered: list[int] = []
             for k in range(eligible + 1, epoch.end + 1):
-                residual = thread.calls[k].context_tokens - claimed[k] - retained
+                residual = dropped - claimed[k]
                 if residual > 0:
                     savings_usd += residual * thread.read_prices[k]
                     savings_tokens += int(residual)
+                    covered.append(k)
             if savings_usd < MIN_FINDING_USD:
                 continue
-            for k in range(eligible + 1, epoch.end + 1):
+            for k in covered:
                 claims.calls[thread_index].add(k)
             findings.append(FindingRec(
                 archetype="late_compaction",

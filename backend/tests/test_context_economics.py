@@ -591,9 +591,8 @@ def test_detect_late_compaction_flags_long_high_context_tail() -> None:
     assert finding.archetype == "late_compaction"
     assert finding.entry_turn == 2
     retained = 110_000 * 0.3
-    expected = sum(
-        (calls[k].context_tokens - retained) / 1e6 for k in range(3, 12)
-    ) - retained / 1e6  # minus the one-off re-write of retained content
+    dropped = 110_000 - retained
+    expected = sum(dropped / 1e6 for k in range(3, 12)) - retained / 1e6
     assert finding.savings_usd == pytest.approx(expected, rel=1e-6)
     assert claims.calls[0] == set(range(3, 12))
     assert any(t["name"] == "pressure_tokens" for t in thresholds)
@@ -616,7 +615,21 @@ def test_detect_late_compaction_subtracts_contributor_claims() -> None:
     claims.tokens_by_call[0] = [10_000] * len(calls)  # pretend earlier detectors claimed 10k/call
     findings, _ = detect_late_compaction([thread], claims)
     retained = 110_000 * 0.3
-    expected = sum(
-        (calls[k].context_tokens - 10_000 - retained) / 1e6 for k in range(3, 12)
-    ) - retained / 1e6
+    dropped = 110_000 - retained
+    expected = sum((dropped - 10_000) / 1e6 for k in range(3, 12)) - retained / 1e6
     assert findings[0].savings_usd == pytest.approx(expected, rel=1e-6)
+
+
+def test_detect_late_compaction_skips_fully_claimed_tail_calls() -> None:
+    calls = [_call(i + 1, c) for i, c in enumerate(
+        [60_000, 90_000, 110_000, 112_000, 114_000, 116_000, 118_000,
+         120_000, 122_000, 124_000, 126_000, 128_000]
+    )]
+    thread = _priced_thread(calls)
+    claims = Claims.for_threads([thread])
+    # dropped = 0.7*110k = 77k. Claim 80k at call 5 only, so its residual <= 0:
+    # it must be excluded from savings AND not added to claims.calls.
+    claims.tokens_by_call[0][5] = 80_000
+    findings, _ = detect_late_compaction([thread], claims)
+    assert 5 not in claims.calls[0]
+    assert claims.calls[0] == set(range(3, 12)) - {5}
