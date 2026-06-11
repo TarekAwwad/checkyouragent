@@ -26,6 +26,9 @@ export default function ContextStream({
 }) {
   const bands = React.useMemo(() => buildStreamBands(thread, MAX_BANDS), [thread]);
   const paths = React.useMemo(() => stackedPaths(bands, WIDTH, HEIGHT), [bands]);
+  // Highlights the band for the finding's contributor. A contributor bucketed
+  // into the "other" band (ranked past MAX_BANDS) won't glow here — the ballast
+  // lane below still highlights it, so the evidence is never lost.
   const highlightId = highlightEventId === null
     ? null
     : thread.contributors.find((c) => c.event_id === highlightEventId)?.id ?? null;

@@ -26,6 +26,7 @@ export default function SessionDrilldown({
   });
 
   if (query.isPending) return <div className="empty-state">Loading session economics…</div>;
+  if (query.isError) return <div className="empty-state">Failed to load session economics.</div>;
   const mainThread = query.data?.threads.find((thread) => thread.agent_id === null)
     ?? query.data?.threads[0];
   if (!mainThread) return <div className="empty-state">No usage data for this session.</div>;

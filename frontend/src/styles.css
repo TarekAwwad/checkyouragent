@@ -1673,7 +1673,7 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
 .stream-unattributed { fill: var(--neutral-visual, #4b5563); opacity: 0.45; }
 .stream-other { fill: var(--neutral-visual, #6b7280); opacity: 0.5; }
 .context-stream .is-highlighted { stroke: var(--danger, #ef4444); stroke-width: 1.5; }
-.stream-compaction { stroke: var(--success, #22c55e); stroke-dasharray: 3 3; }
+.stream-compaction { stroke: var(--success, #22c55e); stroke-width: 1.5; stroke-dasharray: 3 3; }
 .ballast-lanes { display: flex; flex-direction: column; gap: 4px; }
 .ballast-lane { display: grid; grid-template-columns: 180px 1fr 120px; gap: 8px; align-items: center; }
 .ballast-lane.is-highlighted .ballast-label { color: var(--danger, #ef4444); font-weight: 600; }
