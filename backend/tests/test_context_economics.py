@@ -844,3 +844,33 @@ def test_session_payload_routes_findings_to_owning_thread(economics_conn: sqlite
     assert set(by_agent) == {None, "sub-1"}
     assert any(f["label"].startswith("big.py read") for f in by_agent[None]["findings"])
     assert by_agent["sub-1"]["findings"] == []  # sidechain owns no re-read finding
+
+
+# ---------------------------------------------------------------------------
+# API endpoints
+# ---------------------------------------------------------------------------
+
+from ccfr.api.deps import get_db
+from ccfr.main import create_app
+
+
+def test_context_economics_endpoints(economics_conn: sqlite3.Connection, tmp_path: Path,
+                                     monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("ccfr.main.database_path", lambda: tmp_path / "startup.sqlite3")
+    app = create_app()
+    app.dependency_overrides[get_db] = lambda: economics_conn
+    with TestClient(app) as client:
+        corpus = client.get("/api/analytics/context-economics", params={"min_support": 3})
+        session_id = int(economics_conn.execute(
+            "SELECT id FROM sessions ORDER BY id LIMIT 1"
+        ).fetchone()[0])
+        session = client.get(f"/api/sessions/{session_id}/context-economics")
+
+    assert corpus.status_code == 200
+    body = corpus.json()
+    assert body["meta"]["min_support"] == 3
+    assert [a["key"] for a in body["archetypes"]] == [
+        "rereads", "oversized", "late_compaction", "stale_continuation",
+    ]
+    assert session.status_code == 200
+    assert session.json()["threads"][0]["calls"]
