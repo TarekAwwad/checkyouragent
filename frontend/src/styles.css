@@ -2315,3 +2315,43 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
   .ballast-lane { grid-template-columns: 130px 1fr 90px; }
   .tax-meter-trend { margin-left: 0; align-items: flex-start; }
 }
+
+/* --- Usage mindmap --------------------------------------------------------- */
+
+.mindmap-board { display: grid; grid-template-columns: 1fr 220px; gap: 16px; }
+.mindmap-canvas { position: relative; }
+.mindmap-canvas svg { width: 100%; height: auto; display: block; }
+
+/* Adapted for dark theme: use var(--muted) instead of literal #8a8fa3 */
+.mindmap-edge { stroke: var(--muted); opacity: 0.55; stroke-linecap: round; }
+.mindmap-edge.is-good { stroke: #2fae6e; }
+.mindmap-edge.is-anti { stroke: #d6493f; }
+
+.mindmap-node { cursor: pointer; outline: none; }
+.mindmap-node ellipse { fill: #5f7df0; stroke: #fff; stroke-width: 1.5; }
+.mindmap-node.is-center ellipse { fill: #2f3d8f; }
+.mindmap-node.is-habit ellipse { fill: #aab1c4; }
+.mindmap-node.is-habit.is-good ellipse { fill: #2fae6e; }
+.mindmap-node.is-habit.is-anti ellipse { fill: #d6493f; }
+.mindmap-node.is-selected ellipse,
+.mindmap-node:focus-visible ellipse { stroke: #e7eef9; stroke-width: 2.5; }
+
+.mindmap-label { font-size: 13px; fill: #fff; font-weight: 600; pointer-events: none; }
+/* Adapted for dark theme: habit labels use light fill for readability on colored ellipses */
+.mindmap-node.is-habit .mindmap-label { fill: #fff; font-size: 11px; }
+.mindmap-sublabel { font-size: 11px; fill: #e8ecff; pointer-events: none; }
+.mindmap-node.is-habit .mindmap-sublabel { fill: #fff; font-size: 10px; }
+/* Adapted for dark theme: use var(--muted) instead of #5e6275 */
+.mindmap-delta { font-size: 10px; fill: var(--muted); pointer-events: none; }
+
+.mindmap-rail { display: flex; flex-direction: column; gap: 6px; }
+.mindmap-rail-row { display: flex; flex-direction: column; gap: 2px; border: 1px solid transparent;
+  background: none; padding: 6px; border-radius: 6px; cursor: pointer; text-align: left; }
+/* Adapted for dark theme: use var(--raised) bg and var(--accent) border instead of light #f3f5ff */
+.mindmap-rail-row.is-selected { border-color: #5f7df0; background: var(--raised); }
+/* Adapted for dark theme: use var(--grid) instead of #eef0f5 track background */
+.mindmap-rail-bar { position: relative; height: 10px; background: var(--grid); border-radius: 4px; overflow: hidden; display: block; }
+.mindmap-rail-fill { position: absolute; inset: 0 auto 0 0; background: #5f7df0; border-radius: 4px; display: block; }
+.mindmap-rail-ghost { position: absolute; left: 0; bottom: 0; height: 3px; background: #e7eef9; opacity: 0.45; display: block; }
+/* Adapted for dark theme: use var(--text) instead of #3a3f4e (near-black, unreadable on dark bg) */
+.mindmap-rail-text { font-size: 12px; color: var(--text); }
