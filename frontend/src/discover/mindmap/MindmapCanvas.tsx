@@ -67,6 +67,7 @@ export default function MindmapCanvas({
   const linkRefs = React.useRef(new Map<string, SVGPathElement>());
   const simRef = React.useRef<Simulation<MapNode, MapLink> | null>(null);
   const [size, setSize] = React.useState(DEFAULT_SIZE);
+  const sizeRef = React.useRef(DEFAULT_SIZE);
   const [hoveredId, setHoveredId] = React.useState<string | null>(null);
 
   const applyPositions = React.useCallback(() => {
@@ -107,7 +108,10 @@ export default function MindmapCanvas({
     if (!host || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver((entries) => {
       const rect = entries[0]?.contentRect;
-      if (rect && rect.width > 0) setSize({ width: rect.width, height: rect.height });
+      if (rect && rect.width > 0) {
+        sizeRef.current = { width: rect.width, height: rect.height };
+        setSize({ width: rect.width, height: rect.height });
+      }
     });
     observer.observe(host);
     return () => observer.disconnect();
@@ -134,11 +138,25 @@ export default function MindmapCanvas({
     // React's onWheel is passive; preventDefault needs a manual listener.
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      zoomBy(e.deltaY < 0 ? 1.1 : 0.9);
+      const factor = e.deltaY < 0 ? 1.1 : 0.9;
+      const state = viewState.current;
+      const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, state.k * factor));
+      const applied = next / state.k;
+      if (applied === 1) return;
+      const rect = svg.getBoundingClientRect();
+      // Cursor position in the centered viewBox coordinate space.
+      const px = (e.clientX - rect.left) * (sizeRef.current.width / rect.width)
+        - sizeRef.current.width / 2;
+      const py = (e.clientY - rect.top) * (sizeRef.current.height / rect.height)
+        - sizeRef.current.height / 2;
+      state.x = px - (px - state.x) * applied;
+      state.y = py - (py - state.y) * applied;
+      state.k = next;
+      applyView();
     };
     svg.addEventListener("wheel", onWheel, { passive: false });
     return () => svg.removeEventListener("wheel", onWheel);
-  }, [zoomBy]);
+  }, [applyView]);
 
   // --- drag (nodes) and pan (background) ------------------------------------
   const dragRef = React.useRef<{ node: MapNode; startX: number; startY: number } | null>(null);
@@ -147,8 +165,9 @@ export default function MindmapCanvas({
 
   const toWorld = (e: React.PointerEvent): { x: number; y: number } => {
     const rect = svgRef.current!.getBoundingClientRect();
-    const px = (e.clientX - rect.left) * (size.width / rect.width) - size.width / 2;
-    const py = (e.clientY - rect.top) * (size.height / rect.height) - size.height / 2;
+    const { width, height } = sizeRef.current;
+    const px = (e.clientX - rect.left) * (width / rect.width) - width / 2;
+    const py = (e.clientY - rect.top) * (height / rect.height) - height / 2;
     const { k, x, y } = viewState.current;
     return { x: (px - x) / k, y: (py - y) / k };
   };
@@ -212,11 +231,14 @@ export default function MindmapCanvas({
       ];
     }
     if (node.kind === "habit" && node.grouped) {
-      return node.grouped.map((h) => `${h.label}: ${formatUsd(h.cost_usd)}`);
+      return node.grouped.map((h) =>
+        `${h.label}: ${costAvailable ? formatUsd(h.cost_usd) : `${h.count}x`}`);
     }
     if (node.kind === "habit") {
       return [node.polarity === "good" ? "Good habit" : "Anti-pattern",
-              node.sublabel ? `${node.sublabel} of spend` : ""].filter(Boolean);
+              node.sublabel
+                ? (costAvailable ? `${node.sublabel} of spend` : node.sublabel)
+                : ""].filter(Boolean);
     }
     return [costAvailable ? formatUsd(totalUsd) : ""].filter(Boolean);
   };

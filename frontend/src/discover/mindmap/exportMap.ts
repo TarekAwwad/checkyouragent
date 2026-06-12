@@ -50,8 +50,9 @@ export function exportPng(svg: SVGSVGElement, width: number, height: number): vo
     canvas.height = height * 2;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    // Dark theme background (--bg in styles.css) so light SVG labels remain readable.
-    ctx.fillStyle = "#0b0f17";
+    // Match the stage background (--surface) so labels stay readable in either theme.
+    const theme = getComputedStyle(document.documentElement).getPropertyValue("--surface").trim();
+    ctx.fillStyle = theme || "#0b0f17";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
     download(canvas.toDataURL("image/png"), "usage-map.png");
