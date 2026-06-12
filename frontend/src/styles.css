@@ -866,6 +866,19 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
   padding: 7px 12px; border-radius: 9px;
   border: 1px solid var(--border-2); background: var(--surface); color: var(--text); font-size: 12px;
 }
+.cost-filterbar input[type="date"] {
+  padding: 0 10px; border-radius: 9px; font-family: inherit;
+  border: 1px solid var(--border-2); background: var(--surface); color: var(--text); font-size: 12px;
+}
+.cost-filterbar input[type="date"]:focus-visible,
+.cost-filterbar select:focus-visible { outline: none; border-color: var(--accent); }
+.cost-filterbar input[type="date"]::-webkit-calendar-picker-indicator { opacity: .55; cursor: pointer; }
+.cost-filterbar input[type="date"]:hover::-webkit-calendar-picker-indicator { opacity: .9; }
+/* One height for every toolbar control so the row lines up exactly. */
+.cost-filterbar select,
+.cost-filterbar input[type="date"],
+.cost-filterbar .ghost-action { height: 33px; box-sizing: border-box; }
+.cost-filterbar .ghost-action { padding: 0 12px; font-size: 12px; border-radius: 9px; gap: 6px; }
 .cost-filterbar .cost-total { margin-left: auto; text-align: right; line-height: 1.15; }
 .cost-filterbar .cost-total b { font-size: 20px; color: var(--text); font-variant-numeric: tabular-nums; }
 .cost-filterbar .cost-total > span { display: block; font-size: 11px; color: var(--muted); }
@@ -2315,3 +2328,108 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
   .ballast-lane { grid-template-columns: 130px 1fr 90px; }
   .tax-meter-trend { margin-left: 0; align-items: flex-start; }
 }
+
+/* --- Usage map (force-directed) -------------------------------------------- */
+
+.mindmap-stage {
+  position: relative; flex: 1 1 0; min-height: 440px;
+  border: 1px solid var(--border); border-radius: 12px;
+  background-color: var(--surface);
+  background-image: radial-gradient(circle,
+    color-mix(in srgb, var(--border-2) 45%, transparent) 1px, transparent 1px);
+  background-size: 24px 24px;
+  overflow: hidden;
+}
+.mindmap-canvas { position: absolute; inset: 0; }
+.mindmap-canvas svg { display: block; width: 100%; height: 100%; cursor: grab; }
+.mindmap-canvas svg.is-panning { cursor: grabbing; }
+
+.mindmap-edge { fill: none; stroke-linecap: round; transition: opacity .15s; }
+.mindmap-edge.is-structure { stroke: var(--border-2); opacity: .9; }
+.mindmap-edge.is-good { stroke: var(--success); opacity: .45; }
+.mindmap-edge.is-anti { stroke: var(--danger); opacity: .45; }
+.mindmap-edge.is-dimmed { opacity: .08; }
+
+.mindmap-node { cursor: pointer; outline: none; transition: opacity .15s; }
+.mindmap-node.is-dimmed { opacity: .22; }
+.mindmap-node .mindmap-body { stroke-width: 1.5; }
+.mindmap-node.is-center .mindmap-body { fill: var(--raised); stroke: var(--border-2); stroke-width: 1; }
+.mindmap-node.is-phase .mindmap-body {
+  fill: color-mix(in srgb, var(--accent) 16%, var(--surface)); stroke: var(--accent); }
+.mindmap-node.is-habit .mindmap-body {
+  fill: color-mix(in srgb, var(--muted) 16%, var(--surface)); stroke: var(--muted); }
+.mindmap-node.is-habit.is-good .mindmap-body {
+  fill: color-mix(in srgb, var(--success) 16%, var(--surface)); stroke: var(--success); }
+.mindmap-node.is-habit.is-anti .mindmap-body {
+  fill: color-mix(in srgb, var(--danger) 16%, var(--surface)); stroke: var(--danger); }
+.mindmap-node.is-tool .mindmap-body {
+  fill: color-mix(in srgb, var(--info) 16%, var(--surface)); stroke: var(--info); }
+
+.mindmap-ring { fill: none; stroke-width: 1.5; opacity: 0; transition: opacity .15s; }
+.mindmap-node.is-selected .mindmap-ring,
+.mindmap-node:focus-visible .mindmap-ring { opacity: .8; }
+.mindmap-node.is-center .mindmap-ring { stroke: var(--border-2); }
+.mindmap-node.is-phase .mindmap-ring { stroke: var(--accent); }
+.mindmap-node.is-habit .mindmap-ring { stroke: var(--muted); }
+.mindmap-node.is-habit.is-good .mindmap-ring { stroke: var(--success); }
+.mindmap-node.is-habit.is-anti .mindmap-ring { stroke: var(--danger); }
+.mindmap-node.is-tool .mindmap-ring { stroke: var(--info); }
+
+.mindmap-node-label { font-size: 11px; font-weight: 600; fill: var(--text); pointer-events: none; }
+.mindmap-node-share { font-size: 10px; font-weight: 600; fill: var(--muted); pointer-events: none; }
+.mindmap-node.is-phase .mindmap-node-share { fill: var(--accent); }
+.mindmap-node.is-habit.is-good .mindmap-node-share { fill: var(--success); }
+.mindmap-node.is-habit.is-anti .mindmap-node-share { fill: var(--danger); }
+.mindmap-node.is-tool .mindmap-node-share { fill: var(--info); }
+.mindmap-delta { font-size: 10px; fill: var(--muted); pointer-events: none; }
+
+.mindmap-legend { position: absolute; top: 12px; left: 12px; display: flex; gap: 6px; z-index: 3; }
+.mindmap-legend span {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted);
+  background: var(--surface); border: 1px solid var(--border); border-radius: 999px;
+  padding: 2px 9px; }
+.mindmap-legend i { width: 7px; height: 7px; border-radius: 50%; }
+.mindmap-legend i.is-phase { background: var(--accent); }
+.mindmap-legend i.is-good { background: var(--success); }
+.mindmap-legend i.is-anti { background: var(--danger); }
+.mindmap-legend i.is-tool { background: var(--info); }
+
+.mindmap-zoom {
+  position: absolute; left: 12px; bottom: 12px; display: flex; flex-direction: column;
+  z-index: 3; border: 1px solid var(--border); border-radius: 9px; overflow: hidden;
+  background: var(--surface); }
+.mindmap-zoom button {
+  width: 30px; height: 28px; border: 0; background: transparent; color: var(--muted);
+  cursor: pointer; font-size: 14px; }
+.mindmap-zoom button:hover { background: var(--raised); color: var(--text); }
+.mindmap-zoom button + button { border-top: 1px solid var(--border); }
+
+.mindmap-evidence {
+  position: absolute; right: 12px; top: 12px; width: 240px; z-index: 3;
+  background: var(--raised); border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px 14px; }
+.mindmap-evidence h3 {
+  margin: 0 0 2px; font-size: 13.5px; display: flex; align-items: center; gap: 7px; }
+.mindmap-evidence h3 i { width: 8px; height: 8px; border-radius: 50%; flex: none;
+  background: var(--muted); }
+.mindmap-evidence.is-phase h3 i { background: var(--accent); }
+.mindmap-evidence.is-good h3 i { background: var(--success); }
+.mindmap-evidence.is-anti h3 i { background: var(--danger); }
+.mindmap-evidence.is-tool h3 i { background: var(--info); }
+.mindmap-evidence-rule { font-size: 11px; color: var(--faint); margin: 0 0 8px; line-height: 1.45; }
+.mindmap-evidence-bar {
+  height: 5px; background: var(--grid); border-radius: 3px; margin: 8px 0 4px; overflow: hidden; }
+.mindmap-evidence-bar i { display: block; height: 5px; border-radius: 3px; background: var(--accent); }
+.mindmap-evidence.is-good .mindmap-evidence-bar i { background: var(--success); }
+.mindmap-evidence.is-anti .mindmap-evidence-bar i { background: var(--danger); }
+.mindmap-evidence.is-tool .mindmap-evidence-bar i { background: var(--info); }
+.mindmap-evidence-row {
+  display: flex; justify-content: space-between; font-size: 12px; color: var(--muted);
+  padding: 4px 0; border-top: 1px solid var(--border); }
+.mindmap-evidence-row b { color: var(--text); font-weight: 600; }
+.mindmap-evidence-grouped { list-style: none; margin: 0; padding: 0; font-size: 12px;
+  color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
+
+.mindmap-compare-toggle { display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--muted); white-space: nowrap; }
+.mindmap-compare-toggle input { accent-color: var(--accent); }

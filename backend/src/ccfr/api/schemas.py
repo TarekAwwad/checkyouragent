@@ -560,3 +560,75 @@ class CostAnalyticsResponse(BaseModel):
     sessions: list[SessionCostEntry] = Field(default_factory=list)
     cache_economics: CacheEconomics = Field(default_factory=CacheEconomics)
     spikes: list[SpendSpike] = Field(default_factory=list)
+
+
+class UsageTool(BaseModel):
+    key: str
+    label: str
+    cost_usd: float = 0
+    tokens: int = 0
+    count: int = 0
+    session_count: int = 0
+
+
+class UsageHabit(BaseModel):
+    key: str
+    phase: str
+    label: str
+    polarity: str = "anti"
+    status: str = "confirmed"
+    cost_usd: float = 0
+    count: int = 0
+    session_count: int = 0
+
+
+class UsagePhase(BaseModel):
+    key: str
+    label: str
+    cost_usd: float = 0
+    tokens: int = 0
+    share: float = 0
+    tool_count: int = 0
+    session_count: int = 0
+    habits: list[UsageHabit] = Field(default_factory=list)
+    tools: list[UsageTool] = Field(default_factory=list)
+
+
+class UsageMapWindow(BaseModel):
+    date_from: str | None = None
+    date_to: str | None = None
+
+
+class UsageMapMeta(BaseModel):
+    project_id: int | None = None
+    window: UsageMapWindow = Field(default_factory=UsageMapWindow)
+    total_usd: float = 0
+    total_tokens: int = 0
+    cost_available: bool = False
+    costs_partial: bool = False
+    sessions_analyzed: int = 0
+    events_classified: int = 0
+    share_basis: str = "cost"
+
+
+class UsageMapResponse(BaseModel):
+    meta: UsageMapMeta = Field(default_factory=UsageMapMeta)
+    phases: list[UsagePhase] = Field(default_factory=list)
+
+
+class UsageEvidenceSession(BaseModel):
+    session_id: int
+    title: str = ""
+    project_name: str = ""
+    cost_usd: float = 0
+    count: int = 0
+    exemplar_event_ids: list[int] = Field(default_factory=list)
+    detail: str | None = None
+
+
+class UsageMapEvidenceResponse(BaseModel):
+    node: str
+    label: str = ""
+    rule: str = ""
+    cost_usd: float = 0
+    sessions: list[UsageEvidenceSession] = Field(default_factory=list)
