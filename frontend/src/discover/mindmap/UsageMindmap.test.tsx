@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { UsageMapEvidenceResponse, UsageMapResponse } from "../../api/types";
 import type { UsagePhase } from "../../api/types";
 import MindmapCanvas from "./MindmapCanvas";
 import ShareRail from "./ShareRail";
+import UsageMindmap from "./UsageMindmap";
 
 const PHASES: UsagePhase[] = [
   {
@@ -18,6 +21,47 @@ const PHASES: UsagePhase[] = [
   { key: "verify", label: "Verify", cost_usd: 20, tokens: 0, share: 0.2,
     tool_count: 4, session_count: 2, habits: [] },
 ];
+
+const mapPayload: UsageMapResponse = {
+  meta: {
+    project_id: null, window: { date_from: null, date_to: null },
+    total_usd: 100, total_tokens: 5_000_000, cost_available: true,
+    costs_partial: false, sessions_analyzed: 12, events_classified: 340,
+    share_basis: "cost",
+  },
+  phases: PHASES.concat([
+    { key: "plan", label: "Plan", cost_usd: 0, tokens: 0, share: 0,
+      tool_count: 0, session_count: 0, habits: [] },
+    { key: "operate", label: "Operate", cost_usd: 0, tokens: 0, share: 0,
+      tool_count: 0, session_count: 0, habits: [] },
+    { key: "delegate", label: "Delegate", cost_usd: 0, tokens: 0, share: 0,
+      tool_count: 0, session_count: 0, habits: [] },
+    { key: "converse", label: "Converse", cost_usd: 0, tokens: 0, share: 0,
+      tool_count: 0, session_count: 0, habits: [] },
+  ]),
+};
+
+const evidencePayload: UsageMapEvidenceResponse = {
+  node: "phase:explore", label: "Explore",
+  rule: "Assistant turns whose tool calls classify as Explore.",
+  cost_usd: 50,
+  sessions: [{ session_id: 7, title: "Fix importer", project_name: "alpha",
+               cost_usd: 30, count: 12, exemplar_event_ids: [101], detail: null }],
+};
+
+vi.mock("../../api/client", () => ({
+  getUsageMap: vi.fn(() => Promise.resolve(mapPayload)),
+  getUsageMapEvidence: vi.fn(() => Promise.resolve(evidencePayload)),
+}));
+
+function renderPage(onOpenSession = vi.fn()) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <UsageMindmap projects={[]} onOpenSession={onOpenSession} />
+    </QueryClientProvider>,
+  );
+}
 
 describe("MindmapCanvas", () => {
   it("renders the center, phase nodes with exact shares, and habit leaves", () => {
@@ -52,5 +96,22 @@ describe("ShareRail", () => {
     render(<ShareRail phases={PHASES} selectedPhaseKey={null} onSelect={onSelect} />);
     fireEvent.click(screen.getByRole("button", { name: /Explore 50%/ }));
     expect(onSelect).toHaveBeenCalledWith("explore");
+  });
+});
+
+describe("UsageMindmap", () => {
+  it("renders the map and selects the largest phase by default", async () => {
+    renderPage();
+    expect(await screen.findByText("My usage")).toBeInTheDocument();
+    // evidence panel for the auto-selected node shows its rule and sessions
+    expect(await screen.findByText(/classify as Explore/)).toBeInTheDocument();
+    expect(screen.getByText("Fix importer")).toBeInTheDocument();
+  });
+
+  it("opens a session from the evidence panel", async () => {
+    const onOpenSession = vi.fn();
+    renderPage(onOpenSession);
+    fireEvent.click(await screen.findByRole("button", { name: /Fix importer/ }));
+    expect(onOpenSession).toHaveBeenCalledWith(7, 101);
   });
 });

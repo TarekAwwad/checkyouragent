@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import type { Project } from "../api/types";
 import SubgroupDiscovery from "./SubgroupDiscovery";
 import ContextEconomics from "./context/ContextEconomics";
+import UsageMindmap from "./mindmap/UsageMindmap";
 
 export interface TechniqueProps {
   projects: Project[];
@@ -20,6 +21,7 @@ export interface Technique {
 export const TECHNIQUES: Technique[] = [
   { key: "subgroup", label: "Subgroups", status: "ready", component: SubgroupDiscovery },
   { key: "context", label: "Context economics", status: "ready", component: ContextEconomics },
+  { key: "mindmap", label: "Usage Mindmap", status: "ready", component: UsageMindmap },
   { key: "sequence", label: "Sequence mining", status: "soon" },
   { key: "anomalies", label: "Anomalies", status: "soon" },
 ];
