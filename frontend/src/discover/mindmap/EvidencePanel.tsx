@@ -13,11 +13,9 @@ interface Props {
 
 /** Receipts for the selected node: the rule that fired and the sessions behind it. */
 export default function EvidencePanel({ node, filters, costAvailable, onOpenSession }: Props) {
-  // Map node id to the API node id: habit nodes are "habit:<key>@<phase>" on
-  // the canvas but "habit:<key>" in the API contract.
-  const apiNode = node.kind === "habit" && node.habitKey
-    ? `habit:${node.habitKey}`
-    : node.id;
+  // Habit node ids carry their home phase ("habit:<key>@<phase>") and the API
+  // accepts that form directly, so receipts always match the clicked leaf.
+  const apiNode = node.id;
   // Hooks must run unconditionally (no early returns above this line); grouped
   // overflow leaves and the center node simply disable the fetch.
   const query = useQuery({
@@ -75,6 +73,9 @@ export default function EvidencePanel({ node, filters, costAvailable, onOpenSess
           </li>
         ))}
       </ul>
+      {sessions.length >= 50 && (
+        <p className="mindmap-evidence-rule">Showing the top 50 sessions by cost.</p>
+      )}
     </aside>
   );
 }

@@ -819,6 +819,37 @@ def test_evidence_unknown_node_raises_key_error(tmp_path, monkeypatch) -> None:
         usage_map_evidence(conn, node="garbage")
 
 
+def test_habit_evidence_respects_phase_qualifier(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(usage_map, "pricing_path", lambda: _pricing_csv(tmp_path))
+    conn = _conn()
+    _seed_base(conn)
+    # blind-retry in session 1 on Bash (operate) and in session 2 on Edit (implement)
+    for event_id, session, tool, input_data in [
+        (1, 1, "Bash", {"command": "git push"}), (2, 1, "Bash", {"command": "git push"}),
+        (3, 1, "Bash", {"command": "git push"}),
+        (11, 2, "Edit", {"file_path": "x.py"}), (12, 2, "Edit", {"file_path": "x.py"}),
+        (13, 2, "Edit", {"file_path": "x.py"}),
+    ]:
+        _add_assistant_event(conn, event_id, session, "2026-06-01T10:00:00Z",
+                             [(tool, input_data, True)])
+    operate = usage_map_evidence(conn, node="habit:blind-retry@operate")
+    assert [s["session_id"] for s in operate["sessions"]] == [1]
+    implement = usage_map_evidence(conn, node="habit:blind-retry@implement")
+    assert [s["session_id"] for s in implement["sessions"]] == [2]
+    both = usage_map_evidence(conn, node="habit:blind-retry")  # unqualified: all phases
+    assert {s["session_id"] for s in both["sessions"]} == {1, 2}
+
+
+def test_habit_evidence_unknown_phase_qualifier_is_empty_not_404(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(usage_map, "pricing_path", lambda: _pricing_csv(tmp_path))
+    conn = _conn()
+    _seed_base(conn)
+    _add_assistant_event(conn, 1, 1, "2026-06-01T10:00:00Z",
+                         [("Task", {"prompt": "go"}, False)])
+    payload = usage_map_evidence(conn, node="habit:delegation@verify")
+    assert payload["sessions"] == []
+
+
 @pytest.fixture()
 def api_client(tmp_path, monkeypatch):
     monkeypatch.setattr(usage_map, "pricing_path", lambda: _pricing_csv(tmp_path))

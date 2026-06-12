@@ -278,9 +278,9 @@ def load_events(
 
 # --- Habit detectors ----------------------------------------------------------
 # Each detector is a pure function over one session's ordered EventRecs and
-# returns HabitFindings. New detectors (including future sequence-mining
-# proposals, which should emit status "candidate") register in
-# SESSION_DETECTORS below — the engine and API need no other change.
+# returns HabitFindings. Future sequence mining registers detectors in
+# SESSION_DETECTORS below; surfacing them as status "candidate" leaves
+# additionally needs a status field on HabitFinding and a registry entry.
 
 BLIND_RETRY_MIN = 3   # identical failing attempts in a row to flag
 PLAN_BURST_MIN = 5    # edit calls after a plan step to count as a planned burst
@@ -563,8 +563,9 @@ HABITS: list[dict[str, str]] = [
 ]
 HABIT_BY_KEY: dict[str, dict[str, str]] = {h["key"]: h for h in HABITS}
 
-# Per-session detectors. Future sequence mining adds entries here (emitting
-# status "candidate" leaves) — nothing else changes.
+# Per-session detectors. Future sequence mining adds entries here; surfacing
+# them as status "candidate" leaves additionally needs a status field on
+# HabitFinding and a registry entry.
 SESSION_DETECTORS: list[Callable[[list[EventRec]], list[HabitFinding]]] = [
     detect_tdd_loop,
     detect_delegation,
@@ -732,7 +733,11 @@ def usage_map_evidence(
             if len(entry["exemplar_event_ids"]) < EVIDENCE_EXEMPLARS:
                 entry["exemplar_event_ids"].append(event.event_id)
     elif kind == "habit":
-        spec = HABIT_BY_KEY.get(key)
+        # Habit leaves are keyed (habit, home phase) on the map, so the node
+        # may carry a phase qualifier ("habit:<key>@<phase>") to scope the
+        # receipts to exactly the clicked leaf. Bare "habit:<key>" spans phases.
+        habit_key, _, phase_filter = key.partition("@")
+        spec = HABIT_BY_KEY.get(habit_key)
         if spec is None:
             raise KeyError(node)
         label, rule = spec["label"], spec["rule"]
@@ -741,7 +746,8 @@ def usage_map_evidence(
                 conn, table, events, project_id=project_id,
                 date_from=date_from, date_to=date_to,
             )
-            if f.habit_key == key
+            if f.habit_key == habit_key
+            and (not phase_filter or f.phase == phase_filter)
         ]
         for finding in findings:
             entry = entry_for(finding.session_db_id, finding.session_title,
