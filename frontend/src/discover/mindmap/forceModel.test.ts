@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { UsageHabit, UsagePhase } from "../../api/types";
+import type { UsageHabit, UsagePhase, UsageTool } from "../../api/types";
 import {
   buildForceModel, groupSmallHabits, habitRadius, labelTier, phaseNode, phaseRadius,
 } from "./forceModel";
@@ -9,9 +9,14 @@ function habit(key: string, costUsd: number, polarity: "good" | "anti" = "anti")
            cost_usd: costUsd, count: 3, session_count: 2 };
 }
 
-function phase(key: string, share: number, habits: UsageHabit[] = []): UsagePhase {
+function phase(key: string, share: number, habits: UsageHabit[] = [],
+               tools: UsageTool[] = []): UsagePhase {
   return { key, label: key[0].toUpperCase() + key.slice(1), cost_usd: share * 100,
-           tokens: 1000, share, tool_count: 10, session_count: 3, habits };
+           tokens: 1000, share, tool_count: 10, session_count: 3, habits, tools };
+}
+
+function tool(key: string, costUsd: number, count = 3): UsageTool {
+  return { key, label: key, cost_usd: costUsd, tokens: 1000, count, session_count: 2 };
 }
 
 describe("labelTier", () => {

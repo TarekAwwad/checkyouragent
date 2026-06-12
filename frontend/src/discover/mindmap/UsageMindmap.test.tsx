@@ -14,11 +14,19 @@ const PHASES: UsagePhase[] = [
     habits: [{ key: "re-reads", phase: "explore", label: "Repeated file re-reads",
                polarity: "anti", status: "confirmed", cost_usd: 5, count: 4,
                session_count: 2 }],
+    tools: [{ key: "Read", label: "Read", cost_usd: 30, tokens: 0, count: 12,
+              session_count: 3 },
+            { key: "Grep", label: "Grep", cost_usd: 20, tokens: 0, count: 8,
+              session_count: 2 }],
   },
   { key: "implement", label: "Implement", cost_usd: 30, tokens: 0, share: 0.3,
-    tool_count: 6, session_count: 3, habits: [] },
+    tool_count: 6, session_count: 3, habits: [],
+    tools: [{ key: "Edit", label: "Edit", cost_usd: 30, tokens: 0, count: 6,
+              session_count: 3 }] },
   { key: "verify", label: "Verify", cost_usd: 20, tokens: 0, share: 0.2,
-    tool_count: 4, session_count: 2, habits: [] },
+    tool_count: 4, session_count: 2, habits: [],
+    tools: [{ key: "Bash", label: "Bash", cost_usd: 20, tokens: 0, count: 4,
+              session_count: 2 }] },
 ];
 
 const mapPayload: UsageMapResponse = {
@@ -30,13 +38,13 @@ const mapPayload: UsageMapResponse = {
   },
   phases: PHASES.concat([
     { key: "plan", label: "Plan", cost_usd: 0, tokens: 0, share: 0,
-      tool_count: 0, session_count: 0, habits: [] },
+      tool_count: 0, session_count: 0, habits: [], tools: [] },
     { key: "operate", label: "Operate", cost_usd: 0, tokens: 0, share: 0,
-      tool_count: 0, session_count: 0, habits: [] },
+      tool_count: 0, session_count: 0, habits: [], tools: [] },
     { key: "delegate", label: "Delegate", cost_usd: 0, tokens: 0, share: 0,
-      tool_count: 0, session_count: 0, habits: [] },
+      tool_count: 0, session_count: 0, habits: [], tools: [] },
     { key: "converse", label: "Converse", cost_usd: 0, tokens: 0, share: 0,
-      tool_count: 0, session_count: 0, habits: [] },
+      tool_count: 0, session_count: 0, habits: [], tools: [] },
   ]),
 };
 

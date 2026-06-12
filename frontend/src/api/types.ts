@@ -558,6 +558,15 @@ export interface UsageHabit {
   session_count: number;
 }
 
+export interface UsageTool {
+  key: string;
+  label: string;
+  cost_usd: number;
+  tokens: number;
+  count: number;
+  session_count: number;
+}
+
 export interface UsagePhase {
   key: string;
   label: string;
@@ -567,6 +576,7 @@ export interface UsagePhase {
   tool_count: number;
   session_count: number;
   habits: UsageHabit[];
+  tools: UsageTool[];
 }
 
 export interface UsageMapMeta {
