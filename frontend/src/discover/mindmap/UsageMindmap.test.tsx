@@ -132,4 +132,14 @@ describe("UsageMindmap", () => {
       expect(selected[0].getAttribute("aria-label")).toMatch(/^Explore/);
     });
   });
+
+  it("shows compare deltas when both dates are set and compare is on", async () => {
+    renderPage();
+    await screen.findByText("My usage");
+    fireEvent.change(screen.getByLabelText("From date"), { target: { value: "2026-06-01" } });
+    fireEvent.change(screen.getByLabelText("To date"), { target: { value: "2026-06-10" } });
+    fireEvent.click(screen.getByLabelText("Compare with previous period"));
+    // mocked client returns the same payload for both windows -> all deltas are "="
+    expect((await screen.findAllByText("=")).length).toBeGreaterThan(0);
+  });
 });
