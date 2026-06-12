@@ -13,8 +13,8 @@ export interface MapNode {
   sublabel: string;
   x: number;
   y: number;
-  rx: number;
-  ry: number;
+  rx?: number;
+  ry?: number;
   share: number;
   polarity?: "good" | "anti";
   phaseKey?: string;

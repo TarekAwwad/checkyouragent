@@ -81,6 +81,19 @@ describe("MindmapCanvas", () => {
     expect(onSelect).toHaveBeenCalledWith(
       expect.objectContaining({ id: "phase:explore" }));
   });
+
+  it("dims non-neighbors while hovering a node", () => {
+    const { container } = render(
+      <MindmapCanvas phases={PHASES} totalUsd={100} costAvailable
+                     selectedNodeId={null} onSelectNode={vi.fn()} />);
+    fireEvent.pointerEnter(screen.getByRole("button", { name: /Explore: 50%/ }));
+    // Verify (not adjacent to Explore) is dimmed; the habit leaf (adjacent) is not.
+    expect(container.querySelectorAll(".mindmap-node.is-dimmed").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: /Verify: 20%/ }).classList.contains("is-dimmed")).toBe(true);
+    expect(screen.getByRole("button", { name: /Repeated file re-reads/ }).classList.contains("is-dimmed")).toBe(false);
+    fireEvent.pointerLeave(screen.getByRole("button", { name: /Explore: 50%/ }));
+    expect(container.querySelectorAll(".mindmap-node.is-dimmed")).toHaveLength(0);
+  });
 });
 
 describe("ShareRail", () => {
