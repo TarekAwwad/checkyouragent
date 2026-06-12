@@ -866,6 +866,19 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
   padding: 7px 12px; border-radius: 9px;
   border: 1px solid var(--border-2); background: var(--surface); color: var(--text); font-size: 12px;
 }
+.cost-filterbar input[type="date"] {
+  padding: 0 10px; border-radius: 9px; font-family: inherit;
+  border: 1px solid var(--border-2); background: var(--surface); color: var(--text); font-size: 12px;
+}
+.cost-filterbar input[type="date"]:focus-visible,
+.cost-filterbar select:focus-visible { outline: none; border-color: var(--accent); }
+.cost-filterbar input[type="date"]::-webkit-calendar-picker-indicator { opacity: .55; cursor: pointer; }
+.cost-filterbar input[type="date"]:hover::-webkit-calendar-picker-indicator { opacity: .9; }
+/* One height for every toolbar control so the row lines up exactly. */
+.cost-filterbar select,
+.cost-filterbar input[type="date"],
+.cost-filterbar .ghost-action { height: 33px; box-sizing: border-box; }
+.cost-filterbar .ghost-action { padding: 0 12px; font-size: 12px; border-radius: 9px; gap: 6px; }
 .cost-filterbar .cost-total { margin-left: auto; text-align: right; line-height: 1.15; }
 .cost-filterbar .cost-total b { font-size: 20px; color: var(--text); font-variant-numeric: tabular-nums; }
 .cost-filterbar .cost-total > span { display: block; font-size: 11px; color: var(--muted); }
@@ -2411,4 +2424,5 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
   color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
 
 .mindmap-compare-toggle { display: inline-flex; align-items: center; gap: 6px;
-  font-size: 12px; color: var(--muted); }
+  font-size: 12px; color: var(--muted); white-space: nowrap; }
+.mindmap-compare-toggle input { accent-color: var(--accent); }

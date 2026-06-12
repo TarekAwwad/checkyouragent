@@ -1,5 +1,6 @@
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
+import { FileJson, ImageDown } from "lucide-react";
 import { getUsageMap, type UsageMapFilters } from "../../api/client";
 import type { Project } from "../../api/types";
 import EvidencePanel from "./EvidencePanel";
@@ -125,13 +126,20 @@ export default function UsageMindmap({ projects }: Props) {
                      onChange={(e) => setCompare(e.target.checked)} />
               vs previous period
             </label>
-            <button type="button" onClick={() => exportJson(query.data!)}>Export JSON</button>
-            <button type="button" onClick={() => {
+            <button type="button" className="ghost-action"
+                    onClick={() => exportJson(query.data!)}>
+              <FileJson size={14} />
+              <span>Export JSON</span>
+            </button>
+            <button type="button" className="ghost-action" onClick={() => {
               const svg = boardRef.current?.querySelector("svg");
               if (!svg) return;
               const rect = svg.getBoundingClientRect();
               exportPng(svg, rect.width || 960, rect.height || 560);
-            }}>Export PNG</button>
+            }}>
+              <ImageDown size={14} />
+              <span>Export PNG</span>
+            </button>
           </div>
         </div>
 
