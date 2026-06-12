@@ -1859,6 +1859,19 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
   min-width: 0;
 }
 
+@media (min-width: 1101px) {
+  .context-side {
+    align-self: stretch;
+    height: 100%;
+  }
+
+  .findings-panel {
+    flex: 1 1 0;
+    height: auto;
+    min-height: 0;
+  }
+}
+
 .archetype-detail {
   position: sticky;
   top: 12px;
@@ -1925,6 +1938,12 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
    (driver-list-card / driver-card); only deltas below. */
 .findings-panel .driver-card-grid {
   max-height: 460px;
+}
+
+@media (min-width: 1101px) {
+  .findings-panel .driver-card-grid {
+    max-height: none;
+  }
 }
 
 .findings-panel .driver-card-topline > span {
