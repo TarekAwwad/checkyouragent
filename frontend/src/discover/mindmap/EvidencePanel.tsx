@@ -1,38 +1,48 @@
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getUsageMapEvidence, type UsageMapFilters } from "../../api/client";
-import { formatUsd } from "../formatting";
-import type { MapNode } from "./mapGeometry";
+import type { UsagePhase } from "../../api/types";
+import { formatTokens, formatUsd } from "../formatting";
+import type { MapNode } from "./forceModel";
 
 interface Props {
   node: MapNode;
+  phases: UsagePhase[];
   filters: UsageMapFilters;
   costAvailable: boolean;
-  onOpenSession: (sessionId: number, eventId?: number | null) => void;
+  /** Optional: previous-period share per phase key (compare mode). */
+  previousShares?: Record<string, number>;
 }
 
-/** Receipts for the selected node: the rule that fired and the sessions behind it. */
-export default function EvidencePanel({ node, filters, costAvailable, onOpenSession }: Props) {
+/**
+ * Floating card over the graph: the rule that fired plus exact totals for the
+ * selected node. Deliberately no session list — the map stays the focus.
+ */
+export default function EvidencePanel({
+  node, phases, filters, costAvailable, previousShares,
+}: Props) {
   // Habit node ids carry their home phase ("habit:<key>@<phase>") and the API
-  // accepts that form directly, so receipts always match the clicked leaf.
-  const apiNode = node.id;
-  // Hooks must run unconditionally (no early returns above this line); grouped
+  // accepts that form directly. Hooks must run unconditionally; grouped
   // overflow leaves and the center node simply disable the fetch.
   const query = useQuery({
-    queryKey: ["usage-map-evidence", apiNode, filters.projectId ?? null,
+    queryKey: ["usage-map-evidence", node.id, filters.projectId ?? null,
                filters.dateFrom ?? null, filters.dateTo ?? null],
-    queryFn: () => getUsageMapEvidence(apiNode, filters),
+    queryFn: () => getUsageMapEvidence(node.id, filters),
     enabled: node.kind !== "center" && !node.grouped,
     refetchOnWindowFocus: false,
     staleTime: 60_000,
   });
 
-  // Grouped overflow leaves carry their members locally — no fetch needed.
+  if (node.kind === "center") return null;
+
+  const cardClass = ["mindmap-evidence", `is-${node.kind}`,
+    node.polarity ? `is-${node.polarity}` : ""].filter(Boolean).join(" ");
+
   if (node.grouped) {
     return (
-      <aside className="mindmap-evidence">
-        <h3>{node.label}</h3>
-        <ul>
+      <aside className={cardClass}>
+        <h3><i aria-hidden="true" />{node.label}</h3>
+        <ul className="mindmap-evidence-grouped">
           {node.grouped.map((habit) => (
             <li key={habit.key}>
               {habit.label} — {costAvailable ? formatUsd(habit.cost_usd) : `${habit.count}x`}
@@ -42,39 +52,51 @@ export default function EvidencePanel({ node, filters, costAvailable, onOpenSess
       </aside>
     );
   }
-  if (node.kind === "center") {
-    return <aside className="mindmap-evidence"><p>Select a phase or habit to see its receipts.</p></aside>;
-  }
   if (query.isPending) {
-    return <aside className="mindmap-evidence"><p>Loading evidence…</p></aside>;
+    return <aside className={cardClass}><p className="mindmap-evidence-rule">Loading evidence…</p></aside>;
   }
   if (query.isError || !query.data) {
-    return <aside className="mindmap-evidence panel-error"><p>Evidence could not be loaded.</p></aside>;
+    return <aside className={`${cardClass} panel-error`}><p className="mindmap-evidence-rule">Evidence could not be loaded.</p></aside>;
   }
-  const { label, rule, cost_usd, sessions } = query.data;
+
+  const { label, rule, cost_usd } = query.data;
+  const phase = phases.find((p) => p.key === node.phaseKey);
+  const habit = node.habitKey
+    ? phase?.habits.find((h) => h.key === node.habitKey) : undefined;
+  const previous = node.kind === "phase" && node.phaseKey
+    ? previousShares?.[node.phaseKey] : undefined;
+
   return (
-    <aside className="mindmap-evidence">
-      <h3>{label}</h3>
+    <aside className={cardClass}>
+      <h3><i aria-hidden="true" />{label}</h3>
       <p className="mindmap-evidence-rule">{rule}</p>
-      {costAvailable && <p className="mindmap-evidence-total">{formatUsd(cost_usd)} total</p>}
-      <ul className="mindmap-evidence-sessions">
-        {sessions.map((session) => (
-          <li key={session.session_id}>
-            <button type="button"
-                    onClick={() => onOpenSession(session.session_id,
-                                                 session.exemplar_event_ids[0] ?? null)}>
-              <strong>{session.title}</strong>
-              <span>{session.project_name}</span>
-              <span>
-                {costAvailable ? formatUsd(session.cost_usd) : `${session.count}x`}
-                {session.detail ? ` — ${session.detail}` : ""}
-              </span>
-            </button>
-          </li>
-        ))}
-      </ul>
-      {sessions.length >= 50 && (
-        <p className="mindmap-evidence-rule">Showing the top 50 sessions by cost.</p>
+      <div className="mindmap-evidence-bar">
+        <i style={{ width: `${Math.max(3, node.share * 100)}%` }} />
+      </div>
+      <div className="mindmap-evidence-row">
+        <span>Share of spend</span><b>{Math.round(node.share * 100)}%</b>
+      </div>
+      {previous !== undefined && (
+        <div className="mindmap-evidence-row">
+          <span>Previous period</span><b>{Math.round(previous * 100)}%</b>
+        </div>
+      )}
+      {costAvailable ? (
+        <div className="mindmap-evidence-row"><span>Cost</span><b>{formatUsd(cost_usd)}</b></div>
+      ) : (phase && node.kind === "phase" && (
+        <div className="mindmap-evidence-row"><span>Tokens</span><b>{formatTokens(phase.tokens)}</b></div>
+      ))}
+      {node.kind === "phase" && phase && (
+        <>
+          <div className="mindmap-evidence-row"><span>Tool calls</span><b>{phase.tool_count}</b></div>
+          <div className="mindmap-evidence-row"><span>Sessions</span><b>{phase.session_count}</b></div>
+        </>
+      )}
+      {node.kind === "habit" && habit && (
+        <>
+          <div className="mindmap-evidence-row"><span>Occurrences</span><b>{habit.count}</b></div>
+          <div className="mindmap-evidence-row"><span>Sessions</span><b>{habit.session_count}</b></div>
+        </>
       )}
     </aside>
   );

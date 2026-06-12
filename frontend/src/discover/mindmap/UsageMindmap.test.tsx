@@ -5,7 +5,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { UsageMapEvidenceResponse, UsageMapResponse } from "../../api/types";
 import type { UsagePhase } from "../../api/types";
 import MindmapCanvas from "./MindmapCanvas";
-import ShareRail from "./ShareRail";
 import UsageMindmap from "./UsageMindmap";
 
 const PHASES: UsagePhase[] = [
@@ -96,49 +95,29 @@ describe("MindmapCanvas", () => {
   });
 });
 
-describe("ShareRail", () => {
-  it("shows one segment per phase with exact percentages", () => {
-    render(<ShareRail phases={PHASES} selectedPhaseKey={null} onSelect={vi.fn()} />);
-    expect(screen.getByText("Explore 50%")).toBeInTheDocument();
-    expect(screen.getByText("Implement 30%")).toBeInTheDocument();
-    expect(screen.getByText("Verify 20%")).toBeInTheDocument();
-  });
-
-  it("selects a phase on click", () => {
-    const onSelect = vi.fn();
-    render(<ShareRail phases={PHASES} selectedPhaseKey={null} onSelect={onSelect} />);
-    fireEvent.click(screen.getByRole("button", { name: /Explore 50%/ }));
-    expect(onSelect).toHaveBeenCalledWith("explore");
-  });
-});
-
 describe("UsageMindmap", () => {
-  it("renders the map and selects the largest phase by default", async () => {
+  it("renders the map and shows evidence for the costliest phase by default", async () => {
     renderPage();
     expect(await screen.findByText("My usage")).toBeInTheDocument();
-    // evidence panel for the auto-selected node shows its rule and sessions
     expect(await screen.findByText(/classify as Explore/)).toBeInTheDocument();
-    expect(screen.getByText("Fix importer")).toBeInTheDocument();
+    // share/cost rows from the floating card
+    expect(screen.getByText("Share of spend")).toBeInTheDocument();
+    expect(screen.getByText("Tool calls")).toBeInTheDocument();
   });
 
-  it("opens a session from the evidence panel", async () => {
-    const onOpenSession = vi.fn();
-    renderPage(onOpenSession);
-    fireEvent.click(await screen.findByRole("button", { name: /Fix importer/ }));
-    expect(onOpenSession).toHaveBeenCalledWith(7, 101);
+  it("does not render a session list in the evidence card", async () => {
+    renderPage();
+    await screen.findByText(/classify as Explore/);
+    expect(screen.queryByText("Fix importer")).not.toBeInTheDocument();
   });
 
   it("resets the selection when filters change", async () => {
-    // The evidence mock returns the same payload for every node, so assert on
-    // the canvas selection class instead of the evidence text.
     const { container } = renderPage();
     await screen.findByText("My usage");
-    // select a non-default node, then change a filter
     fireEvent.click(screen.getByRole("button", { name: /Implement: 30%/ }));
     expect(container.querySelector(".mindmap-node.is-selected")
       ?.getAttribute("aria-label")).toMatch(/^Implement/);
     fireEvent.change(screen.getByLabelText("From date"), { target: { value: "2026-06-01" } });
-    // selection falls back to the costliest phase (Explore)
     await waitFor(() => {
       const selected = container.querySelectorAll(".mindmap-node.is-selected");
       expect(selected).toHaveLength(1);
@@ -152,7 +131,6 @@ describe("UsageMindmap", () => {
     fireEvent.change(screen.getByLabelText("From date"), { target: { value: "2026-06-01" } });
     fireEvent.change(screen.getByLabelText("To date"), { target: { value: "2026-06-10" } });
     fireEvent.click(screen.getByLabelText("Compare with previous period"));
-    // mocked client returns the same payload for both windows -> all deltas are "="
     expect((await screen.findAllByText("=")).length).toBeGreaterThan(0);
   });
 

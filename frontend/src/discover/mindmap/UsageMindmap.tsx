@@ -4,17 +4,17 @@ import { getUsageMap, type UsageMapFilters } from "../../api/client";
 import type { Project } from "../../api/types";
 import EvidencePanel from "./EvidencePanel";
 import { exportJson, exportPng } from "./exportMap";
-import type { MapNode } from "./mapGeometry";
-import { MAP_HEIGHT, MAP_WIDTH } from "./mapGeometry";
+import { phaseNode, type MapNode } from "./forceModel";
 import MindmapCanvas from "./MindmapCanvas";
-import ShareRail from "./ShareRail";
 
 interface Props {
   projects: Project[];
-  onOpenSession: (sessionId: number, eventId?: number | null) => void;
+  /** Part of the shared TechniqueProps contract; unused since the evidence
+      card no longer links into sessions. */
+  onOpenSession?: (sessionId: number, eventId?: number | null) => void;
 }
 
-export default function UsageMindmap({ projects, onOpenSession }: Props) {
+export default function UsageMindmap({ projects }: Props) {
   const [projectId, setProjectId] = React.useState<number | null>(null);
   const [dateFrom, setDateFrom] = React.useState("");
   const [dateTo, setDateTo] = React.useState("");
@@ -64,9 +64,10 @@ export default function UsageMindmap({ projects, onOpenSession }: Props) {
     refetchOnWindowFocus: false,
     staleTime: 60_000,
   });
-  const previousShares = compareEnabled && previousQuery.data
-    ? Object.fromEntries(previousQuery.data.phases.map((p) => [p.key, p.share]))
-    : undefined;
+  const previousShares: Record<string, number> | undefined =
+    compareEnabled && previousQuery.data
+      ? Object.fromEntries(previousQuery.data.phases.map((p) => [p.key, p.share]))
+      : undefined;
 
   if (query.isPending) {
     return (
@@ -94,23 +95,13 @@ export default function UsageMindmap({ projects, onOpenSession }: Props) {
     );
   }
 
-  // Default selection: the costliest phase, so the evidence panel is never empty.
+  // Default selection: the costliest phase, so the evidence card is never empty.
   const fallbackNode = ((): MapNode | null => {
     const top = [...phases].sort((a, b) => b.share - a.share)[0];
     if (!top || top.share === 0) return null;
-    return { id: `phase:${top.key}`, kind: "phase", label: top.label,
-             sublabel: "", x: 0, y: 0, rx: 0, ry: 0, share: top.share,
-             phaseKey: top.key };
+    return phaseNode(top);
   })();
   const activeNode = selectedNode ?? fallbackNode;
-
-  const selectPhaseFromRail = (phaseKey: string) => {
-    const phase = phases.find((p) => p.key === phaseKey);
-    if (!phase) return;
-    setSelectedNode({ id: `phase:${phaseKey}`, kind: "phase", label: phase.label,
-                      sublabel: "", x: 0, y: 0, rx: 0, ry: 0, share: phase.share,
-                      phaseKey });
-  };
 
   return (
     <main className="discover-page">
@@ -137,7 +128,9 @@ export default function UsageMindmap({ projects, onOpenSession }: Props) {
             <button type="button" onClick={() => exportJson(query.data!)}>Export JSON</button>
             <button type="button" onClick={() => {
               const svg = boardRef.current?.querySelector("svg");
-              if (svg) exportPng(svg, MAP_WIDTH, MAP_HEIGHT);
+              if (!svg) return;
+              const rect = svg.getBoundingClientRect();
+              exportPng(svg, rect.width || 960, rect.height || 560);
             }}>Export PNG</button>
           </div>
         </div>
@@ -149,7 +142,7 @@ export default function UsageMindmap({ projects, onOpenSession }: Props) {
           <p className="tile-note">Some models have no price row — costs are partial.</p>
         )}
 
-        <div className="mindmap-board" ref={boardRef}>
+        <div className="mindmap-stage" ref={boardRef}>
           <MindmapCanvas
             phases={phases}
             totalUsd={meta.total_usd}
@@ -158,22 +151,15 @@ export default function UsageMindmap({ projects, onOpenSession }: Props) {
             onSelectNode={setSelectedNode}
             previousShares={previousShares}
           />
-          <div className="mindmap-side">
-            <ShareRail
+          {activeNode && (
+            <EvidencePanel
+              node={activeNode}
               phases={phases}
-              selectedPhaseKey={activeNode?.kind === "phase" ? activeNode.phaseKey ?? null : null}
-              onSelect={selectPhaseFromRail}
+              filters={filters}
+              costAvailable={meta.cost_available}
               previousShares={previousShares}
             />
-            {activeNode && (
-              <EvidencePanel
-                node={activeNode}
-                filters={filters}
-                costAvailable={meta.cost_available}
-                onOpenSession={onOpenSession}
-              />
-            )}
-          </div>
+          )}
         </div>
       </div>
     </main>
