@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { UsageMapEvidenceResponse, UsageMapResponse } from "../../api/types";
@@ -113,5 +113,23 @@ describe("UsageMindmap", () => {
     renderPage(onOpenSession);
     fireEvent.click(await screen.findByRole("button", { name: /Fix importer/ }));
     expect(onOpenSession).toHaveBeenCalledWith(7, 101);
+  });
+
+  it("resets the selection when filters change", async () => {
+    // The evidence mock returns the same payload for every node, so assert on
+    // the canvas selection class instead of the evidence text.
+    const { container } = renderPage();
+    await screen.findByText("My usage");
+    // select a non-default node, then change a filter
+    fireEvent.click(screen.getByRole("button", { name: /Implement: 30%/ }));
+    expect(container.querySelector(".mindmap-node.is-selected")
+      ?.getAttribute("aria-label")).toMatch(/^Implement/);
+    fireEvent.change(screen.getByLabelText("From date"), { target: { value: "2026-06-01" } });
+    // selection falls back to the costliest phase (Explore)
+    await waitFor(() => {
+      const selected = container.querySelectorAll(".mindmap-node.is-selected");
+      expect(selected).toHaveLength(1);
+      expect(selected[0].getAttribute("aria-label")).toMatch(/^Explore/);
+    });
   });
 });

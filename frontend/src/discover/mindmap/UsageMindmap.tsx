@@ -18,6 +18,12 @@ export default function UsageMindmap({ projects, onOpenSession }: Props) {
   const [dateTo, setDateTo] = React.useState("");
   const [selectedNode, setSelectedNode] = React.useState<MapNode | null>(null);
 
+  // A selection from the previous filter window may not exist in the new data;
+  // fall back to the costliest phase instead of highlighting a phantom node.
+  React.useEffect(() => {
+    setSelectedNode(null);
+  }, [projectId, dateFrom, dateTo]);
+
   const filters: UsageMapFilters = {
     projectId,
     dateFrom: dateFrom || null,

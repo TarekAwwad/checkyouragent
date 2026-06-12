@@ -2357,6 +2357,7 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
 .mindmap-rail-text { font-size: 12px; color: var(--text); }
 
 .mindmap-side { display: flex; flex-direction: column; gap: 14px; }
+.mindmap-evidence { padding: 10px; border: 1px solid var(--grid); border-radius: 8px; background: var(--raised); }
 .mindmap-evidence h3 { margin: 0 0 4px; font-size: 14px; }
 .mindmap-evidence-rule { font-size: 12px; color: var(--muted); margin: 0 0 6px; }
 .mindmap-evidence-total { font-size: 13px; font-weight: 600; margin: 0 0 8px; }

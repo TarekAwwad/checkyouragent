@@ -21,7 +21,8 @@ export default function EvidencePanel({ node, filters, costAvailable, onOpenSess
   // Hooks must run unconditionally (no early returns above this line); grouped
   // overflow leaves and the center node simply disable the fetch.
   const query = useQuery({
-    queryKey: ["usage-map-evidence", apiNode, filters],
+    queryKey: ["usage-map-evidence", apiNode, filters.projectId ?? null,
+               filters.dateFrom ?? null, filters.dateTo ?? null],
     queryFn: () => getUsageMapEvidence(apiNode, filters),
     enabled: node.kind !== "center" && !node.grouped,
     refetchOnWindowFocus: false,
