@@ -43,9 +43,9 @@ export default function EvidencePanel({
       <aside className={cardClass}>
         <h3><i aria-hidden="true" />{node.label}</h3>
         <ul className="mindmap-evidence-grouped">
-          {node.grouped.map((habit) => (
-            <li key={habit.key}>
-              {habit.label} — {costAvailable ? formatUsd(habit.cost_usd) : `${habit.count}x`}
+          {node.grouped.map((leaf) => (
+            <li key={leaf.key}>
+              {leaf.label} — {costAvailable ? formatUsd(leaf.cost_usd) : `${leaf.count}x`}
             </li>
           ))}
         </ul>
@@ -63,6 +63,8 @@ export default function EvidencePanel({
   const phase = phases.find((p) => p.key === node.phaseKey);
   const habit = node.habitKey
     ? phase?.habits.find((h) => h.key === node.habitKey) : undefined;
+  const tool = node.toolKey
+    ? phase?.tools.find((t) => t.key === node.toolKey) : undefined;
   const previous = node.kind === "phase" && node.phaseKey
     ? previousShares?.[node.phaseKey] : undefined;
 
@@ -83,9 +85,11 @@ export default function EvidencePanel({
       )}
       {costAvailable ? (
         <div className="mindmap-evidence-row"><span>Cost</span><b>{formatUsd(cost_usd)}</b></div>
-      ) : (phase && node.kind === "phase" && (
+      ) : node.kind === "phase" && phase ? (
         <div className="mindmap-evidence-row"><span>Tokens</span><b>{formatTokens(phase.tokens)}</b></div>
-      ))}
+      ) : node.kind === "tool" && tool ? (
+        <div className="mindmap-evidence-row"><span>Tokens</span><b>{formatTokens(tool.tokens)}</b></div>
+      ) : null}
       {node.kind === "phase" && phase && (
         <>
           <div className="mindmap-evidence-row"><span>Tool calls</span><b>{phase.tool_count}</b></div>
@@ -96,6 +100,12 @@ export default function EvidencePanel({
         <>
           <div className="mindmap-evidence-row"><span>Occurrences</span><b>{habit.count}</b></div>
           <div className="mindmap-evidence-row"><span>Sessions</span><b>{habit.session_count}</b></div>
+        </>
+      )}
+      {node.kind === "tool" && tool && (
+        <>
+          <div className="mindmap-evidence-row"><span>Calls</span><b>{tool.count}</b></div>
+          <div className="mindmap-evidence-row"><span>Sessions</span><b>{tool.session_count}</b></div>
         </>
       )}
     </aside>

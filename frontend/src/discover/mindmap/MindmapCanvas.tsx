@@ -6,7 +6,7 @@ import {
 import type { UsagePhase } from "../../api/types";
 import { useChartTooltip } from "../context/chartTooltip";
 import { formatTokens, formatUsd } from "../formatting";
-import { buildForceModel, type MapLink, type MapNode } from "./forceModel";
+import { buildForceModel, type LeafMode, type MapLink, type MapNode } from "./forceModel";
 
 interface Props {
   phases: UsagePhase[];
@@ -16,6 +16,8 @@ interface Props {
   onSelectNode: (node: MapNode) => void;
   /** Optional: previous-period share per phase key, for compare delta chips. */
   previousShares?: Record<string, number>;
+  /** Which leaf layer hangs off the phases. Defaults to the habits lens. */
+  leafMode?: LeafMode;
 }
 
 const DEFAULT_SIZE = { width: 960, height: 560 };
@@ -41,10 +43,11 @@ function edgePath(s: MapNode, t: MapNode): string {
 
 export default function MindmapCanvas({
   phases, totalUsd, costAvailable, selectedNodeId, onSelectNode, previousShares,
+  leafMode = "habits",
 }: Props) {
   const model = React.useMemo(
-    () => buildForceModel(phases, { totalUsd, costAvailable }),
-    [phases, totalUsd, costAvailable],
+    () => buildForceModel(phases, { totalUsd, costAvailable, leafMode }),
+    [phases, totalUsd, costAvailable, leafMode],
   );
   const byId = React.useMemo(
     () => new Map(model.nodes.map((n) => [n.id, n])), [model]);
@@ -240,6 +243,21 @@ export default function MindmapCanvas({
                 ? (costAvailable ? `${node.sublabel} of spend` : node.sublabel)
                 : ""].filter(Boolean);
     }
+    if (node.kind === "tool" && node.grouped) {
+      return node.grouped.map((t) =>
+        `${t.label}: ${costAvailable ? formatUsd(t.cost_usd) : `${t.count}x`}`);
+    }
+    if (node.kind === "tool") {
+      const tool = node.phaseKey && node.toolKey
+        ? phaseByKey.get(node.phaseKey)?.tools.find((t) => t.key === node.toolKey)
+        : undefined;
+      return [
+        node.sublabel
+          ? (costAvailable ? `${node.sublabel} of spend` : node.sublabel)
+          : "",
+        tool ? `${tool.count} calls in ${tool.session_count} sessions` : "",
+      ].filter(Boolean);
+    }
     return [costAvailable ? formatUsd(totalUsd) : ""].filter(Boolean);
   };
 
@@ -249,8 +267,14 @@ export default function MindmapCanvas({
     <div className="mindmap-canvas chart-tooltip-host" ref={hostRef}>
       <div className="mindmap-legend" aria-hidden="true">
         <span><i className="is-phase" /> phase</span>
-        <span><i className="is-good" /> good habit</span>
-        <span><i className="is-anti" /> anti-pattern</span>
+        {leafMode === "habits" ? (
+          <>
+            <span><i className="is-good" /> good habit</span>
+            <span><i className="is-anti" /> anti-pattern</span>
+          </>
+        ) : (
+          <span><i className="is-tool" /> tool</span>
+        )}
       </div>
       <svg ref={svgRef} role="img" aria-label="Usage map"
            viewBox={`${-size.width / 2} ${-size.height / 2} ${size.width} ${size.height}`}

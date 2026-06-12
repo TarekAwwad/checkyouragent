@@ -61,9 +61,9 @@ export interface ForceModel {
 }
 
 const MAX_LEAVES_PER_PHASE = 4;
-const MIN_HABIT_SHARE = 0.01; // of total map cost; below this -> grouped
+const MIN_LEAF_SHARE = 0.01; // of total map cost; below this -> grouped
 const PHASE_SEED_RADIUS = 170;
-const HABIT_SEED_RADIUS = 250;
+const LEAF_SEED_RADIUS = 250;
 
 export function phaseRadius(share: number): number {
   return 18 + 34 * Math.sqrt(share);
@@ -85,7 +85,7 @@ function pct(share: number): string {
 
 /**
  * Visible leaves vs grouped overflow: top MAX_LEAVES_PER_PHASE by cost, and a
- * leaf below MIN_HABIT_SHARE of the map total is always grouped. With no cost
+ * leaf below MIN_LEAF_SHARE of the map total is always grouped. With no cost
  * basis (token fallback) everything within the cap stays visible.
  */
 export function groupSmallLeaves<T extends { cost_usd: number }>(
@@ -97,7 +97,7 @@ export function groupSmallLeaves<T extends { cost_usd: number }>(
   const grouped: T[] = [];
   for (const leaf of sorted) {
     const share = totalUsd > 0 ? leaf.cost_usd / totalUsd : 0;
-    const tooSmall = totalUsd > 0 && share < MIN_HABIT_SHARE;
+    const tooSmall = totalUsd > 0 && share < MIN_LEAF_SHARE;
     if (visible.length < MAX_LEAVES_PER_PHASE && !tooSmall) visible.push(leaf);
     else grouped.push(leaf);
   }
@@ -154,8 +154,8 @@ export function buildForceModel(
     };
     const seed = (j: number, count: number): { x: number; y: number } => {
       const spread = angle + (j - (count - 1) / 2) * 0.5;
-      return { x: Math.cos(spread) * HABIT_SEED_RADIUS,
-               y: Math.sin(spread) * HABIT_SEED_RADIUS };
+      return { x: Math.cos(spread) * LEAF_SEED_RADIUS,
+               y: Math.sin(spread) * LEAF_SEED_RADIUS };
     };
 
     if (leafMode === "habits") {

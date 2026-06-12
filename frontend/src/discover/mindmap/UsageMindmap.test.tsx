@@ -89,6 +89,17 @@ describe("MindmapCanvas", () => {
       expect.objectContaining({ id: "phase:explore" }));
   });
 
+  it("renders tool leaves and a tool legend in the tools lens", () => {
+    const { container } = render(
+      <MindmapCanvas phases={PHASES} totalUsd={100} costAvailable
+                     selectedNodeId={null} onSelectNode={vi.fn()}
+                     leafMode="tools" />);
+    expect(screen.getByRole("button", { name: /Read: 30%/ })).toBeInTheDocument();
+    expect(screen.queryByText("Repeated file re-reads")).not.toBeInTheDocument();
+    expect(container.querySelector(".mindmap-legend i.is-tool")).not.toBeNull();
+    expect(container.querySelector(".mindmap-legend i.is-good")).toBeNull();
+  });
+
   it("dims non-neighbors while hovering a node", () => {
     const { container } = render(
       <MindmapCanvas phases={PHASES} totalUsd={100} costAvailable
