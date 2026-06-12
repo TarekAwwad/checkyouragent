@@ -141,12 +141,12 @@ def aggregate_phases(events: list[EventRec]) -> dict[str, dict[str, Any]]:
             bucket["cost_usd"] += event.cost * weight
             bucket["tokens"] += event.tokens * weight
             bucket["sessions"].add(event.session_db_id)
+        share = 1.0 / len(event.tool_calls) if event.tool_calls else 0.0
         for call in event.tool_calls:
             bucket = acc[classify_tool_call(call.tool_name, call.command)]
             bucket["tool_count"] += 1
             if call.tool_name is None:
                 continue
-            share = 1.0 / len(event.tool_calls)
             tool = bucket["tools"].setdefault(call.tool_name, {
                 "cost_usd": 0.0, "tokens": 0.0, "count": 0, "sessions": set()})
             tool["cost_usd"] += event.cost * share
