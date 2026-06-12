@@ -2,6 +2,30 @@ import React from "react";
 import type { ContextArchetype, ContextFinding } from "../../api/types";
 import { findingKey, formatTokens, formatUsd } from "./ContextEconomics";
 
+const PATH_OR_URL_TOKEN =
+  /(?:https?:\/\/|file:\/\/|[A-Za-z]:[\\/]|\/|\.{1,2}[\\/])\S+|(?:[\w.@-]+[\\/])+[\w.@-]+\.[\w.@-]+/g;
+
+function basenameFromPathOrUrl(value: string): string | null {
+  const trailing = value.match(/[),.;:]+$/)?.[0] ?? "";
+  const core = trailing ? value.slice(0, -trailing.length) : value;
+
+  try {
+    const parsed = new URL(core);
+    const segments = parsed.pathname.split("/").filter(Boolean);
+    const name = segments.at(-1) ?? parsed.hostname;
+    return `${decodeURIComponent(name)}${trailing}`;
+  } catch {
+    const withoutQuery = core.split(/[?#]/, 1)[0];
+    const normalized = withoutQuery.replace(/\\/g, "/").replace(/\/+$/, "");
+    const name = normalized.split("/").pop();
+    return name && name !== normalized ? `${name}${trailing}` : null;
+  }
+}
+
+function compactFindingLabel(label: string): string {
+  return label.replace(PATH_OR_URL_TOKEN, (token) => basenameFromPathOrUrl(token) ?? token);
+}
+
 /**
  * The sessions affected by the selected archetype, reusing the subgroup page's
  * right-column list (driver-list-card / driver-card). Selecting a row loads it
@@ -32,6 +56,7 @@ export default function FindingsPanel({
       <div className="driver-card-grid" aria-label="Findings">
         {archetype.findings.map((finding) => {
           const isActive = findingKey(finding) === activeFindingKey;
+          const label = compactFindingLabel(finding.label);
           const savings = costAvailable
             ? formatUsd(finding.savings_usd)
             : formatTokens(finding.savings_tokens);
@@ -44,7 +69,7 @@ export default function FindingsPanel({
               aria-pressed={isActive}
             >
               <span className="driver-card-topline">
-                <span>{finding.label}</span>
+                <span title={finding.label}>{label}</span>
                 <b>{savings}</b>
               </span>
               <strong>{finding.session_title ?? "Untitled session"}</strong>
