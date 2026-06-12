@@ -119,7 +119,8 @@ export function buildForceModel(
   opts: { totalUsd: number; costAvailable: boolean; leafMode?: LeafMode },
 ): ForceModel {
   const leafMode = opts.leafMode ?? "habits";
-  const active = phases.filter((p) => p.share > 0 || p.habits.length > 0);
+  const active = phases.filter((p) =>
+    p.share > 0 || (leafMode === "habits" ? p.habits.length > 0 : p.tools.length > 0));
   const nodes: MapNode[] = [{
     id: "center", kind: "center", label: "My usage",
     sublabel: opts.costAvailable

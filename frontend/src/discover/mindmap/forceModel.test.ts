@@ -183,4 +183,16 @@ describe("buildForceModel tool lens", () => {
     const leaf = model.nodes.find((n) => n.id === "tool:Read@explore")!;
     expect(leaf.sublabel).toBe("3x");
   });
+
+  it("keeps a zero-share phase visible in the lens that has leaves for it", () => {
+    const zeroShare = phase("operate", 0, [], [tool("Bash", 0, 7)]);
+    const tools = buildForceModel([zeroShare],
+      { totalUsd: 100, costAvailable: true, leafMode: "tools" });
+    expect(tools.nodes.some((n) => n.id === "phase:operate")).toBe(true);
+    expect(tools.nodes.some((n) => n.id === "tool:Bash@operate")).toBe(false); // 0% < 1% floor -> grouped
+    expect(tools.nodes.some((n) => n.id === "tool:other@operate")).toBe(true);
+    const habits = buildForceModel([zeroShare],
+      { totalUsd: 100, costAvailable: true, leafMode: "habits" });
+    expect(habits.nodes.some((n) => n.id === "phase:operate")).toBe(false);
+  });
 });
