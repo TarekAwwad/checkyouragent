@@ -302,6 +302,24 @@ def test_load_events_null_tool_use_id_results_are_ignored() -> None:
     assert events[0].tool_calls[0].is_error is False
 
 
+def test_load_events_tolerates_non_string_command_and_path() -> None:
+    # Real exports occasionally carry structured (non-string) input values;
+    # they must coerce to None instead of crashing the classifier downstream.
+    conn = _conn()
+    _seed_base(conn)
+    _add_assistant_event(conn, 1, 1, "2026-06-01T10:00:00Z",
+                         [("Bash", {"command": {"cmd": "ls", "args": []}}, False),
+                          ("Read", {"file_path": ["a.py", "b.py"]}, False)])
+    events = load_events(conn, PRICE_TABLE)
+    bash, read = events[0].tool_calls
+    assert bash.command is None
+    assert read.detail is None
+    # And the full aggregation path stays crash-free (Bash w/o command -> operate).
+    acc = aggregate_phases(events)
+    assert acc["operate"]["tool_count"] == 1
+    assert acc["explore"]["tool_count"] == 1
+
+
 def _flat_event(event_id: int, tool: str, input_data: dict, is_error: bool,
                 cost: float = 2.0) -> EventRec:
     sig = json.dumps(input_data, sort_keys=True)

@@ -237,10 +237,14 @@ def load_events(
         signature = row["input_preview"] or (
             json.dumps(input_data, sort_keys=True) if input_data else None
         )
+        # Real exports occasionally carry structured (non-string) values here;
+        # coerce to None so the classifier never sees a non-string command.
+        command = input_data.get("command")
+        detail = input_data.get("file_path")
         calls_by_event[row["event_id"]].append(ToolCallRec(
             tool_name=row["tool_name"],
-            command=input_data.get("command"),
-            detail=input_data.get("file_path"),
+            command=command if isinstance(command, str) else None,
+            detail=detail if isinstance(detail, str) else None,
             signature=signature,
             is_error=bool(row["is_error"]),
         ))
