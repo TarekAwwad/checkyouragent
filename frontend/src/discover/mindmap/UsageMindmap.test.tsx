@@ -142,4 +142,11 @@ describe("UsageMindmap", () => {
     // mocked client returns the same payload for both windows -> all deltas are "="
     expect((await screen.findAllByText("=")).length).toBeGreaterThan(0);
   });
+
+  it("offers JSON and PNG export buttons", async () => {
+    renderPage();
+    await screen.findByText("My usage");
+    expect(screen.getByRole("button", { name: "Export JSON" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Export PNG" })).toBeInTheDocument();
+  });
 });

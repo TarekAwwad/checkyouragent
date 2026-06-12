@@ -3,7 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import { getUsageMap, type UsageMapFilters } from "../../api/client";
 import type { Project } from "../../api/types";
 import EvidencePanel from "./EvidencePanel";
+import { exportJson, exportPng } from "./exportMap";
 import type { MapNode } from "./mapGeometry";
+import { MAP_HEIGHT, MAP_WIDTH } from "./mapGeometry";
 import MindmapCanvas from "./MindmapCanvas";
 import ShareRail from "./ShareRail";
 
@@ -18,6 +20,7 @@ export default function UsageMindmap({ projects, onOpenSession }: Props) {
   const [dateTo, setDateTo] = React.useState("");
   const [selectedNode, setSelectedNode] = React.useState<MapNode | null>(null);
   const [compare, setCompare] = React.useState(false);
+  const boardRef = React.useRef<HTMLDivElement>(null);
 
   // A selection from the previous filter window may not exist in the new data;
   // fall back to the costliest phase instead of highlighting a phantom node.
@@ -131,6 +134,11 @@ export default function UsageMindmap({ projects, onOpenSession }: Props) {
                      onChange={(e) => setCompare(e.target.checked)} />
               vs previous period
             </label>
+            <button type="button" onClick={() => exportJson(query.data!)}>Export JSON</button>
+            <button type="button" onClick={() => {
+              const svg = boardRef.current?.querySelector("svg");
+              if (svg) exportPng(svg, MAP_WIDTH, MAP_HEIGHT);
+            }}>Export PNG</button>
           </div>
         </div>
 
@@ -141,7 +149,7 @@ export default function UsageMindmap({ projects, onOpenSession }: Props) {
           <p className="tile-note">Some models have no price row — costs are partial.</p>
         )}
 
-        <div className="mindmap-board">
+        <div className="mindmap-board" ref={boardRef}>
           <MindmapCanvas
             phases={phases}
             totalUsd={meta.total_usd}
