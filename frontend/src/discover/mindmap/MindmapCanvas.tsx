@@ -1,7 +1,7 @@
 import React from "react";
 import type { UsagePhase } from "../../api/types";
 import { useChartTooltip } from "../context/chartTooltip";
-import { formatTokens, formatUsd } from "../context/ContextEconomics";
+import { formatTokens, formatUsd } from "../formatting";
 import { buildMapLayout, type MapNode } from "./mapGeometry";
 
 interface Props {
@@ -63,7 +63,9 @@ export default function MindmapCanvas({
             `mindmap-edge${edge.polarity ? ` is-${edge.polarity}` : ""}`}
             strokeWidth={edge.width} fill="none" />
         ))}
-        {layout.nodes.map((node) => (
+        {layout.nodes.map((node) => {
+          const chip = deltaChip(node, previousShares);
+          return (
           <g key={node.id} role="button" tabIndex={0}
              aria-label={`${node.label}${node.sublabel ? `: ${node.sublabel}` : ""}`}
              className={[
@@ -82,12 +84,13 @@ export default function MindmapCanvas({
                   textAnchor="middle" className="mindmap-sublabel">
               {node.sublabel}
             </text>
-            {deltaChip(node, previousShares) && (
+            {chip && (
               <text x={node.x} y={node.y + 26} textAnchor="middle"
-                    className="mindmap-delta">{deltaChip(node, previousShares)}</text>
+                    className="mindmap-delta">{chip}</text>
             )}
           </g>
-        ))}
+          );
+        })}
       </svg>
       {tooltip}
     </div>
