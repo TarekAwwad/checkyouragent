@@ -42,7 +42,7 @@ PHASES: list[dict[str, str]] = [
     {"key": "verify", "label": "Verify"},
     {"key": "operate", "label": "Operate"},
     {"key": "delegate", "label": "Delegate"},
-    {"key": "converse", "label": "Converse"},
+    {"key": "converse", "label": "Synthesize"},
 ]
 PHASE_KEYS = [p["key"] for p in PHASES]
 
