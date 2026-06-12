@@ -5,7 +5,7 @@ import { getUsageMap, type UsageMapFilters } from "../../api/client";
 import type { Project } from "../../api/types";
 import EvidencePanel from "./EvidencePanel";
 import { exportJson, exportPng } from "./exportMap";
-import { phaseNode, type MapNode } from "./forceModel";
+import { phaseNode, type LeafMode, type MapNode } from "./forceModel";
 import MindmapCanvas from "./MindmapCanvas";
 
 interface Props {
@@ -21,6 +21,7 @@ export default function UsageMindmap({ projects }: Props) {
   const [dateTo, setDateTo] = React.useState("");
   const [selectedNode, setSelectedNode] = React.useState<MapNode | null>(null);
   const [compare, setCompare] = React.useState(false);
+  const [leafMode, setLeafMode] = React.useState<LeafMode>("habits");
   const boardRef = React.useRef<HTMLDivElement>(null);
 
   // A selection from the previous filter window may not exist in the new data;
@@ -126,6 +127,21 @@ export default function UsageMindmap({ projects }: Props) {
                      onChange={(e) => setCompare(e.target.checked)} />
               vs previous period
             </label>
+            <div className="segmented-control" role="tablist" aria-label="Leaf lens">
+              {(["habits", "tools"] as const).map((mode) => (
+                <button key={mode} type="button" role="tab"
+                        aria-selected={leafMode === mode}
+                        className={leafMode === mode ? "active" : ""}
+                        onClick={() => {
+                          setLeafMode(mode);
+                          // A habit node cannot stay selected in tool mode (and
+                          // vice versa); fall back to the costliest phase.
+                          setSelectedNode(null);
+                        }}>
+                  {mode === "habits" ? "Habits" : "Tools"}
+                </button>
+              ))}
+            </div>
             <button type="button" className="ghost-action"
                     onClick={() => exportJson(query.data!)}>
               <FileJson size={14} />
@@ -158,6 +174,7 @@ export default function UsageMindmap({ projects }: Props) {
             selectedNodeId={activeNode?.id ?? null}
             onSelectNode={setSelectedNode}
             previousShares={previousShares}
+            leafMode={leafMode}
           />
           {activeNode && (
             <EvidencePanel
