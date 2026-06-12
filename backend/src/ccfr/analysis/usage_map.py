@@ -787,6 +787,33 @@ def usage_map_evidence(
             merged = entry["exemplar_event_ids"] + list(finding.exemplar_event_ids)
             entry["exemplar_event_ids"] = list(dict.fromkeys(merged))[:EVIDENCE_EXEMPLARS]
             entry["detail"] = finding.detail
+    elif kind == "tool":
+        # Tool leaves are always phase-scoped on the map: "tool:<name>@<phase>".
+        tool_name, sep, phase_key = key.partition("@")
+        spec = next((p for p in PHASES if p["key"] == phase_key), None)
+        if not sep or not tool_name or spec is None:
+            raise KeyError(node)
+        label, rule = tool_name, (
+            f"{tool_name} calls classified as {spec['label']} "
+            "(cost is each call's equal share of its turn)."
+        )
+        for event in events:
+            if not event.tool_calls:
+                continue
+            matched = sum(
+                1 for call in event.tool_calls
+                if call.tool_name == tool_name
+                and classify_tool_call(call.tool_name, call.command) == phase_key
+            )
+            if matched == 0:
+                continue
+            share = matched / len(event.tool_calls)
+            entry = entry_for(event.session_db_id, event.session_title,
+                              event.project_name)
+            entry["cost_usd"] += event.cost * share
+            entry["count"] += matched
+            if len(entry["exemplar_event_ids"]) < EVIDENCE_EXEMPLARS:
+                entry["exemplar_event_ids"].append(event.event_id)
     else:
         raise KeyError(node)
 

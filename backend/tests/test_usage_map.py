@@ -926,6 +926,76 @@ def test_habit_evidence_unknown_phase_qualifier_is_empty_not_404(tmp_path, monke
     assert payload["sessions"] == []
 
 
+def test_tool_evidence_lists_sessions_by_cost(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(usage_map, "pricing_path", lambda: _pricing_csv(tmp_path))
+    conn = _conn()
+    _seed_base(conn)
+    _add_assistant_event(conn, 1, 1, "2026-06-01T10:00:00Z",
+                         [("Read", {"file_path": "a.py"}, False)])
+    _add_assistant_event(conn, 2, 2, "2026-06-01T10:00:00Z",
+                         [("Read", {"file_path": "b.py"}, False)])
+    _add_assistant_event(conn, 3, 2, "2026-06-01T10:01:00Z",
+                         [("Read", {"file_path": "c.py"}, False)])
+
+    payload = usage_map_evidence(conn, node="tool:Read@explore")
+
+    assert payload["node"] == "tool:Read@explore"
+    assert payload["label"] == "Read"
+    assert "Explore" in payload["rule"]
+    assert payload["cost_usd"] == pytest.approx(6.0)
+    assert [s["session_id"] for s in payload["sessions"]] == [2, 1]  # cost desc
+    assert payload["sessions"][0]["cost_usd"] == pytest.approx(4.0)
+    assert payload["sessions"][0]["count"] == 2
+    assert payload["sessions"][0]["exemplar_event_ids"] == [2, 3]
+
+
+def test_tool_evidence_scopes_bash_to_the_phase(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(usage_map, "pricing_path", lambda: _pricing_csv(tmp_path))
+    conn = _conn()
+    _seed_base(conn)
+    _add_assistant_event(conn, 1, 1, "2026-06-01T10:00:00Z",
+                         [("Bash", {"command": "uv run pytest"}, False)])
+    _add_assistant_event(conn, 2, 1, "2026-06-01T10:01:00Z",
+                         [("Bash", {"command": "git push"}, False)])
+    verify = usage_map_evidence(conn, node="tool:Bash@verify")
+    assert verify["cost_usd"] == pytest.approx(2.0)
+    assert verify["sessions"][0]["count"] == 1
+    operate = usage_map_evidence(conn, node="tool:Bash@operate")
+    assert operate["cost_usd"] == pytest.approx(2.0)
+
+
+def test_tool_evidence_uses_equal_share_on_mixed_events(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(usage_map, "pricing_path", lambda: _pricing_csv(tmp_path))
+    conn = _conn()
+    _seed_base(conn)
+    _add_assistant_event(conn, 1, 1, "2026-06-01T10:00:00Z",
+                         [("Read", {"file_path": "a.py"}, False),
+                          ("Edit", {"file_path": "a.py"}, False)])
+    payload = usage_map_evidence(conn, node="tool:Read@explore")
+    assert payload["cost_usd"] == pytest.approx(1.0)  # half of the $2 event
+
+
+def test_tool_evidence_unknown_tool_is_empty_not_error(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(usage_map, "pricing_path", lambda: _pricing_csv(tmp_path))
+    conn = _conn()
+    _seed_base(conn)
+    _add_assistant_event(conn, 1, 1, "2026-06-01T10:00:00Z",
+                         [("Read", {"file_path": "a.py"}, False)])
+    payload = usage_map_evidence(conn, node="tool:Nonexistent@explore")
+    assert payload["sessions"] == []
+    assert payload["cost_usd"] == 0.0
+
+
+def test_tool_evidence_requires_a_valid_phase_qualifier(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(usage_map, "pricing_path", lambda: _pricing_csv(tmp_path))
+    conn = _conn()
+    _seed_base(conn)
+    with pytest.raises(KeyError):
+        usage_map_evidence(conn, node="tool:Read")           # no qualifier
+    with pytest.raises(KeyError):
+        usage_map_evidence(conn, node="tool:Read@nonsense")  # unknown phase
+
+
 @pytest.fixture()
 def api_client(tmp_path, monkeypatch):
     monkeypatch.setattr(usage_map, "pricing_path", lambda: _pricing_csv(tmp_path))
@@ -981,4 +1051,17 @@ def test_usage_map_evidence_endpoint(api_client: TestClient) -> None:
 def test_usage_map_evidence_unknown_node_is_404(api_client: TestClient) -> None:
     resp = api_client.get("/api/analytics/usage-map/evidence",
                           params={"node": "phase:nonsense"})
+    assert resp.status_code == 404
+
+
+def test_usage_map_tool_evidence_endpoint(api_client: TestClient) -> None:
+    resp = api_client.get("/api/analytics/usage-map/evidence",
+                          params={"node": "tool:Read@explore"})
+    assert resp.status_code == 200
+    assert resp.json()["label"] == "Read"
+
+
+def test_usage_map_tool_evidence_bad_phase_is_404(api_client: TestClient) -> None:
+    resp = api_client.get("/api/analytics/usage-map/evidence",
+                          params={"node": "tool:Read@nonsense"})
     assert resp.status_code == 404
