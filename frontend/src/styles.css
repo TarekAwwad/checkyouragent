@@ -2316,53 +2316,99 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
   .tax-meter-trend { margin-left: 0; align-items: flex-start; }
 }
 
-/* --- Usage mindmap --------------------------------------------------------- */
+/* --- Usage map (force-directed) -------------------------------------------- */
 
-.mindmap-board { display: grid; grid-template-columns: 1fr 220px; gap: 16px; }
-.mindmap-canvas { position: relative; }
-.mindmap-canvas svg { width: 100%; height: auto; display: block; }
+.mindmap-stage {
+  position: relative; flex: 1 1 0; min-height: 440px;
+  border: 1px solid var(--border); border-radius: 12px;
+  background-color: var(--surface);
+  background-image: radial-gradient(circle,
+    color-mix(in srgb, var(--border-2) 45%, transparent) 1px, transparent 1px);
+  background-size: 24px 24px;
+  overflow: hidden;
+}
+.mindmap-canvas { position: absolute; inset: 0; }
+.mindmap-canvas svg { display: block; width: 100%; height: 100%; cursor: grab; }
+.mindmap-canvas svg.is-panning { cursor: grabbing; }
 
-/* Adapted for dark theme: use var(--muted) instead of literal #8a8fa3 */
-.mindmap-edge { stroke: var(--muted); opacity: 0.55; stroke-linecap: round; }
-.mindmap-edge.is-good { stroke: #2fae6e; }
-.mindmap-edge.is-anti { stroke: #d6493f; }
+.mindmap-edge { fill: none; stroke-linecap: round; transition: opacity .15s; }
+.mindmap-edge.is-structure { stroke: var(--border-2); opacity: .9; }
+.mindmap-edge.is-good { stroke: var(--success); opacity: .45; }
+.mindmap-edge.is-anti { stroke: var(--danger); opacity: .45; }
+.mindmap-edge.is-dimmed { opacity: .08; }
 
-.mindmap-node { cursor: pointer; outline: none; }
-.mindmap-node ellipse { fill: #5f7df0; stroke: #fff; stroke-width: 1.5; }
-.mindmap-node.is-center ellipse { fill: #2f3d8f; }
-.mindmap-node.is-habit ellipse { fill: #aab1c4; }
-.mindmap-node.is-habit.is-good ellipse { fill: #2fae6e; }
-.mindmap-node.is-habit.is-anti ellipse { fill: #d6493f; }
-.mindmap-node.is-selected ellipse,
-.mindmap-node:focus-visible ellipse { stroke: #e7eef9; stroke-width: 2.5; }
+.mindmap-node { cursor: pointer; outline: none; transition: opacity .15s; }
+.mindmap-node.is-dimmed { opacity: .22; }
+.mindmap-node .mindmap-body { stroke-width: 1.5; }
+.mindmap-node.is-center .mindmap-body { fill: var(--raised); stroke: var(--border-2); stroke-width: 1; }
+.mindmap-node.is-phase .mindmap-body {
+  fill: color-mix(in srgb, var(--accent) 16%, var(--surface)); stroke: var(--accent); }
+.mindmap-node.is-habit .mindmap-body {
+  fill: color-mix(in srgb, var(--muted) 16%, var(--surface)); stroke: var(--muted); }
+.mindmap-node.is-habit.is-good .mindmap-body {
+  fill: color-mix(in srgb, var(--success) 16%, var(--surface)); stroke: var(--success); }
+.mindmap-node.is-habit.is-anti .mindmap-body {
+  fill: color-mix(in srgb, var(--danger) 16%, var(--surface)); stroke: var(--danger); }
 
-.mindmap-label { font-size: 13px; fill: #fff; font-weight: 600; pointer-events: none; }
-/* Adapted for dark theme: habit labels use light fill for readability on colored ellipses */
-.mindmap-node.is-habit .mindmap-label { fill: #fff; font-size: 11px; }
-.mindmap-sublabel { font-size: 11px; fill: #e8ecff; pointer-events: none; }
-.mindmap-node.is-habit .mindmap-sublabel { fill: #fff; font-size: 10px; }
-/* Adapted for dark theme: use var(--muted) instead of #5e6275 */
+.mindmap-ring { fill: none; stroke-width: 1.5; opacity: 0; transition: opacity .15s; }
+.mindmap-node.is-selected .mindmap-ring,
+.mindmap-node:focus-visible .mindmap-ring { opacity: .8; }
+.mindmap-node.is-center .mindmap-ring { stroke: var(--border-2); }
+.mindmap-node.is-phase .mindmap-ring { stroke: var(--accent); }
+.mindmap-node.is-habit .mindmap-ring { stroke: var(--muted); }
+.mindmap-node.is-habit.is-good .mindmap-ring { stroke: var(--success); }
+.mindmap-node.is-habit.is-anti .mindmap-ring { stroke: var(--danger); }
+
+.mindmap-node-label { font-size: 11px; font-weight: 600; fill: var(--text); pointer-events: none; }
+.mindmap-node-share { font-size: 10px; font-weight: 600; fill: var(--muted); pointer-events: none; }
+.mindmap-node.is-phase .mindmap-node-share { fill: var(--accent); }
+.mindmap-node.is-habit.is-good .mindmap-node-share { fill: var(--success); }
+.mindmap-node.is-habit.is-anti .mindmap-node-share { fill: var(--danger); }
 .mindmap-delta { font-size: 10px; fill: var(--muted); pointer-events: none; }
 
-.mindmap-rail { display: flex; flex-direction: column; gap: 6px; }
-.mindmap-rail-row { display: flex; flex-direction: column; gap: 2px; border: 1px solid transparent;
-  background: none; padding: 6px; border-radius: 6px; cursor: pointer; text-align: left; }
-/* Adapted for dark theme: use var(--raised) bg and var(--accent) border instead of light #f3f5ff */
-.mindmap-rail-row.is-selected { border-color: #5f7df0; background: var(--raised); }
-/* Adapted for dark theme: use var(--grid) instead of #eef0f5 track background */
-.mindmap-rail-bar { position: relative; height: 10px; background: var(--grid); border-radius: 4px; overflow: hidden; display: block; }
-.mindmap-rail-fill { position: absolute; inset: 0 auto 0 0; background: #5f7df0; border-radius: 4px; display: block; }
-.mindmap-rail-ghost { position: absolute; left: 0; bottom: 0; height: 3px; background: #e7eef9; opacity: 0.45; display: block; }
-/* Adapted for dark theme: use var(--text) instead of #3a3f4e (near-black, unreadable on dark bg) */
-.mindmap-rail-text { font-size: 12px; color: var(--text); }
+.mindmap-legend { position: absolute; top: 12px; left: 12px; display: flex; gap: 6px; z-index: 3; }
+.mindmap-legend span {
+  display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted);
+  background: var(--surface); border: 1px solid var(--border); border-radius: 999px;
+  padding: 2px 9px; }
+.mindmap-legend i { width: 7px; height: 7px; border-radius: 50%; }
+.mindmap-legend i.is-phase { background: var(--accent); }
+.mindmap-legend i.is-good { background: var(--success); }
+.mindmap-legend i.is-anti { background: var(--danger); }
 
-.mindmap-side { display: flex; flex-direction: column; gap: 14px; }
-.mindmap-evidence { padding: 10px; border: 1px solid var(--grid); border-radius: 8px; background: var(--raised); }
-.mindmap-evidence h3 { margin: 0 0 4px; font-size: 14px; }
-.mindmap-evidence-rule { font-size: 12px; color: var(--muted); margin: 0 0 6px; }
-.mindmap-evidence-total { font-size: 13px; font-weight: 600; margin: 0 0 8px; }
-.mindmap-evidence-sessions { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.mindmap-evidence-sessions button { display: flex; flex-direction: column; gap: 1px; width: 100%;
-  text-align: left; background: var(--raised); border: 1px solid var(--grid); border-radius: 6px;
-  padding: 8px; cursor: pointer; font-size: 12px; color: var(--text); }
-.mindmap-evidence-sessions button:hover { border-color: #5f7df0; }
+.mindmap-zoom {
+  position: absolute; left: 12px; bottom: 12px; display: flex; flex-direction: column;
+  z-index: 3; border: 1px solid var(--border); border-radius: 9px; overflow: hidden;
+  background: var(--surface); }
+.mindmap-zoom button {
+  width: 30px; height: 28px; border: 0; background: transparent; color: var(--muted);
+  cursor: pointer; font-size: 14px; }
+.mindmap-zoom button:hover { background: var(--raised); color: var(--text); }
+.mindmap-zoom button + button { border-top: 1px solid var(--border); }
+
+.mindmap-evidence {
+  position: absolute; right: 12px; top: 12px; width: 240px; z-index: 3;
+  background: var(--raised); border: 1px solid var(--border); border-radius: 10px;
+  padding: 12px 14px; }
+.mindmap-evidence h3 {
+  margin: 0 0 2px; font-size: 13.5px; display: flex; align-items: center; gap: 7px; }
+.mindmap-evidence h3 i { width: 8px; height: 8px; border-radius: 50%; flex: none;
+  background: var(--muted); }
+.mindmap-evidence.is-phase h3 i { background: var(--accent); }
+.mindmap-evidence.is-good h3 i { background: var(--success); }
+.mindmap-evidence.is-anti h3 i { background: var(--danger); }
+.mindmap-evidence-rule { font-size: 11px; color: var(--faint); margin: 0 0 8px; line-height: 1.45; }
+.mindmap-evidence-bar {
+  height: 5px; background: var(--grid); border-radius: 3px; margin: 8px 0 4px; overflow: hidden; }
+.mindmap-evidence-bar i { display: block; height: 5px; border-radius: 3px; background: var(--accent); }
+.mindmap-evidence.is-good .mindmap-evidence-bar i { background: var(--success); }
+.mindmap-evidence.is-anti .mindmap-evidence-bar i { background: var(--danger); }
+.mindmap-evidence-row {
+  display: flex; justify-content: space-between; font-size: 12px; color: var(--muted);
+  padding: 4px 0; border-top: 1px solid var(--border); }
+.mindmap-evidence-row b { color: var(--text); font-weight: 600; }
+.mindmap-evidence-grouped { list-style: none; margin: 0; padding: 0; font-size: 12px;
+  color: var(--muted); display: flex; flex-direction: column; gap: 4px; }
+
+.mindmap-compare-toggle { display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--muted); }
