@@ -394,6 +394,7 @@ class DiscoveryDriver(BaseModel):
     positive_support: int = 0
     baseline_rate: float = 0
     subgroup_rate: float = 0
+    subgroup_rate_low: float = 0
     lift: float = 0
     score: float = 0
     examples: list[DiscoveryExample] = Field(default_factory=list)

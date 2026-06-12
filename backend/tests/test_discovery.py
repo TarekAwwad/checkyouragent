@@ -371,3 +371,6 @@ def test_discovery_endpoint_returns_payload(seeded: tuple[sqlite3.Connection, in
     assert body["meta"]["project_id"] == alpha
     assert body["sections"]["cost"]["available"] is True
     assert "tool_errors" in body["sections"]
+    first_result = body["sections"]["cost"]["results"][0]
+    assert "subgroup_rate_low" in first_result
+    assert first_result["subgroup_rate_low"] > first_result["baseline_rate"]
