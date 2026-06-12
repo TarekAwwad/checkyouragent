@@ -562,6 +562,15 @@ class CostAnalyticsResponse(BaseModel):
     spikes: list[SpendSpike] = Field(default_factory=list)
 
 
+class UsageTool(BaseModel):
+    key: str
+    label: str
+    cost_usd: float = 0
+    tokens: int = 0
+    count: int = 0
+    session_count: int = 0
+
+
 class UsageHabit(BaseModel):
     key: str
     phase: str
@@ -582,6 +591,7 @@ class UsagePhase(BaseModel):
     tool_count: int = 0
     session_count: int = 0
     habits: list[UsageHabit] = Field(default_factory=list)
+    tools: list[UsageTool] = Field(default_factory=list)
 
 
 class UsageMapWindow(BaseModel):

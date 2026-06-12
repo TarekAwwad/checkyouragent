@@ -779,6 +779,43 @@ def test_usage_map_analytics_attaches_habit_leaves(tmp_path, monkeypatch) -> Non
     assert delegate["habits"][0]["polarity"] == "good"
 
 
+def test_usage_map_analytics_payload_includes_tools(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(usage_map, "pricing_path", lambda: _pricing_csv(tmp_path))
+    conn = _conn()
+    _seed_base(conn)
+    _add_assistant_event(conn, 1, 1, "2026-06-01T10:00:00Z",
+                         [("Read", {"file_path": "a.py"}, False)])
+    _add_assistant_event(conn, 2, 1, "2026-06-01T10:01:00Z",
+                         [("Grep", {"pattern": "x"}, False)])
+    _add_assistant_event(conn, 3, 1, "2026-06-01T10:02:00Z",
+                         [("Grep", {"pattern": "y"}, False)])
+
+    payload = usage_map_analytics(conn)
+
+    explore = next(p for p in payload["phases"] if p["key"] == "explore")
+    # Sorted by cost desc; exact values; session_count resolved from the set.
+    assert explore["tools"] == [
+        {"key": "Grep", "label": "Grep", "cost_usd": 4.0, "tokens": 480_000,
+         "count": 2, "session_count": 1},
+        {"key": "Read", "label": "Read", "cost_usd": 2.0, "tokens": 240_000,
+         "count": 1, "session_count": 1},
+    ]
+    # Phases without tool calls carry an empty list, not a missing key.
+    plan = next(p for p in payload["phases"] if p["key"] == "plan")
+    assert plan["tools"] == []
+
+
+def test_usage_map_analytics_mcp_tool_lands_in_converse(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(usage_map, "pricing_path", lambda: _pricing_csv(tmp_path))
+    conn = _conn()
+    _seed_base(conn)
+    _add_assistant_event(conn, 1, 1, "2026-06-01T10:00:00Z",
+                         [("mcp__notion__search", {"q": "x"}, False)])
+    payload = usage_map_analytics(conn)
+    converse = next(p for p in payload["phases"] if p["key"] == "converse")
+    assert [t["key"] for t in converse["tools"]] == ["mcp__notion__search"]
+
+
 def test_usage_map_analytics_token_fallback_without_pricing(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(usage_map, "pricing_path", lambda: tmp_path / "missing.csv")
     conn = _conn()
@@ -914,6 +951,13 @@ def test_usage_map_endpoint_returns_payload(api_client: TestClient) -> None:
     assert {p["key"] for p in body["phases"]} == set(usage_map.PHASE_KEYS)
     delegate = next(p for p in body["phases"] if p["key"] == "delegate")
     assert delegate["habits"][0]["key"] == "delegation"
+
+
+def test_usage_map_endpoint_includes_tools(api_client: TestClient) -> None:
+    body = api_client.get("/api/analytics/usage-map").json()
+    explore = next(p for p in body["phases"] if p["key"] == "explore")
+    assert [t["key"] for t in explore["tools"]] == ["Read"]
+    assert explore["tools"][0]["session_count"] == 1
 
 
 def test_usage_map_endpoint_applies_filters(api_client: TestClient) -> None:

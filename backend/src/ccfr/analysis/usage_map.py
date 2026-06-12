@@ -676,6 +676,20 @@ def usage_map_analytics(
     for spec in PHASES:
         bucket = phase_acc[spec["key"]]
         numerator = bucket["cost_usd"] if use_cost else bucket["tokens"]
+        tools = sorted(
+            (
+                {
+                    "key": name,
+                    "label": name,
+                    "cost_usd": round(tool["cost_usd"], 6),
+                    "tokens": int(round(tool["tokens"])),
+                    "count": tool["count"],
+                    "session_count": len(tool["sessions"]),
+                }
+                for name, tool in bucket["tools"].items()
+            ),
+            key=lambda t: (-t["cost_usd"], t["key"]),
+        )
         phases.append({
             "key": spec["key"],
             "label": spec["label"],
@@ -685,6 +699,7 @@ def usage_map_analytics(
             "tool_count": bucket["tool_count"],
             "session_count": len(bucket["sessions"]),
             "habits": [leaf for leaf in leaves if leaf["phase"] == spec["key"]],
+            "tools": tools,
         })
     return {
         "meta": {
