@@ -121,13 +121,18 @@ def event_phase_weights(event: EventRec) -> dict[str, float]:
 
 
 def aggregate_phases(events: list[EventRec]) -> dict[str, dict[str, Any]]:
-    """Per-phase accumulation of cost, tokens, tool counts and sessions.
+    """Per-phase accumulation of cost, tokens, tool counts and sessions, plus a
+    per-tool breakdown under "tools" (keyed by tool name).
 
     `sessions` is the set of session ids with at least one event touching the
     phase; `tokens` is a float (weighted sum) — callers round at presentation.
+    Tool entries carry each call's equal share of its event, so the entries
+    inside a phase sum exactly to the phase cost; calls with no tool name keep
+    their cost on the phase but get no tool entry.
     """
     acc: dict[str, dict[str, Any]] = {
-        key: {"cost_usd": 0.0, "tokens": 0.0, "tool_count": 0, "sessions": set()}
+        key: {"cost_usd": 0.0, "tokens": 0.0, "tool_count": 0, "sessions": set(),
+              "tools": {}}
         for key in PHASE_KEYS
     }
     for event in events:
@@ -137,7 +142,17 @@ def aggregate_phases(events: list[EventRec]) -> dict[str, dict[str, Any]]:
             bucket["tokens"] += event.tokens * weight
             bucket["sessions"].add(event.session_db_id)
         for call in event.tool_calls:
-            acc[classify_tool_call(call.tool_name, call.command)]["tool_count"] += 1
+            bucket = acc[classify_tool_call(call.tool_name, call.command)]
+            bucket["tool_count"] += 1
+            if call.tool_name is None:
+                continue
+            share = 1.0 / len(event.tool_calls)
+            tool = bucket["tools"].setdefault(call.tool_name, {
+                "cost_usd": 0.0, "tokens": 0.0, "count": 0, "sessions": set()})
+            tool["cost_usd"] += event.cost * share
+            tool["tokens"] += event.tokens * share
+            tool["count"] += 1
+            tool["sessions"].add(event.session_db_id)
     return acc
 
 

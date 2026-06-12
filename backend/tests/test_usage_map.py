@@ -144,6 +144,41 @@ def test_aggregate_phases_counts_tools_and_sessions() -> None:
     assert acc["plan"]["tool_count"] == 0
 
 
+def test_aggregate_phases_accumulates_per_tool() -> None:
+    events = [
+        _event(1, [ToolCallRec(tool_name="Read")], cost=3.0, session=1),
+        _event(2, [ToolCallRec(tool_name="Read"), ToolCallRec(tool_name="Grep")],
+               cost=2.0, session=2),
+    ]
+    acc = aggregate_phases(events)
+    tools = acc["explore"]["tools"]
+    assert tools["Read"]["cost_usd"] == pytest.approx(4.0)   # 3.0 + 2.0/2
+    assert tools["Read"]["count"] == 2
+    assert tools["Read"]["sessions"] == {1, 2}
+    assert tools["Grep"]["cost_usd"] == pytest.approx(1.0)
+    # Conservation: tool costs inside a phase sum to the phase cost.
+    assert sum(t["cost_usd"] for t in tools.values()) == pytest.approx(
+        acc["explore"]["cost_usd"])
+
+
+def test_aggregate_phases_splits_bash_per_phase() -> None:
+    events = [
+        _event(1, [ToolCallRec(tool_name="Bash", command="uv run pytest")], cost=2.0),
+        _event(2, [ToolCallRec(tool_name="Bash", command="git push")], cost=2.0),
+    ]
+    acc = aggregate_phases(events)
+    assert acc["verify"]["tools"]["Bash"]["cost_usd"] == pytest.approx(2.0)
+    assert acc["operate"]["tools"]["Bash"]["cost_usd"] == pytest.approx(2.0)
+
+
+def test_aggregate_phases_null_tool_name_gets_no_tool_entry() -> None:
+    events = [_event(1, [ToolCallRec(tool_name=None)], cost=2.0)]
+    acc = aggregate_phases(events)
+    assert acc["converse"]["tools"] == {}
+    assert acc["converse"]["cost_usd"] == pytest.approx(2.0)  # cost stays on the phase
+    assert acc["converse"]["tool_count"] == 1
+
+
 PRICE_TABLE = {
     "claude-opus-4-8": ModelPrice(base_input=5, cache_write_5m=6.25,
                                   cache_write_1h=10, cache_read=0.5, output=25),
