@@ -74,7 +74,9 @@ describe("ContextEconomics", () => {
     // bar aria-label confirms both headline numbers
     expect(screen.getByRole("group", { name: /\$203 of \$660/i })).toBeInTheDocument();
     expect(screen.getAllByText("Oversized tool results").length).toBeGreaterThan(0);
-    expect(screen.getByText(/Read result: dist\/bundle\.js/)).toBeInTheDocument();
+    const compactLabel = screen.getByText(/Read result: bundle\.js/);
+    expect(compactLabel).toBeInTheDocument();
+    expect(compactLabel).toHaveAttribute("title", "Read result: dist/bundle.js (53,000 tok)");
   });
 
   it("disables under-supported archetypes in the legend with an evidence hint", async () => {
