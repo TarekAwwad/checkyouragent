@@ -1,7 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { getUsageMapEvidence } from "../../api/client";
 import type { UsageMapEvidenceResponse, UsageMapResponse } from "../../api/types";
 import type { UsagePhase } from "../../api/types";
 import MindmapCanvas from "./MindmapCanvas";
@@ -61,8 +62,6 @@ vi.mock("../../api/client", () => ({
   getUsageMapEvidence: vi.fn(() => Promise.resolve(evidencePayload)),
 }));
 
-const { getUsageMapEvidence } = await import("../../api/client");
-
 function renderPage(onOpenSession = vi.fn()) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -117,6 +116,10 @@ describe("MindmapCanvas", () => {
 });
 
 describe("UsageMindmap", () => {
+  beforeEach(() => {
+    vi.mocked(getUsageMapEvidence).mockClear();
+  });
+
   it("renders the map and shows evidence for the costliest phase by default", async () => {
     renderPage();
     expect(await screen.findByText("My usage")).toBeInTheDocument();
@@ -166,10 +169,10 @@ describe("UsageMindmap", () => {
     renderPage();
     await screen.findByText("My usage");
     expect(screen.getByText("Repeated file re-reads")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("tab", { name: "Tools" }));
+    fireEvent.click(screen.getByRole("button", { name: "Tools" }));
     expect(await screen.findByRole("button", { name: /Read: 30%/ })).toBeInTheDocument();
     expect(screen.queryByText("Repeated file re-reads")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("tab", { name: "Habits" }));
+    fireEvent.click(screen.getByRole("button", { name: "Habits" }));
     expect(await screen.findByText("Repeated file re-reads")).toBeInTheDocument();
   });
 
@@ -177,7 +180,7 @@ describe("UsageMindmap", () => {
     const { container } = renderPage();
     await screen.findByText("My usage");
     fireEvent.click(screen.getByRole("button", { name: /Implement: 30%/ }));
-    fireEvent.click(screen.getByRole("tab", { name: "Tools" }));
+    fireEvent.click(screen.getByRole("button", { name: "Tools" }));
     await waitFor(() => {
       const selected = container.querySelectorAll(".mindmap-node.is-selected");
       expect(selected).toHaveLength(1);
@@ -188,7 +191,7 @@ describe("UsageMindmap", () => {
   it("requests tool evidence when a tool node is clicked", async () => {
     renderPage();
     await screen.findByText("My usage");
-    fireEvent.click(screen.getByRole("tab", { name: "Tools" }));
+    fireEvent.click(screen.getByRole("button", { name: "Tools" }));
     fireEvent.click(await screen.findByRole("button", { name: /Read: 30%/ }));
     await waitFor(() => {
       expect(vi.mocked(getUsageMapEvidence)).toHaveBeenCalledWith(

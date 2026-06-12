@@ -127,10 +127,10 @@ export default function UsageMindmap({ projects }: Props) {
                      onChange={(e) => setCompare(e.target.checked)} />
               vs previous period
             </label>
-            <div className="segmented-control" role="tablist" aria-label="Leaf lens">
+            <div className="segmented-control" role="group" aria-label="Leaf lens">
               {(["habits", "tools"] as const).map((mode) => (
-                <button key={mode} type="button" role="tab"
-                        aria-selected={leafMode === mode}
+                <button key={mode} type="button"
+                        aria-pressed={leafMode === mode}
                         className={leafMode === mode ? "active" : ""}
                         onClick={() => {
                           setLeafMode(mode);
