@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { UsageHabit, UsagePhase, UsageTool } from "../../api/types";
 import {
-  buildForceModel, groupSmallHabits, habitRadius, labelTier, phaseNode, phaseRadius,
+  buildForceModel, groupSmallLeaves, habitRadius, labelTier, phaseNode, phaseRadius,
 } from "./forceModel";
 
 function habit(key: string, costUsd: number, polarity: "good" | "anti" = "anti"): UsageHabit {
@@ -39,20 +39,20 @@ describe("radii", () => {
   });
 });
 
-describe("groupSmallHabits", () => {
+describe("groupSmallLeaves", () => {
   it("keeps the top 4 by cost and groups the rest", () => {
     const habits = [1, 2, 3, 4, 5, 6].map((n) => habit(`h${n}`, n * 10));
-    const { visible, grouped } = groupSmallHabits(habits, 100);
+    const { visible, grouped } = groupSmallLeaves(habits, 100);
     expect(visible.map((h) => h.key)).toEqual(["h6", "h5", "h4", "h3"]);
     expect(grouped.map((h) => h.key)).toEqual(["h2", "h1"]);
   });
   it("groups habits below 1% of total cost regardless of count", () => {
-    const { visible, grouped } = groupSmallHabits([habit("tiny", 0.5)], 100);
+    const { visible, grouped } = groupSmallLeaves([habit("tiny", 0.5)], 100);
     expect(visible).toHaveLength(0);
     expect(grouped.map((h) => h.key)).toEqual(["tiny"]);
   });
   it("keeps everything within the cap when there is no cost basis", () => {
-    const { visible, grouped } = groupSmallHabits([habit("a", 0), habit("b", 0)], 0);
+    const { visible, grouped } = groupSmallLeaves([habit("a", 0), habit("b", 0)], 0);
     expect(visible).toHaveLength(2);
     expect(grouped).toHaveLength(0);
   });
@@ -127,5 +127,60 @@ describe("buildForceModel", () => {
     const b = buildForceModel(phases, { totalUsd: 100, costAvailable: true });
     expect(a.nodes.map((n) => [n.x, n.y])).toEqual(b.nodes.map((n) => [n.x, n.y]));
     expect(a.nodes[1].x !== 0 || a.nodes[1].y !== 0).toBe(true);
+  });
+});
+
+describe("buildForceModel tool lens", () => {
+  const phases = [
+    phase("explore", 0.5, [habit("re-reads", 5)], [tool("Read", 30), tool("Grep", 10)]),
+    phase("verify", 0.3, [], [tool("Bash", 30)]),
+  ];
+
+  it("hangs tool leaves off phases and omits habit leaves", () => {
+    const model = buildForceModel(phases,
+      { totalUsd: 100, costAvailable: true, leafMode: "tools" });
+    const ids = model.nodes.map((n) => n.id);
+    expect(ids).toContain("tool:Read@explore");
+    expect(ids).toContain("tool:Grep@explore");
+    expect(ids).toContain("tool:Bash@verify");
+    expect(ids.some((id) => id.startsWith("habit:"))).toBe(false);
+  });
+
+  it("defaults to the habits lens", () => {
+    const model = buildForceModel(phases, { totalUsd: 100, costAvailable: true });
+    expect(model.nodes.some((n) => n.id === "habit:re-reads@explore")).toBe(true);
+    expect(model.nodes.some((n) => n.kind === "tool")).toBe(false);
+  });
+
+  it("tool nodes carry exact share and neutral structure links", () => {
+    const model = buildForceModel(phases,
+      { totalUsd: 100, costAvailable: true, leafMode: "tools" });
+    const leaf = model.nodes.find((n) => n.id === "tool:Read@explore")!;
+    expect(leaf.kind).toBe("tool");
+    expect(leaf.share).toBeCloseTo(0.3);
+    expect(leaf.sublabel).toBe("30%");
+    expect(leaf.toolKey).toBe("Read");
+    expect(leaf.phaseKey).toBe("explore");
+    expect(leaf.polarity).toBeUndefined();
+    const link = model.links.find((l) => l.targetId === leaf.id)!;
+    expect(link.kind).toBe("structure");
+    expect(link.sourceId).toBe("phase:explore");
+  });
+
+  it("collapses overflow tools into a grouped leaf", () => {
+    const many = phase("explore", 0.5, [],
+      [1, 2, 3, 4, 5].map((n) => tool(`T${n}`, n * 5)));
+    const model = buildForceModel([many],
+      { totalUsd: 100, costAvailable: true, leafMode: "tools" });
+    const other = model.nodes.find((n) => n.id === "tool:other@explore")!;
+    expect(other.label).toBe("+1 more");
+    expect(other.grouped?.map((t) => t.key)).toEqual(["T1"]);
+  });
+
+  it("falls back to counts when cost is unavailable", () => {
+    const model = buildForceModel(phases,
+      { totalUsd: 0, costAvailable: false, leafMode: "tools" });
+    const leaf = model.nodes.find((n) => n.id === "tool:Read@explore")!;
+    expect(leaf.sublabel).toBe("3x");
   });
 });

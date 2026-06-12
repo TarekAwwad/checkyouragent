@@ -4,13 +4,24 @@
 // Encoding contract (accuracy first): node radius and link width/distance are
 // monotonic in share, and every node carries its exact share in `sublabel`,
 // with exact values repeated in the tooltip and evidence card.
-import type { UsageHabit, UsagePhase } from "../../api/types";
+import type { UsageHabit, UsagePhase, UsageTool } from "../../api/types";
 
 export type LabelTier = "inside" | "split" | "below";
+export type LeafMode = "habits" | "tools";
+
+/** Minimal shape an overflow leaf needs to list its members. Both UsageHabit
+    and UsageTool satisfy it structurally. */
+export interface GroupedLeaf {
+  key: string;
+  label: string;
+  cost_usd: number;
+  count: number;
+}
 
 export interface MapNode {
   id: string; // "center" | "phase:<key>" | "habit:<key>@<phase>" | "habit:other@<phase>"
-  kind: "center" | "phase" | "habit";
+              // | "tool:<name>@<phase>" | "tool:other@<phase>"
+  kind: "center" | "phase" | "habit" | "tool";
   label: string;
   sublabel: string;
   r: number;
@@ -19,7 +30,8 @@ export interface MapNode {
   polarity?: "good" | "anti";
   phaseKey?: string;
   habitKey?: string;          // unset on the grouped overflow leaf
-  grouped?: UsageHabit[];     // members of an overflow leaf
+  toolKey?: string;           // tool-lens leaves only
+  grouped?: GroupedLeaf[];    // members of an overflow leaf
   // d3-force reads and mutates these in place at runtime. Seeded here so the
   // first paint is deterministic.
   x: number;
@@ -73,21 +85,21 @@ function pct(share: number): string {
 
 /**
  * Visible leaves vs grouped overflow: top MAX_LEAVES_PER_PHASE by cost, and a
- * habit below MIN_HABIT_SHARE of the map total is always grouped. With no cost
+ * leaf below MIN_HABIT_SHARE of the map total is always grouped. With no cost
  * basis (token fallback) everything within the cap stays visible.
  */
-export function groupSmallHabits(
-  habits: UsageHabit[],
+export function groupSmallLeaves<T extends { cost_usd: number }>(
+  leaves: T[],
   totalUsd: number,
-): { visible: UsageHabit[]; grouped: UsageHabit[] } {
-  const sorted = [...habits].sort((a, b) => b.cost_usd - a.cost_usd);
-  const visible: UsageHabit[] = [];
-  const grouped: UsageHabit[] = [];
-  for (const habit of sorted) {
-    const share = totalUsd > 0 ? habit.cost_usd / totalUsd : 0;
+): { visible: T[]; grouped: T[] } {
+  const sorted = [...leaves].sort((a, b) => b.cost_usd - a.cost_usd);
+  const visible: T[] = [];
+  const grouped: T[] = [];
+  for (const leaf of sorted) {
+    const share = totalUsd > 0 ? leaf.cost_usd / totalUsd : 0;
     const tooSmall = totalUsd > 0 && share < MIN_HABIT_SHARE;
-    if (visible.length < MAX_LEAVES_PER_PHASE && !tooSmall) visible.push(habit);
-    else grouped.push(habit);
+    if (visible.length < MAX_LEAVES_PER_PHASE && !tooSmall) visible.push(leaf);
+    else grouped.push(leaf);
   }
   return { visible, grouped };
 }
@@ -104,8 +116,9 @@ export function phaseNode(phase: UsagePhase): MapNode {
 
 export function buildForceModel(
   phases: UsagePhase[],
-  opts: { totalUsd: number; costAvailable: boolean },
+  opts: { totalUsd: number; costAvailable: boolean; leafMode?: LeafMode },
 ): ForceModel {
+  const leafMode = opts.leafMode ?? "habits";
   const active = phases.filter((p) => p.share > 0 || p.habits.length > 0);
   const nodes: MapNode[] = [{
     id: "center", kind: "center", label: "My usage",
@@ -129,36 +142,68 @@ export function buildForceModel(
       width: Math.max(1.5, 14 * phase.share), kind: "structure",
     });
 
-    const { visible, grouped } = groupSmallHabits(phase.habits, opts.totalUsd);
-    const leaves: (UsageHabit | null)[] = grouped.length > 0 ? [...visible, null] : visible;
-    leaves.forEach((leaf, j) => {
-      const share = leaf && opts.totalUsd > 0 ? leaf.cost_usd / opts.totalUsd : 0;
-      const r = leaf ? habitRadius(share) : 10;
-      const spread = angle + (j - (leaves.length - 1) / 2) * 0.5;
-      const habitNode: MapNode = leaf
-        ? {
-            id: `habit:${leaf.key}@${phase.key}`, kind: "habit", label: leaf.label,
-            sublabel: opts.costAvailable ? pct(share) : `${leaf.count}x`,
-            r, share, labelTier: labelTier(r), polarity: leaf.polarity,
-            phaseKey: phase.key, habitKey: leaf.key,
-            x: Math.cos(spread) * HABIT_SEED_RADIUS,
-            y: Math.sin(spread) * HABIT_SEED_RADIUS,
-          }
-        : {
-            id: `habit:other@${phase.key}`, kind: "habit",
-            label: `+${grouped.length} more`, sublabel: "",
-            r, share: 0, labelTier: labelTier(r), phaseKey: phase.key, grouped,
-            x: Math.cos(spread) * HABIT_SEED_RADIUS,
-            y: Math.sin(spread) * HABIT_SEED_RADIUS,
-          };
-      nodes.push(habitNode);
+    const pushLeaf = (leafNode: MapNode, linkKind: MapLink["kind"]) => {
+      nodes.push(leafNode);
       links.push({
-        id: `link:${habitNode.id}`, source: node.id, target: habitNode.id,
-        sourceId: node.id, targetId: habitNode.id,
-        distance: 80, width: Math.max(1.2, 10 * share),
-        kind: leaf?.polarity ?? "structure",
+        id: `link:${leafNode.id}`, source: node.id, target: leafNode.id,
+        sourceId: node.id, targetId: leafNode.id,
+        distance: 80, width: Math.max(1.2, 10 * leafNode.share),
+        kind: linkKind,
       });
-    });
+    };
+    const seed = (j: number, count: number): { x: number; y: number } => {
+      const spread = angle + (j - (count - 1) / 2) * 0.5;
+      return { x: Math.cos(spread) * HABIT_SEED_RADIUS,
+               y: Math.sin(spread) * HABIT_SEED_RADIUS };
+    };
+
+    if (leafMode === "habits") {
+      const { visible, grouped } = groupSmallLeaves(phase.habits, opts.totalUsd);
+      const leaves: (UsageHabit | null)[] =
+        grouped.length > 0 ? [...visible, null] : visible;
+      leaves.forEach((leaf, j) => {
+        const share = leaf && opts.totalUsd > 0 ? leaf.cost_usd / opts.totalUsd : 0;
+        const r = leaf ? habitRadius(share) : 10;
+        const habitNode: MapNode = leaf
+          ? {
+              id: `habit:${leaf.key}@${phase.key}`, kind: "habit", label: leaf.label,
+              sublabel: opts.costAvailable ? pct(share) : `${leaf.count}x`,
+              r, share, labelTier: labelTier(r), polarity: leaf.polarity,
+              phaseKey: phase.key, habitKey: leaf.key,
+              ...seed(j, leaves.length),
+            }
+          : {
+              id: `habit:other@${phase.key}`, kind: "habit",
+              label: `+${grouped.length} more`, sublabel: "",
+              r, share: 0, labelTier: labelTier(r), phaseKey: phase.key, grouped,
+              ...seed(j, leaves.length),
+            };
+        pushLeaf(habitNode, leaf?.polarity ?? "structure");
+      });
+    } else {
+      const { visible, grouped } = groupSmallLeaves(phase.tools, opts.totalUsd);
+      const leaves: (UsageTool | null)[] =
+        grouped.length > 0 ? [...visible, null] : visible;
+      leaves.forEach((leaf, j) => {
+        const share = leaf && opts.totalUsd > 0 ? leaf.cost_usd / opts.totalUsd : 0;
+        const r = leaf ? habitRadius(share) : 10;
+        const toolNode: MapNode = leaf
+          ? {
+              id: `tool:${leaf.key}@${phase.key}`, kind: "tool", label: leaf.label,
+              sublabel: opts.costAvailable ? pct(share) : `${leaf.count}x`,
+              r, share, labelTier: labelTier(r),
+              phaseKey: phase.key, toolKey: leaf.key,
+              ...seed(j, leaves.length),
+            }
+          : {
+              id: `tool:other@${phase.key}`, kind: "tool",
+              label: `+${grouped.length} more`, sublabel: "",
+              r, share: 0, labelTier: labelTier(r), phaseKey: phase.key, grouped,
+              ...seed(j, leaves.length),
+            };
+        pushLeaf(toolNode, "structure");
+      });
+    }
   });
 
   return { nodes, links };
