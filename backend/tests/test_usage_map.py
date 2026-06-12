@@ -822,12 +822,16 @@ def test_usage_map_analytics_token_fallback_without_pricing(tmp_path, monkeypatc
     _seed_base(conn)
     _add_assistant_event(conn, 1, 1, "2026-06-01T10:00:00Z",
                          [("Read", {"file_path": "a.py"}, False)])
+    _add_assistant_event(conn, 2, 1, "2026-06-01T10:01:00Z",
+                         [("Grep", {"pattern": "x"}, False)], base=400_000)
     payload = usage_map_analytics(conn)
     assert payload["meta"]["cost_available"] is False
     assert payload["meta"]["share_basis"] == "tokens"
     explore = next(p for p in payload["phases"] if p["key"] == "explore")
     assert explore["share"] == pytest.approx(1.0, abs=1e-4)
-    assert explore["tokens"] == 240_000
+    assert explore["tokens"] == 680_000
+    # All costs are 0.0 here, so tools order by token weight, not name.
+    assert [t["key"] for t in explore["tools"]] == ["Grep", "Read"]
 
 
 def test_usage_map_analytics_empty_corpus(tmp_path, monkeypatch) -> None:

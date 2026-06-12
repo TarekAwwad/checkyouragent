@@ -688,7 +688,7 @@ def usage_map_analytics(
                 }
                 for name, tool in bucket["tools"].items()
             ),
-            key=lambda t: (-t["cost_usd"], t["key"]),
+            key=lambda t: (-t["cost_usd"], -t["tokens"], t["key"]),
         )
         phases.append({
             "key": spec["key"],
