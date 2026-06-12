@@ -12,12 +12,36 @@ export function exportJson(payload: UsageMapResponse): void {
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   download(url, "usage-map.json");
-  URL.revokeObjectURL(url);
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+// Visual styling lives in the app stylesheet; a serialized SVG carries none of
+// it. Copy the computed values onto the clone so the raster matches the screen
+// (this also resolves CSS custom properties like var(--muted)).
+const STYLE_PROPS = [
+  "fill", "stroke", "stroke-width", "stroke-linecap", "opacity",
+  "font-size", "font-weight", "font-family", "text-anchor",
+] as const;
+
+function inlineComputedStyles(source: SVGSVGElement, clone: SVGSVGElement): void {
+  const sourceEls = source.querySelectorAll<SVGElement>("*");
+  const cloneEls = clone.querySelectorAll<SVGElement>("*");
+  sourceEls.forEach((el, i) => {
+    const computed = window.getComputedStyle(el);
+    const target = cloneEls[i];
+    if (!target) return;
+    for (const prop of STYLE_PROPS) {
+      const value = computed.getPropertyValue(prop);
+      if (value) target.style.setProperty(prop, value);
+    }
+  });
 }
 
 /** Rasterize the live SVG at 2x for crisp sharing. */
 export function exportPng(svg: SVGSVGElement, width: number, height: number): void {
-  const xml = new XMLSerializer().serializeToString(svg);
+  const clone = svg.cloneNode(true) as SVGSVGElement;
+  inlineComputedStyles(svg, clone);
+  const xml = new XMLSerializer().serializeToString(clone);
   const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(xml)}`;
   const image = new Image();
   image.onload = () => {
