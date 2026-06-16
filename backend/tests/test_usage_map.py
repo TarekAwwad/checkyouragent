@@ -994,6 +994,14 @@ def test_load_events_captures_agent_id_and_input_context() -> None:
     # subagent event: set agent_id directly
     _add_assistant_event(conn, 2, 1, "2026-06-01T10:01:00Z", [])
     conn.execute("UPDATE events SET agent_id = 'agent-xyz' WHERE id = 2")
+    # Cover all four input-context columns (not just base) so a dropped/added
+    # cache column would be caught.
+    _add_assistant_event(conn, 3, 1, "2026-06-01T10:02:00Z", [])
+    conn.execute(
+        "UPDATE messages SET base_input_tokens = 100, cache_5m_tokens = 10, "
+        "cache_1h_tokens = 5, cache_read_tokens = 20, output_tokens = 999 "
+        "WHERE event_id = 3"
+    )
     conn.commit()
 
     events = load_events(conn, PRICE_TABLE)
@@ -1002,6 +1010,8 @@ def test_load_events_captures_agent_id_and_input_context() -> None:
     assert events[1].agent_id == "agent-xyz"
     # input context = base + 5m + 1h + read (no output). Helper sets base=200_000.
     assert events[0].input_context_tokens == 200_000
+    third = next(e for e in events if e.event_id == 3)
+    assert third.input_context_tokens == 135  # 100 + 10 + 5 + 20, output excluded
 
 
 def test_tool_evidence_requires_a_valid_phase_qualifier(tmp_path, monkeypatch) -> None:
