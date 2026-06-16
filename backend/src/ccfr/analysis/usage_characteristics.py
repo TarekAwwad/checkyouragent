@@ -200,7 +200,7 @@ def usage_characteristics_analytics(
             "project_id": project_id,
             "window": {"date_from": date_from, "date_to": date_to},
             "total_usd": round(total_usd, 6),
-            "total_tokens": int(total_tokens),
+            "total_tokens": int(round(total_tokens)),
             "cost_available": cost_available,
             "costs_partial": any(not e.priced for e in events),
             "sessions_analyzed": len({e.session_db_id for e in events}),

@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import sqlite3
+
+from ccfr.analysis import usage_map as um
 from ccfr.analysis.usage_characteristics import (
     SUBAGENT_HEAVY_SESSION_RATIO,
     compute_characteristics,
+    usage_characteristics_analytics,
     _span_hours,
 )
 from ccfr.analysis.usage_map import EventRec, ToolCallRec
+from ccfr.storage import init_db
 
 
 def _ev(event_id: int, *, session: int, cost: float, agent_id: str | None = None,
@@ -113,13 +118,6 @@ def test_span_hours_handles_missing_timestamps() -> None:
     assert _span_hours(None, "2026-06-01T01:00:00Z") == 0.0
     assert _span_hours("2026-06-01T00:00:00Z", None) == 0.0
     assert _span_hours("2026-06-01T00:00:00Z", "2026-06-01T08:00:00Z") == 8.0
-
-
-import sqlite3
-
-from ccfr.analysis import usage_map as um
-from ccfr.analysis.usage_characteristics import usage_characteristics_analytics
-from ccfr.storage import init_db
 
 
 def _conn() -> sqlite3.Connection:
