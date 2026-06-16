@@ -16,3 +16,10 @@ def get_db() -> Iterator[Connection]:
         yield conn
     finally:
         conn.close()
+
+
+from ccfr.settings import read_settings
+
+
+def get_historical_pricing() -> bool:
+    return read_settings().historical_pricing

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -9,6 +10,7 @@ from sqlite3 import Connection
 from ccfr.api import analytics, repository
 from ccfr.api.deps import get_db
 from ccfr.api.import_progress import import_progress_store
+from ccfr.settings import Settings, read_settings, write_settings
 from ccfr.analysis.context_economics import (
     context_economics_analytics,
     session_context_economics,
@@ -32,6 +34,7 @@ from ccfr.api.schemas import (
     SearchResult,
     SessionCard,
     SessionContextEconomicsResponse,
+    SettingsResponse,
     SubagentResponse,
     TimelineItem,
     TurnCostBreakdown,
@@ -83,6 +86,17 @@ def get_config() -> RuntimeConfigResponse:
         database_path=str(database_path()),
         is_docker=is_docker(),
     )
+
+
+@router.get("/settings", response_model=SettingsResponse)
+def get_settings() -> SettingsResponse:
+    return SettingsResponse(**asdict(read_settings()))
+
+
+@router.put("/settings", response_model=SettingsResponse)
+def update_settings(payload: SettingsResponse) -> SettingsResponse:
+    saved = write_settings(Settings(historical_pricing=payload.historical_pricing))
+    return SettingsResponse(**asdict(saved))
 
 
 @router.post("/imports", response_model=ImportSummaryResponse)
