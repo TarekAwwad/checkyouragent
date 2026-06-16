@@ -8,6 +8,38 @@ import type { UsageHabit, UsagePhase, UsageTool } from "../../api/types";
 
 export type LabelTier = "inside" | "split" | "below";
 export type LeafMode = "habits" | "tools";
+export type OriginFilter = "all" | "main" | "subagent";
+
+/**
+ * Rescale phases to one origin subset for the map's Origin filter. "all" is the
+ * identity; "main"/"subagent" replace each phase's cost/tokens with that
+ * subset's value, recompute share against the subset total, and clear leaves
+ * (the tools/habits breakdown is all-origin and would be misleading here).
+ */
+export function deriveOriginPhases(
+  phases: UsagePhase[],
+  origin: OriginFilter,
+  basis: "cost" | "tokens",
+): { phases: UsagePhase[]; total: number } {
+  const value = (p: UsagePhase): number => {
+    if (origin === "all") return basis === "cost" ? p.cost_usd : p.tokens;
+    if (origin === "main") return basis === "cost" ? p.main_cost_usd : p.main_tokens;
+    return basis === "cost" ? p.subagent_cost_usd : p.subagent_tokens;
+  };
+  const total = phases.reduce((sum, p) => sum + value(p), 0);
+  if (origin === "all") return { phases, total };
+  return {
+    total,
+    phases: phases.map((p) => ({
+      ...p,
+      cost_usd: origin === "main" ? p.main_cost_usd : p.subagent_cost_usd,
+      tokens: origin === "main" ? p.main_tokens : p.subagent_tokens,
+      share: total > 0 ? value(p) / total : 0,
+      habits: [],
+      tools: [],
+    })),
+  };
+}
 
 /** Minimal shape an overflow leaf needs to list its members. Both UsageHabit
     and UsageTool satisfy it structurally. */
