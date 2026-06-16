@@ -11,6 +11,7 @@ import UsageMindmap from "./UsageMindmap";
 const PHASES: UsagePhase[] = [
   {
     key: "explore", label: "Explore", cost_usd: 50, tokens: 0, share: 0.5,
+    main_cost_usd: 10, subagent_cost_usd: 40, main_tokens: 0, subagent_tokens: 0,
     tool_count: 10, session_count: 3,
     habits: [{ key: "re-reads", phase: "explore", label: "Repeated file re-reads",
                polarity: "anti", status: "confirmed", cost_usd: 5, count: 4,
@@ -21,10 +22,12 @@ const PHASES: UsagePhase[] = [
               session_count: 2 }],
   },
   { key: "implement", label: "Implement", cost_usd: 30, tokens: 0, share: 0.3,
+    main_cost_usd: 30, subagent_cost_usd: 0, main_tokens: 0, subagent_tokens: 0,
     tool_count: 6, session_count: 3, habits: [],
     tools: [{ key: "Edit", label: "Edit", cost_usd: 30, tokens: 0, count: 6,
               session_count: 3 }] },
   { key: "verify", label: "Verify", cost_usd: 20, tokens: 0, share: 0.2,
+    main_cost_usd: 20, subagent_cost_usd: 0, main_tokens: 0, subagent_tokens: 0,
     tool_count: 4, session_count: 2, habits: [],
     tools: [{ key: "Bash", label: "Bash", cost_usd: 20, tokens: 0, count: 4,
               session_count: 2 }] },
@@ -39,12 +42,16 @@ const mapPayload: UsageMapResponse = {
   },
   phases: PHASES.concat([
     { key: "plan", label: "Plan", cost_usd: 0, tokens: 0, share: 0,
+      main_cost_usd: 0, subagent_cost_usd: 0, main_tokens: 0, subagent_tokens: 0,
       tool_count: 0, session_count: 0, habits: [], tools: [] },
     { key: "operate", label: "Operate", cost_usd: 0, tokens: 0, share: 0,
+      main_cost_usd: 0, subagent_cost_usd: 0, main_tokens: 0, subagent_tokens: 0,
       tool_count: 0, session_count: 0, habits: [], tools: [] },
     { key: "delegate", label: "Delegate", cost_usd: 0, tokens: 0, share: 0,
+      main_cost_usd: 0, subagent_cost_usd: 0, main_tokens: 0, subagent_tokens: 0,
       tool_count: 0, session_count: 0, habits: [], tools: [] },
     { key: "converse", label: "Converse", cost_usd: 0, tokens: 0, share: 0,
+      main_cost_usd: 0, subagent_cost_usd: 0, main_tokens: 0, subagent_tokens: 0,
       tool_count: 0, session_count: 0, habits: [], tools: [] },
   ]),
 };
@@ -60,6 +67,14 @@ const evidencePayload: UsageMapEvidenceResponse = {
 vi.mock("../../api/client", () => ({
   getUsageMap: vi.fn(() => Promise.resolve(mapPayload)),
   getUsageMapEvidence: vi.fn(() => Promise.resolve(evidencePayload)),
+  getUsageCharacteristics: vi.fn(() => Promise.resolve({
+    meta: { project_id: null, window: { date_from: null, date_to: null },
+            total_usd: 100, total_tokens: 0, cost_available: true,
+            costs_partial: false, sessions_analyzed: 5, share_basis: "cost",
+            basis_note: "weighted by cost" },
+    characteristics: [{ key: "subagent_sessions", headline: "subagent-heavy sessions",
+                        share: 0.89, cost_usd: 89, kind: "session", guidance: "g" }],
+  })),
 }));
 
 function renderPage(onOpenSession = vi.fn()) {
@@ -196,6 +211,22 @@ describe("UsageMindmap", () => {
     await waitFor(() => {
       expect(vi.mocked(getUsageMapEvidence)).toHaveBeenCalledWith(
         "tool:Read@explore", expect.anything());
+    });
+  });
+
+  it("opens the usage-characteristics dialog from the toolbar", async () => {
+    renderPage();
+    await screen.findByText("My usage");
+    fireEvent.click(screen.getByRole("button", { name: /Usage drivers/ }));
+    expect(await screen.findByText(/89%/)).toBeInTheDocument();
+  });
+
+  it("rescales phase shares when the origin filter is set to Subagents", async () => {
+    renderPage();
+    await screen.findByText("My usage");
+    fireEvent.click(screen.getByRole("button", { name: "Subagents" }));
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Explore: 100%/ })).toBeInTheDocument();
     });
   });
 });

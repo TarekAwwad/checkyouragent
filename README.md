@@ -92,7 +92,6 @@ If that returns `404`, an older backend process is still serving port `8000`. Th
 ```powershell
 cd frontend
 npm install
-$env:VITE_API_BASE = "http://localhost:8000/api"
 npm run dev
 ```
 
@@ -102,4 +101,4 @@ Open:
 http://localhost:5173
 ```
 
-`VITE_API_BASE` defaults to `http://localhost:8000/api` if unset. Set it before `npm run dev` when the backend runs on a different host or port.
+The dev server proxies `/api` to the backend (`http://localhost:8000`), so the frontend talks to it same-origin — no CORS setup, and the dev port doesn't matter. `VITE_API_BASE` is unset by default (relative `/api`); set it only when the backend isn't reachable via the dev proxy (a remote host, or a built/Docker frontend). If you previously exported `VITE_API_BASE`, unset it so the proxy is used.

@@ -572,6 +572,10 @@ export interface UsagePhase {
   label: string;
   cost_usd: number;
   tokens: number;
+  main_cost_usd: number;
+  subagent_cost_usd: number;
+  main_tokens: number;
+  subagent_tokens: number;
   share: number;
   tool_count: number;
   session_count: number;
@@ -612,4 +616,30 @@ export interface UsageMapEvidenceResponse {
   rule: string;
   cost_usd: number;
   sessions: UsageEvidenceSession[];
+}
+
+export interface UsageCharacteristic {
+  key: string;
+  headline: string;
+  share: number;
+  cost_usd: number;
+  kind: string;
+  guidance: string;
+}
+
+export interface UsageCharacteristicsMeta {
+  project_id: number | null;
+  window: { date_from: string | null; date_to: string | null };
+  total_usd: number;
+  total_tokens: number;
+  cost_available: boolean;
+  costs_partial: boolean;
+  sessions_analyzed: number;
+  share_basis: "cost" | "tokens";
+  basis_note: string;
+}
+
+export interface UsageCharacteristicsResponse {
+  meta: UsageCharacteristicsMeta;
+  characteristics: UsageCharacteristic[];
 }

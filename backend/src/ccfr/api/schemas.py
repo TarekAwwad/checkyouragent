@@ -588,6 +588,10 @@ class UsagePhase(BaseModel):
     label: str
     cost_usd: float = 0
     tokens: int = 0
+    main_cost_usd: float = 0
+    subagent_cost_usd: float = 0
+    main_tokens: int = 0
+    subagent_tokens: int = 0
     share: float = 0
     tool_count: int = 0
     session_count: int = 0
@@ -633,3 +637,29 @@ class UsageMapEvidenceResponse(BaseModel):
     rule: str = ""
     cost_usd: float = 0
     sessions: list[UsageEvidenceSession] = Field(default_factory=list)
+
+
+class UsageCharacteristic(BaseModel):
+    key: str
+    headline: str = ""
+    share: float = 0
+    cost_usd: float = 0
+    kind: str = ""
+    guidance: str = ""
+
+
+class UsageCharacteristicsMeta(BaseModel):
+    project_id: int | None = None
+    window: UsageMapWindow = Field(default_factory=UsageMapWindow)
+    total_usd: float = 0
+    total_tokens: int = 0
+    cost_available: bool = False
+    costs_partial: bool = False
+    sessions_analyzed: int = 0
+    share_basis: str = "cost"
+    basis_note: str = ""
+
+
+class UsageCharacteristicsResponse(BaseModel):
+    meta: UsageCharacteristicsMeta = Field(default_factory=UsageCharacteristicsMeta)
+    characteristics: list[UsageCharacteristic] = Field(default_factory=list)

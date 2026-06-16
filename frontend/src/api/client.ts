@@ -21,9 +21,13 @@ import type {
   TraceResponse,
   UsageMapResponse,
   UsageMapEvidenceResponse,
+  UsageCharacteristicsResponse,
 } from "./types";
 
-const API_BASE = (import.meta.env.VITE_API_BASE ?? "http://localhost:8000/api").replace(/\/$/, "");
+// Relative by default so dev goes through the vite proxy (/api -> backend),
+// keeping API calls same-origin. Override with VITE_API_BASE only when the
+// backend isn't reachable via the proxy (e.g. a built/Docker frontend).
+const API_BASE = (import.meta.env.VITE_API_BASE ?? "/api").replace(/\/$/, "");
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
@@ -186,4 +190,11 @@ export function getUsageMapEvidence(node: string, filters: UsageMapFilters = {})
   const params = usageMapParams(filters);
   params.set("node", node);
   return request<UsageMapEvidenceResponse>(`/analytics/usage-map/evidence?${params}`);
+}
+
+export function getUsageCharacteristics(filters: UsageMapFilters = {}) {
+  const query = usageMapParams(filters).toString();
+  return request<UsageCharacteristicsResponse>(
+    `/analytics/usage-characteristics${query ? `?${query}` : ""}`,
+  );
 }

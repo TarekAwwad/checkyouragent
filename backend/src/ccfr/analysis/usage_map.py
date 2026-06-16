@@ -106,6 +106,8 @@ class EventRec:
     tokens: int            # total billed tokens on the message
     priced: bool
     tool_calls: tuple[ToolCallRec, ...] = ()
+    agent_id: str | None = None
+    input_context_tokens: int = 0  # base + 5m + 1h + read (no output)
 
 
 def event_phase_weights(event: EventRec) -> dict[str, float]:
@@ -132,7 +134,8 @@ def aggregate_phases(events: list[EventRec]) -> dict[str, dict[str, Any]]:
     """
     acc: dict[str, dict[str, Any]] = {
         key: {"cost_usd": 0.0, "tokens": 0.0, "tool_count": 0, "sessions": set(),
-              "tools": {}}
+              "tools": {}, "main_cost": 0.0, "subagent_cost": 0.0,
+              "main_tokens": 0.0, "subagent_tokens": 0.0}
         for key in PHASE_KEYS
     }
     for event in events:
@@ -141,6 +144,12 @@ def aggregate_phases(events: list[EventRec]) -> dict[str, dict[str, Any]]:
             bucket["cost_usd"] += event.cost * weight
             bucket["tokens"] += event.tokens * weight
             bucket["sessions"].add(event.session_db_id)
+            if event.agent_id is None:
+                bucket["main_cost"] += event.cost * weight
+                bucket["main_tokens"] += event.tokens * weight
+            else:
+                bucket["subagent_cost"] += event.cost * weight
+                bucket["subagent_tokens"] += event.tokens * weight
         share = 1.0 / len(event.tool_calls) if event.tool_calls else 0.0
         for call in event.tool_calls:
             bucket = acc[classify_tool_call(call.tool_name, call.command)]
@@ -193,6 +202,7 @@ def load_events(
     rows = conn.execute(
         f"""
         SELECT e.id AS event_id, e.session_id AS session_db_id, e.timestamp AS ts,
+               e.agent_id AS agent_id,
                m.model,
                COALESCE(m.base_input_tokens, 0) AS base,
                COALESCE(m.cache_5m_tokens, 0) AS c5,
@@ -287,6 +297,8 @@ def load_events(
             tokens=tokens,
             priced=price is not None or tokens == 0,
             tool_calls=tuple(calls_by_event.get(row["event_id"], [])),
+            agent_id=row["agent_id"],
+            input_context_tokens=row["base"] + row["c5"] + row["c1"] + row["cr"],
         ))
     return events
 
@@ -695,6 +707,10 @@ def usage_map_analytics(
             "label": spec["label"],
             "cost_usd": round(bucket["cost_usd"], 6),
             "tokens": int(round(bucket["tokens"])),
+            "main_cost_usd": round(bucket["main_cost"], 6),
+            "subagent_cost_usd": round(bucket["subagent_cost"], 6),
+            "main_tokens": int(round(bucket["main_tokens"])),
+            "subagent_tokens": int(round(bucket["subagent_tokens"])),
             "share": round(numerator / denominator, 6) if denominator > 0 else 0.0,
             "tool_count": bucket["tool_count"],
             "session_count": len(bucket["sessions"]),

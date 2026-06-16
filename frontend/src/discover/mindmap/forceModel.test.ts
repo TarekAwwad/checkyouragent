@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { UsageHabit, UsagePhase, UsageTool } from "../../api/types";
 import {
-  buildForceModel, groupSmallLeaves, habitRadius, labelTier, phaseNode, phaseRadius,
+  buildForceModel, deriveOriginPhases, groupSmallLeaves, habitRadius, labelTier,
+  phaseNode, phaseRadius,
 } from "./forceModel";
 
 function habit(key: string, costUsd: number, polarity: "good" | "anti" = "anti"): UsageHabit {
@@ -10,9 +11,12 @@ function habit(key: string, costUsd: number, polarity: "good" | "anti" = "anti")
 }
 
 function phase(key: string, share: number, habits: UsageHabit[] = [],
-               tools: UsageTool[] = []): UsagePhase {
-  return { key, label: key[0].toUpperCase() + key.slice(1), cost_usd: share * 100,
-           tokens: 1000, share, tool_count: 10, session_count: 3, habits, tools };
+               tools: UsageTool[] = [], split?: Partial<UsagePhase>): UsagePhase {
+  const cost = share * 100;
+  return { key, label: key[0].toUpperCase() + key.slice(1), cost_usd: cost,
+           tokens: 1000, share, tool_count: 10, session_count: 3, habits, tools,
+           main_cost_usd: cost, subagent_cost_usd: 0,
+           main_tokens: 1000, subagent_tokens: 0, ...split };
 }
 
 function tool(key: string, costUsd: number, count = 3): UsageTool {
@@ -194,5 +198,34 @@ describe("buildForceModel tool lens", () => {
     const habits = buildForceModel([zeroShare],
       { totalUsd: 100, costAvailable: true, leafMode: "habits" });
     expect(habits.nodes.some((n) => n.id === "phase:operate")).toBe(false);
+  });
+});
+
+describe("deriveOriginPhases", () => {
+  const phases: UsagePhase[] = [
+    phase("explore", 0.8, [], [], { main_cost_usd: 20, subagent_cost_usd: 60 }),
+    phase("implement", 0.2, [], [], { main_cost_usd: 20, subagent_cost_usd: 0 }),
+  ];
+
+  it("returns phases unchanged for 'all'", () => {
+    const { phases: out, total } = deriveOriginPhases(phases, "all", "cost");
+    expect(total).toBe(100);            // cost_usd 80 + 20
+    expect(out[0].share).toBe(0.8);
+  });
+
+  it("rescales to the subagent subset", () => {
+    const { phases: out, total } = deriveOriginPhases(phases, "subagent", "cost");
+    expect(total).toBe(60);             // 60 + 0
+    expect(out[0].cost_usd).toBe(60);
+    expect(out[0].share).toBe(1);       // all subagent cost is in explore
+    expect(out[1].share).toBe(0);
+    expect(out[0].habits).toEqual([]);  // leaves hidden in split mode
+  });
+
+  it("rescales to the main subset", () => {
+    const { phases: out, total } = deriveOriginPhases(phases, "main", "cost");
+    expect(total).toBe(40);             // 20 + 20
+    expect(out[0].share).toBe(0.5);
+    expect(out[1].share).toBe(0.5);
   });
 });
