@@ -106,6 +106,8 @@ class EventRec:
     tokens: int            # total billed tokens on the message
     priced: bool
     tool_calls: tuple[ToolCallRec, ...] = ()
+    agent_id: str | None = None
+    input_context_tokens: int = 0  # base + 5m + 1h + read (no output)
 
 
 def event_phase_weights(event: EventRec) -> dict[str, float]:
@@ -193,6 +195,7 @@ def load_events(
     rows = conn.execute(
         f"""
         SELECT e.id AS event_id, e.session_id AS session_db_id, e.timestamp AS ts,
+               e.agent_id AS agent_id,
                m.model,
                COALESCE(m.base_input_tokens, 0) AS base,
                COALESCE(m.cache_5m_tokens, 0) AS c5,
@@ -287,6 +290,8 @@ def load_events(
             tokens=tokens,
             priced=price is not None or tokens == 0,
             tool_calls=tuple(calls_by_event.get(row["event_id"], [])),
+            agent_id=row["agent_id"],
+            input_context_tokens=row["base"] + row["c5"] + row["c1"] + row["cr"],
         ))
     return events
 

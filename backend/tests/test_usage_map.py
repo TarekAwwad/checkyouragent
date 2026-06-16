@@ -986,6 +986,24 @@ def test_tool_evidence_unknown_tool_is_empty_not_error(tmp_path, monkeypatch) ->
     assert payload["cost_usd"] == 0.0
 
 
+def test_load_events_captures_agent_id_and_input_context() -> None:
+    conn = _conn()
+    _seed_base(conn)
+    # main-thread event
+    _add_assistant_event(conn, 1, 1, "2026-06-01T10:00:00Z", [])
+    # subagent event: set agent_id directly
+    _add_assistant_event(conn, 2, 1, "2026-06-01T10:01:00Z", [])
+    conn.execute("UPDATE events SET agent_id = 'agent-xyz' WHERE id = 2")
+    conn.commit()
+
+    events = load_events(conn, PRICE_TABLE)
+
+    assert events[0].agent_id is None
+    assert events[1].agent_id == "agent-xyz"
+    # input context = base + 5m + 1h + read (no output). Helper sets base=200_000.
+    assert events[0].input_context_tokens == 200_000
+
+
 def test_tool_evidence_requires_a_valid_phase_qualifier(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(usage_map, "pricing_path", lambda: _pricing_csv(tmp_path))
     conn = _conn()
