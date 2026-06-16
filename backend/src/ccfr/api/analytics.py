@@ -382,6 +382,9 @@ def cost_analytics(
     where, params = _where(date_from, date_to, project_id)
     cols = _token_sum_select()
 
+    def _price(period: int | None, model_id: str | None) -> ModelPrice | None:
+        return match_price(timeline.table_for_period(period, historical=historical), model_id)
+
     def matches(raw: str | None) -> bool:
         return model_key is None or normalize_model_key(raw or "") == model_key
 
@@ -427,7 +430,7 @@ def cost_analytics(
             continue
         breakdown = _breakdown(row)
         used = any(getattr(breakdown, c) for c in _CATEGORIES)
-        price = match_price(timeline.table_for_period(row["price_period"], historical=historical), row["model"])
+        price = _price(row["price_period"], row["model"])
         usd = cost_usd(price, breakdown) if price else 0.0
         label = row["model"] or "unknown"
         if price is None and used and row["model"]:
@@ -507,7 +510,7 @@ def cost_analytics(
     ).fetchall():
         if row["bucket"] is None or not matches(row["model"]):
             continue
-        price = match_price(timeline.table_for_period(row["price_period"], historical=historical), row["model"])
+        price = _price(row["price_period"], row["model"])
         if price is None:
             continue
         usd = cost_usd(price, _breakdown(row))
@@ -549,7 +552,7 @@ def cost_analytics(
     ).fetchall():
         if not matches(row["model"]):
             continue
-        price = match_price(timeline.table_for_period(row["price_period"], historical=historical), row["model"])
+        price = _price(row["price_period"], row["model"])
         usd = cost_usd(price, _breakdown(row)) if price else 0.0
         s = sessions.setdefault(
             row["id"],
@@ -585,7 +588,7 @@ def cost_analytics(
     ).fetchall():
         if row["bucket"] is None or not matches(row["model"]):
             continue
-        price = match_price(timeline.table_for_period(row["price_period"], historical=historical), row["model"])
+        price = _price(row["price_period"], row["model"])
         usd = cost_usd(price, _breakdown(row)) if price else 0.0
         if usd == 0:
             continue

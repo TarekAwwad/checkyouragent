@@ -192,10 +192,10 @@ class PriceTimeline:
             self._current = self._merge_through(len(self._snapshots))
         return dict(self._current)
 
-    def table_for_period(self, period: int, *, historical: bool = True) -> dict[str, ModelPrice]:
+    def table_for_period(self, period: int | None, *, historical: bool = True) -> dict[str, ModelPrice]:
         if not historical:
             return self.current_table()
-        period = max(0, min(int(period), len(self._snapshots)))
+        period = max(0, min(int(period) if period is not None else 0, len(self._snapshots)))
         if period not in self._period_cache:
             self._period_cache[period] = self._merge_through(period)
         return dict(self._period_cache[period])

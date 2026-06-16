@@ -161,6 +161,19 @@ def test_sql_period_expr(tmp_path):
     assert match_price(timeline.table_for_period(1), "claude-opus-4-1").base_input == 5
 
 
+def test_table_for_period_none_falls_back_to_baseline(tmp_path):
+    # A NULL event timestamp yields a NULL price_period from sql_period_expr; table_for_period
+    # must treat None as period 0 (the oldest/baseline table) rather than crashing on int(None).
+    baseline = tmp_path / "pricing.csv"
+    _write_sheet(baseline, {"Claude-Opus-4.1": 15})
+    sheets = tmp_path / "pricing"
+    sheets.mkdir()
+    _write_sheet(sheets / "pricing-2026-07-01.csv", {"Claude-Opus-4.1": 5})
+    timeline = load_price_timeline(baseline, sheets)
+    price = match_price(timeline.table_for_period(None), "claude-opus-4-1")
+    assert price is not None and price.base_input == 15
+
+
 def test_timeline_resolves_across_multiple_snapshots(tmp_path):
     baseline = tmp_path / "pricing.csv"
     _write_sheet(baseline, {"Claude-Opus-4.1": 15})
