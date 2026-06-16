@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { UsageCharacteristicsResponse } from "../../api/types";
@@ -48,11 +48,23 @@ describe("UsageCharacteristicsDialog", () => {
     expect(await screen.findByText(/weighted by cost/)).toBeInTheDocument();
   });
 
-  it("exposes Day and Week window presets", async () => {
+  it("exposes Day, Week, Month, and All window presets", async () => {
     renderDialog();
     await screen.findByText(/89%/);
-    expect(screen.getByRole("button", { name: "Week" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Day" })).toBeInTheDocument();
+    for (const name of ["Day", "Week", "Month", "All"]) {
+      expect(screen.getByRole("button", { name })).toBeInTheDocument();
+    }
+  });
+
+  it("queries the full history (no date filter) for the All preset", async () => {
+    renderDialog();
+    await screen.findByText(/89%/);
+    fireEvent.click(screen.getByRole("button", { name: "All" }));
+    await waitFor(() => {
+      expect(vi.mocked(getUsageCharacteristics)).toHaveBeenCalledWith(
+        expect.objectContaining({ dateFrom: null, dateTo: null }),
+      );
+    });
   });
 
   it("shows an error message when the query fails", async () => {
