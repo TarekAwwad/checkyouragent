@@ -15,6 +15,7 @@ from ccfr.analysis.context_economics import (
 )
 from ccfr.analysis.discovery import discovery_analytics
 from ccfr.analysis.usage_map import usage_map_analytics, usage_map_evidence
+from ccfr.analysis.usage_characteristics import usage_characteristics_analytics
 from ccfr.api.schemas import (
     CacheStatsResponse,
     ContextEconomicsResponse,
@@ -35,6 +36,7 @@ from ccfr.api.schemas import (
     TimelineItem,
     TurnCostBreakdown,
     TraceResponse,
+    UsageCharacteristicsResponse,
     UsageMapEvidenceResponse,
     UsageMapResponse,
 )
@@ -309,3 +311,16 @@ def get_usage_map_evidence(
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"Unknown node: {node}") from exc
     return UsageMapEvidenceResponse(**payload)
+
+
+@router.get("/analytics/usage-characteristics", response_model=UsageCharacteristicsResponse)
+def get_usage_characteristics(
+    project_id: int | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    conn: Connection = Depends(get_db),
+) -> UsageCharacteristicsResponse:
+    return UsageCharacteristicsResponse(
+        **usage_characteristics_analytics(conn, project_id=project_id,
+                                          date_from=date_from, date_to=date_to)
+    )

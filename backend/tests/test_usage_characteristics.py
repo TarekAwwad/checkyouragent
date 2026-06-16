@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import sqlite3
 
+from fastapi.testclient import TestClient
+
 from ccfr.analysis import usage_map as um
 from ccfr.analysis.usage_characteristics import (
     SUBAGENT_HEAVY_SESSION_RATIO,
@@ -10,6 +12,8 @@ from ccfr.analysis.usage_characteristics import (
     _span_hours,
 )
 from ccfr.analysis.usage_map import EventRec, ToolCallRec
+from ccfr.api.deps import get_db
+from ccfr.main import create_app
 from ccfr.storage import init_db
 
 
@@ -186,3 +190,21 @@ def test_analytics_reads_agent_type_from_subagents(monkeypatch) -> None:
     monkeypatch.setattr("ccfr.analysis.usage_characteristics.load_price_table", lambda _p: PRICE)
     keys = [c["key"] for c in usage_characteristics_analytics(conn)["characteristics"]]
     assert "agent_type:general-purpose" in keys
+
+
+def test_endpoint_returns_characteristics(monkeypatch) -> None:
+    conn = _conn()
+    _seed(conn)
+    _add(conn, 1, 1)
+    _add(conn, 2, 1, agent_id="a1")
+    monkeypatch.setattr("ccfr.analysis.usage_characteristics.load_price_table", lambda _p: PRICE)
+    app = create_app()
+    app.dependency_overrides[get_db] = lambda: conn
+    client = TestClient(app)
+    resp = client.get("/api/analytics/usage-characteristics")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "characteristics" in body
+    assert body["meta"]["basis_note"]
+    keys = [c["key"] for c in body["characteristics"]]
+    assert "subagent_sessions" in keys
