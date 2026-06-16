@@ -81,3 +81,87 @@ def test_missing_pricing_file_yields_empty_table(tmp_path: Path) -> None:
     table = load_price_table(tmp_path / "does-not-exist.csv")
     assert table == {}
     assert match_price(table, "claude-opus-4-8") is None
+
+
+from datetime import date
+
+from ccfr.analysis.pricing import (
+    PriceTimeline,
+    load_price_timeline,
+)
+
+
+def _write_sheet(path, model_to_input):
+    lines = ["model,base-input-tokens,5m-cache-writes,1h-cache-writes,cache-hits-&-refreshes,output-tokens"]
+    for model, base in model_to_input.items():
+        lines.append(f"{model},{base},0,0,0,{base * 5}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def test_timeline_with_no_dir_is_just_baseline(tmp_path):
+    baseline = tmp_path / "pricing.csv"
+    _write_sheet(baseline, {"Claude-Opus-4.1": 15})
+    timeline = load_price_timeline(baseline, tmp_path / "missing")
+    assert timeline.boundaries() == []
+    assert match_price(timeline.table_for("2026-01-01"), "claude-opus-4-1").base_input == 15
+    assert match_price(timeline.current_table(), "claude-opus-4-1").base_input == 15
+
+
+def test_timeline_resolves_by_date(tmp_path):
+    baseline = tmp_path / "pricing.csv"
+    _write_sheet(baseline, {"Claude-Opus-4.1": 15})
+    sheets = tmp_path / "pricing"
+    sheets.mkdir()
+    _write_sheet(sheets / "pricing-2026-07-01.csv", {"Claude-Opus-4.1": 5})
+    timeline = load_price_timeline(baseline, sheets)
+
+    assert timeline.boundaries() == [date(2026, 7, 1)]
+    assert match_price(timeline.table_for("2026-06-30T23:00:00Z"), "claude-opus-4-1").base_input == 15
+    assert match_price(timeline.table_for("2026-07-01T00:00:00Z"), "claude-opus-4-1").base_input == 5
+    assert match_price(timeline.current_table(), "claude-opus-4-1").base_input == 5
+
+
+def test_timeline_partial_snapshot_inherits_baseline(tmp_path):
+    baseline = tmp_path / "pricing.csv"
+    _write_sheet(baseline, {"Claude-Opus-4.1": 15, "Claude-Sonnet-4.5": 3})
+    sheets = tmp_path / "pricing"
+    sheets.mkdir()
+    _write_sheet(sheets / "pricing-2026-07-01.csv", {"Claude-Opus-4.1": 5})
+    timeline = load_price_timeline(baseline, sheets)
+    table = timeline.table_for("2026-08-01")
+    assert match_price(table, "claude-opus-4-1").base_input == 5
+    assert match_price(table, "claude-sonnet-4-5").base_input == 3
+
+
+def test_timeline_historical_false_uses_current(tmp_path):
+    baseline = tmp_path / "pricing.csv"
+    _write_sheet(baseline, {"Claude-Opus-4.1": 15})
+    sheets = tmp_path / "pricing"
+    sheets.mkdir()
+    _write_sheet(sheets / "pricing-2026-07-01.csv", {"Claude-Opus-4.1": 5})
+    timeline = load_price_timeline(baseline, sheets)
+    assert match_price(timeline.table_for("2026-01-01", historical=False), "claude-opus-4-1").base_input == 5
+
+
+def test_timeline_skips_malformed_filenames(tmp_path):
+    baseline = tmp_path / "pricing.csv"
+    _write_sheet(baseline, {"Claude-Opus-4.1": 15})
+    sheets = tmp_path / "pricing"
+    sheets.mkdir()
+    (sheets / "notes.txt").write_text("ignore me", encoding="utf-8")
+    _write_sheet(sheets / "pricing-bad.csv", {"Claude-Opus-4.1": 1})
+    timeline = load_price_timeline(baseline, sheets)
+    assert timeline.boundaries() == []
+
+
+def test_sql_period_expr(tmp_path):
+    baseline = tmp_path / "pricing.csv"
+    _write_sheet(baseline, {"Claude-Opus-4.1": 15})
+    sheets = tmp_path / "pricing"
+    sheets.mkdir()
+    _write_sheet(sheets / "pricing-2026-07-01.csv", {"Claude-Opus-4.1": 5})
+    timeline = load_price_timeline(baseline, sheets)
+    assert timeline.sql_period_expr("e.timestamp") == "((date(e.timestamp) >= '2026-07-01'))"
+    assert timeline.sql_period_expr("e.timestamp", historical=False) == "0"
+    assert match_price(timeline.table_for_period(0), "claude-opus-4-1").base_input == 15
+    assert match_price(timeline.table_for_period(1), "claude-opus-4-1").base_input == 5
