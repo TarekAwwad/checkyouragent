@@ -177,7 +177,7 @@ export default function UsageMindmap({ projects }: Props) {
             <button type="button" className="ghost-action"
                     onClick={() => setUsageOpen(true)}>
               <Gauge size={14} />
-              <span>Compare to /usage</span>
+              <span>Usage drivers</span>
             </button>
           </div>
         </div>

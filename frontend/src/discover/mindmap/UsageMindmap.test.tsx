@@ -217,7 +217,7 @@ describe("UsageMindmap", () => {
   it("opens the usage-characteristics dialog from the toolbar", async () => {
     renderPage();
     await screen.findByText("My usage");
-    fireEvent.click(screen.getByRole("button", { name: /Compare to \/usage/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Usage drivers/ }));
     expect(await screen.findByText(/89%/)).toBeInTheDocument();
   });
 

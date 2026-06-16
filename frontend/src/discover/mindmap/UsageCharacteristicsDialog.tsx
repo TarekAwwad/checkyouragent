@@ -69,7 +69,7 @@ export default function UsageCharacteristicsDialog({ open, onClose, projectId }:
     >
       <div className="glossary-panel">
         <header className="glossary-header">
-          <h2 id="usage-characteristics-title">What's contributing to your usage?</h2>
+          <h2 id="usage-characteristics-title">What's driving your usage</h2>
           <button type="button" className="glossary-close"
                   aria-label="Close" onClick={onClose}>
             <X size={16} />
@@ -86,7 +86,8 @@ export default function UsageCharacteristicsDialog({ open, onClose, projectId }:
           ))}
         </div>
         <p className="uc-subtitle">
-          These are independent characteristics of your usage, not a breakdown.
+          Independent characteristics of your usage — not a breakdown. Day and Week
+          mirror Claude Code's /usage; Month and All draw on your full history.
         </p>
 
         <div className="uc-body">
