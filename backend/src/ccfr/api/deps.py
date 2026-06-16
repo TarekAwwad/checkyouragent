@@ -4,6 +4,7 @@ from collections.abc import Iterator
 from sqlite3 import Connection
 
 from ccfr.config import database_path
+from ccfr.settings import read_settings
 from ccfr.storage import connect
 
 
@@ -16,9 +17,6 @@ def get_db() -> Iterator[Connection]:
         yield conn
     finally:
         conn.close()
-
-
-from ccfr.settings import read_settings
 
 
 def get_historical_pricing() -> bool:
