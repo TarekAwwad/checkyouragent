@@ -94,6 +94,21 @@ def test_empty_events_yield_zero_shares() -> None:
     assert all(c["share"] == 0.0 for c in chars)
 
 
+def test_token_basis_weights_by_tokens_not_cost() -> None:
+    # With use_cost=False, shares weight by tokens; cost_usd still reports USD.
+    events = [
+        _ev(1, session=1, cost=1.0, tokens=300, agent_id="a1"),  # subagent
+        _ev(2, session=2, cost=99.0, tokens=100),                # main-only
+    ]
+    chars = _by_key(compute_characteristics(
+        events, session_spans={}, agent_types={}, use_cost=False))
+    heavy = chars["subagent_sessions"]
+    # session 1 is 100% subagent -> heavy. Token share = 300 / 400.
+    assert heavy["share"] == round(300 / 400, 6)
+    # cost_usd is still the USD sum of the heavy session, not the token weight.
+    assert heavy["cost_usd"] == 1.0
+
+
 def test_span_hours_handles_missing_timestamps() -> None:
     assert _span_hours(None, "2026-06-01T01:00:00Z") == 0.0
     assert _span_hours("2026-06-01T00:00:00Z", None) == 0.0
