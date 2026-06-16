@@ -115,3 +115,71 @@ def test_get_session_returns_none_for_nonexistent_id(tmp_path: Path) -> None:
 
     result = repository.get_session(conn, 999_999)
     assert result is None
+
+
+from ccfr.storage import connect
+
+
+def _seed_two_dated_sessions(conn):
+    """Two sessions, identical 1M base-input tokens on Opus, on different dates."""
+    init_db(conn)
+    conn.execute("INSERT INTO imports(source_path, imported_at, status) VALUES('x','x','done')")
+    conn.execute("INSERT INTO projects(import_id, export_name) VALUES(1,'proj')")
+    for sid, (session_key, ts) in enumerate(
+        {"old": "2026-01-15T10:00:00Z", "new": "2026-08-15T10:00:00Z"}.items(), start=1
+    ):
+        conn.execute(
+            "INSERT INTO sessions(project_id, session_id, first_ts, last_ts) VALUES(1,?,?,?)",
+            (session_key, ts, ts),
+        )
+        conn.execute(
+            "INSERT INTO events(session_id, source_path, line_no, type, timestamp, raw_json) "
+            "VALUES(?,?,?,?,?,'{}')",
+            (sid, "f", sid, "assistant", ts),
+        )
+        conn.execute(
+            "INSERT INTO messages(event_id, role, model, base_input_tokens, output_tokens) "
+            "VALUES(?, 'assistant', 'claude-opus-4-1', 1000000, 0)",
+            (sid,),
+        )
+    conn.commit()
+
+
+def _pricing(tmp_path):
+    baseline = tmp_path / "pricing.csv"
+    baseline.write_text(
+        "model,base-input-tokens,5m-cache-writes,1h-cache-writes,cache-hits-&-refreshes,output-tokens\n"
+        "Claude-Opus-4.1,15,0,0,0,75\n",
+        encoding="utf-8",
+    )
+    sheets = tmp_path / "pricing"
+    sheets.mkdir()
+    (sheets / "pricing-2026-07-01.csv").write_text(
+        "model,base-input-tokens,5m-cache-writes,1h-cache-writes,cache-hits-&-refreshes,output-tokens\n"
+        "Claude-Opus-4.1,5,0,0,0,25\n",
+        encoding="utf-8",
+    )
+    return baseline, sheets
+
+
+def test_session_cost_prices_by_session_date(monkeypatch, tmp_path):
+    conn = connect(tmp_path / "db.sqlite3")
+    _seed_two_dated_sessions(conn)
+    baseline, sheets = _pricing(tmp_path)
+    monkeypatch.setattr(repository, "pricing_path", lambda: baseline)
+    monkeypatch.setattr(repository, "pricing_dir", lambda: sheets)
+
+    assert repository.session_cost(conn, 1, historical=True)["usd"] == 15.0
+    assert repository.session_cost(conn, 2, historical=True)["usd"] == 5.0
+    assert repository.session_cost(conn, 1, historical=False)["usd"] == 5.0
+
+
+def test_session_cost_map_prices_by_date(monkeypatch, tmp_path):
+    conn = connect(tmp_path / "db.sqlite3")
+    _seed_two_dated_sessions(conn)
+    baseline, sheets = _pricing(tmp_path)
+    monkeypatch.setattr(repository, "pricing_path", lambda: baseline)
+    monkeypatch.setattr(repository, "pricing_dir", lambda: sheets)
+    costs, available = repository.session_cost_map(conn, historical=True)
+    assert available is True
+    assert costs == {1: 15.0, 2: 5.0}
