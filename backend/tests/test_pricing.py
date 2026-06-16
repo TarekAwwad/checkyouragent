@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
 from ccfr.analysis.pricing import (
     ModelPrice,
+    PriceTimeline,
     TokenBreakdown,
     cost_usd,
     load_price_table,
+    load_price_timeline,
     match_price,
     normalize_model_key,
 )
@@ -83,14 +86,6 @@ def test_missing_pricing_file_yields_empty_table(tmp_path: Path) -> None:
     assert match_price(table, "claude-opus-4-8") is None
 
 
-from datetime import date
-
-from ccfr.analysis.pricing import (
-    PriceTimeline,
-    load_price_timeline,
-)
-
-
 def _write_sheet(path, model_to_input):
     lines = ["model,base-input-tokens,5m-cache-writes,1h-cache-writes,cache-hits-&-refreshes,output-tokens"]
     for model, base in model_to_input.items():
@@ -165,3 +160,27 @@ def test_sql_period_expr(tmp_path):
     assert timeline.sql_period_expr("e.timestamp", historical=False) == "0"
     assert match_price(timeline.table_for_period(0), "claude-opus-4-1").base_input == 15
     assert match_price(timeline.table_for_period(1), "claude-opus-4-1").base_input == 5
+
+
+def test_timeline_resolves_across_multiple_snapshots(tmp_path):
+    baseline = tmp_path / "pricing.csv"
+    _write_sheet(baseline, {"Claude-Opus-4.1": 15})
+    sheets = tmp_path / "pricing"
+    sheets.mkdir()
+    _write_sheet(sheets / "pricing-2026-07-01.csv", {"Claude-Opus-4.1": 5})
+    _write_sheet(sheets / "pricing-2026-09-01.csv", {"Claude-Opus-4.1": 2})
+    timeline = load_price_timeline(baseline, sheets)
+
+    # (a) boundaries in chronological order
+    assert timeline.boundaries() == [date(2026, 7, 1), date(2026, 9, 1)]
+
+    # (b) before / between / after the two boundaries
+    assert match_price(timeline.table_for("2026-06-01"), "claude-opus-4-1").base_input == 15
+    assert match_price(timeline.table_for("2026-08-01"), "claude-opus-4-1").base_input == 5
+    assert match_price(timeline.table_for("2026-10-01"), "claude-opus-4-1").base_input == 2
+
+    # (c) SQL expr sums both boundary terms
+    expr = timeline.sql_period_expr("e.timestamp")
+    assert "(date(e.timestamp) >= '2026-07-01')" in expr
+    assert "(date(e.timestamp) >= '2026-09-01')" in expr
+    assert " + " in expr

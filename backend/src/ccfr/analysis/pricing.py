@@ -151,7 +151,7 @@ def _coerce_date(when: object) -> date | None:
 
 
 # A dated snapshot file: pricing-YYYY-MM-DD.csv (date parsed from the filename).
-_SHEET_RE = re.compile(r"^pricing-(\d{4})-(\d{2})-(\d{2})\.csv$", re.IGNORECASE)
+_SHEET_RE = re.compile(r"^pricing-(\d{4})-(\d{2})-(\d{2})\.csv$")
 
 
 @dataclass(frozen=True)
@@ -190,7 +190,7 @@ class PriceTimeline:
     def current_table(self) -> dict[str, ModelPrice]:
         if self._current is None:
             self._current = self._merge_through(len(self._snapshots))
-        return self._current
+        return dict(self._current)
 
     def table_for_period(self, period: int, *, historical: bool = True) -> dict[str, ModelPrice]:
         if not historical:
@@ -198,7 +198,7 @@ class PriceTimeline:
         period = max(0, min(int(period), len(self._snapshots)))
         if period not in self._period_cache:
             self._period_cache[period] = self._merge_through(period)
-        return self._period_cache[period]
+        return dict(self._period_cache[period])
 
     def period_index(self, when: object) -> int:
         day = _coerce_date(when)
