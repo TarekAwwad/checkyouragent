@@ -1,0 +1,56 @@
+import { describe, expect, it, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
+import React from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { UsageCharacteristicsResponse } from "../../api/types";
+import UsageCharacteristicsDialog from "./UsageCharacteristicsDialog";
+
+const payload: UsageCharacteristicsResponse = {
+  meta: {
+    project_id: null, window: { date_from: "2026-06-10", date_to: "2026-06-16" },
+    total_usd: 100, total_tokens: 0, cost_available: true, costs_partial: false,
+    sessions_analyzed: 5, share_basis: "cost",
+    basis_note: "Shares are weighted by cost (USD).",
+  },
+  characteristics: [
+    { key: "subagent_sessions", headline: "subagent-heavy sessions", share: 0.89,
+      cost_usd: 89, kind: "session", guidance: "Be deliberate about spawning them." },
+    { key: "context_gt_150k", headline: ">150k context", share: 0.65,
+      cost_usd: 65, kind: "call", guidance: "Longer sessions cost more." },
+  ],
+};
+
+vi.mock("../../api/client", () => ({
+  getUsageCharacteristics: vi.fn(() => Promise.resolve(payload)),
+}));
+
+function renderDialog(open = true) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <UsageCharacteristicsDialog open={open} onClose={vi.fn()} projectId={null} />
+    </QueryClientProvider>,
+  );
+}
+
+describe("UsageCharacteristicsDialog", () => {
+  it("renders one block per characteristic with rounded percentages", async () => {
+    renderDialog();
+    expect(await screen.findByText(/89%/)).toBeInTheDocument();
+    expect(screen.getByText(/subagent-heavy sessions/)).toBeInTheDocument();
+    expect(screen.getByText(/65%/)).toBeInTheDocument();
+    expect(screen.getByText(/Be deliberate about spawning them\./)).toBeInTheDocument();
+  });
+
+  it("shows the cost-vs-limits caveat", async () => {
+    renderDialog();
+    expect(await screen.findByText(/weighted by cost/)).toBeInTheDocument();
+  });
+
+  it("exposes Day and Week window presets", async () => {
+    renderDialog();
+    await screen.findByText(/89%/);
+    expect(screen.getByRole("button", { name: "Week" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Day" })).toBeInTheDocument();
+  });
+});
