@@ -50,6 +50,11 @@ def pricing_path() -> Path:
     return Path(os.getenv("CCFR_PRICING_PATH", str(repository_root() / "pricing.csv")))
 
 
+def pricing_dir() -> Path:
+    """Directory of dated price snapshots (pricing-YYYY-MM-DD.csv) layered over pricing.csv."""
+    return Path(os.getenv("CCFR_PRICING_DIR", str(repository_root() / "pricing")))
+
+
 def allowed_origins() -> list[str]:
     """CORS origins permitted to call the API.
 
