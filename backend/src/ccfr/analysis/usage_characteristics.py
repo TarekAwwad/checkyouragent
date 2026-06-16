@@ -23,7 +23,6 @@ from ccfr.config import pricing_path
 
 # Thresholds pinned to /usage (tunable). Subagent-heavy ratio is our own choice
 # (/usage's exact definition is unknown) and documented as approximate.
-SUBAGENT_HEAVY_SESSION_RATIO = 0.5
 CONTEXT_BAND_TOKENS = 150_000
 LONG_SESSION_HOURS = 8
 AGENT_TYPE_MIN_SHARE = 0.05
@@ -40,9 +39,15 @@ TOKEN_BASIS_NOTE = (
 )
 
 GUIDANCE = {
+    "subagent_usage": (
+        "Work done inside subagent turns — each subagent runs its own requests. "
+        "This is the direct subagent share of usage; the rest is the main thread."
+    ),
     "subagent_sessions": (
-        "Each subagent runs its own requests. Be deliberate about spawning "
-        "them — and consider a cheaper model for simple subagents."
+        "The whole cost of every session that spawned at least one subagent "
+        "(main thread + subagents) — shows how pervasive subagents are in your "
+        "workflow, not how much they cost directly. Be deliberate about spawning "
+        "them, and consider a cheaper model for simple ones."
     ),
     "context_gt_150k": (
         "Longer sessions are more expensive even when cached. /compact "
@@ -104,6 +109,8 @@ def compute_characteristics(
     sess_cost: dict[int, float] = defaultdict(float)
     sess_weight: dict[int, float] = defaultdict(float)
     sess_sub_weight: dict[int, float] = defaultdict(float)
+    sub_weight_total = 0.0
+    sub_cost_total = 0.0
     ctx_weight = 0.0
     ctx_cost = 0.0
     type_weight: dict[str, float] = defaultdict(float)
@@ -114,6 +121,8 @@ def compute_characteristics(
         sess_cost[e.session_db_id] += e.cost
         sess_weight[e.session_db_id] += w
         if e.agent_id is not None:
+            sub_weight_total += w
+            sub_cost_total += e.cost
             sess_sub_weight[e.session_db_id] += w
             atype = agent_types.get((e.session_db_id, e.agent_id), "unspecified")
             type_weight[atype] += w
@@ -122,12 +131,13 @@ def compute_characteristics(
             ctx_weight += w
             ctx_cost += e.cost
 
-    heavy = [
-        sid for sid, wt in sess_weight.items()
-        if wt > 0 and sess_sub_weight.get(sid, 0.0) / wt >= SUBAGENT_HEAVY_SESSION_RATIO
-    ]
-    heavy_weight = sum(sess_weight[sid] for sid in heavy)
-    heavy_cost = sum(sess_cost[sid] for sid in heavy)
+    # Sessions that involve subagents at all: count the WHOLE session cost
+    # (main + subagent) whenever the session spawned >=1 subagent. Distinct from
+    # the direct attribution (sub_*_total) — this measures how pervasive
+    # subagents are in the workflow, not how much they cost directly.
+    uses_sub = [sid for sid, sw in sess_sub_weight.items() if sw > 0]
+    uses_weight = sum(sess_weight[sid] for sid in uses_sub)
+    uses_cost = sum(sess_cost[sid] for sid in uses_sub)
 
     long_sids = [
         sid for sid in sess_weight
@@ -137,8 +147,10 @@ def compute_characteristics(
     long_cost = sum(sess_cost[sid] for sid in long_sids)
 
     chars: list[dict[str, Any]] = [
-        _char("subagent_sessions", "subagent-heavy sessions", "session",
-              heavy_weight, heavy_cost, total),
+        _char("subagent_usage", "subagent turns", "subagent",
+              sub_weight_total, sub_cost_total, total),
+        _char("subagent_sessions", "sessions that use subagents", "session",
+              uses_weight, uses_cost, total),
         _char("context_gt_150k", f">{CONTEXT_BAND_TOKENS // 1000}k context", "call",
               ctx_weight, ctx_cost, total),
         _char("duration_gte_8h", f"sessions active for {LONG_SESSION_HOURS}+ hours",

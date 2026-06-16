@@ -6,7 +6,6 @@ from fastapi.testclient import TestClient
 
 from ccfr.analysis import usage_map as um
 from ccfr.analysis.usage_characteristics import (
-    SUBAGENT_HEAVY_SESSION_RATIO,
     compute_characteristics,
     usage_characteristics_analytics,
     _span_hours,
@@ -31,27 +30,33 @@ def _by_key(chars: list[dict]) -> dict[str, dict]:
     return {c["key"]: c for c in chars}
 
 
-def test_subagent_heavy_session_counts_full_cost() -> None:
+def test_sessions_that_use_subagents_count_full_session_cost() -> None:
     events = [
-        _ev(1, session=1, cost=4.0),                       # main
-        _ev(2, session=1, cost=6.0, agent_id="a1"),        # subagent (60% of session 1)
+        _ev(1, session=1, cost=4.0),                       # main turn of session 1
+        _ev(2, session=1, cost=6.0, agent_id="a1"),        # subagent turn of session 1
         _ev(3, session=2, cost=10.0),                      # main-only session
     ]
     chars = _by_key(compute_characteristics(
         events, session_spans={}, agent_types={}, use_cost=True))
-    heavy = chars["subagent_sessions"]
-    assert heavy["cost_usd"] == 10.0           # full cost of session 1
-    assert heavy["share"] == round(10.0 / 20.0, 6)
+    # Session 1 used a subagent -> its WHOLE cost (10) counts; session 2 excluded.
+    assert chars["subagent_sessions"]["cost_usd"] == 10.0
+    assert chars["subagent_sessions"]["share"] == round(10.0 / 20.0, 6)
+    # Direct attribution counts only the subagent turn (6), not the whole session.
+    assert chars["subagent_usage"]["cost_usd"] == 6.0
+    assert chars["subagent_usage"]["share"] == round(6.0 / 20.0, 6)
 
 
-def test_session_below_ratio_is_not_heavy() -> None:
+def test_low_subagent_session_counts_full_for_sessions_but_direct_for_usage() -> None:
+    # A session only 40% subagent still "uses subagents": its full cost lands in
+    # the session metric, but only the subagent turn lands in the direct metric.
     events = [
         _ev(1, session=1, cost=6.0),                       # main
         _ev(2, session=1, cost=4.0, agent_id="a1"),        # 40% subagent
     ]
     chars = _by_key(compute_characteristics(
         events, session_spans={}, agent_types={}, use_cost=True))
-    assert chars["subagent_sessions"]["cost_usd"] == 0.0
+    assert chars["subagent_sessions"]["cost_usd"] == 10.0   # whole session
+    assert chars["subagent_usage"]["cost_usd"] == 4.0       # subagent turn only
 
 
 def test_context_band_counts_only_large_calls() -> None:
