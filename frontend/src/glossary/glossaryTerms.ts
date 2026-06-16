@@ -5,6 +5,7 @@
 export type GlossaryCategory =
   | "Structure"
   | "Activity"
+  | "Workflow"
   | "Risk"
   | "Discovery"
   | "Cost";
@@ -22,6 +23,7 @@ export interface GlossaryTerm {
 export const CATEGORY_ORDER: GlossaryCategory[] = [
   "Structure",
   "Activity",
+  "Workflow",
   "Risk",
   "Discovery",
   "Cost",
@@ -126,6 +128,41 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     term: "Timeline spacing",
     definition:
       "How the timeline spaces events along the x-axis. Raw time uses real wall-clock gaps; Compressed gaps shortens long idle stretches so activity isn't squished; Event order ignores time and spaces events evenly.",
+  },
+
+  // Workflow — the Usage Mindmap's phases and habits.
+  {
+    category: "Workflow",
+    term: "Usage Mindmap",
+    definition:
+      "The graph on Discover that splits all spend in the current filter into workflow phases (the inner ring) and the behavior habits detected within them (the leaves). Click any node to see the rule behind it and the sessions that fed it.",
+  },
+  {
+    category: "Workflow",
+    term: "Workflow phase",
+    definition:
+      "The kind of work an assistant turn was doing, decided from the tools it called. Every turn lands in exactly one of seven phases, so the phases partition all spend and sum to 100%. The percentage on a phase is its share of the corpus's spend (or tokens, when pricing is unavailable).",
+    detail: [
+      "Explore     reading & searching (Read, Grep, web)",
+      "Plan        planning (TodoWrite, plan mode, ask)",
+      "Implement   edits & writes (Edit, Write)",
+      "Verify      test / build / lint commands",
+      "Operate     other shell commands",
+      "Delegate    work handed to subagents (Task)",
+      "Synthesize  text-only turns; anything else",
+    ],
+  },
+  {
+    category: "Workflow",
+    term: "Habit (good / anti)",
+    definition:
+      "A recurring behavior pattern detected across a session's turns — for example planning before a burst of edits, or retrying a failing command unchanged. Each habit hangs off its home phase as a leaf, marked good (a pattern worth keeping) or anti (a pattern worth fixing). Its cost is the size of the behavior itself, not a hypothetical saving.",
+  },
+  {
+    category: "Workflow",
+    term: "Phase vs. habit",
+    definition:
+      "Phases and habits answer different questions. The phases are a partition: every dollar of spend lands in exactly one phase, so they sum to 100%. Habits are an overlay on top — a single habit can span several phases and deliberately counts the work across them, so habit shares overlap each other and the phases and do not sum to 100%. Read a phase as \"how much spend was this kind of work\"; read a habit as \"how much spend is involved in this pattern.\"",
   },
 
   // Risk — the Triage rank and the findings/patterns behind it.

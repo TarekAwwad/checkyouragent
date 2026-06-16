@@ -26,6 +26,20 @@ describe("GlossaryDialog", () => {
     expect(screen.queryByText("Subagent")).not.toBeInTheDocument();
   });
 
+  it("shows the Usage Mindmap phase/habit terms on the Workflow tab", () => {
+    render(<GlossaryDialog open onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Workflow" }));
+
+    // The phase term and its list of the seven phases are shown.
+    expect(screen.getByText("Workflow phase")).toBeInTheDocument();
+    expect(screen.getByText(/Synthesize/)).toBeInTheDocument();
+    // The distinction entry that the per-node tooltips never spell out.
+    expect(screen.getByText("Phase vs. habit")).toBeInTheDocument();
+    // Risk-only terms are no longer rendered in the active panel.
+    expect(screen.queryByText("Risk score")).not.toBeInTheDocument();
+  });
+
   it("calls onClose when the close button is clicked", () => {
     const onClose = vi.fn();
     render(<GlossaryDialog open onClose={onClose} />);
