@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { UsageCharacteristicsResponse } from "../../api/types";
+import { getUsageCharacteristics } from "../../api/client";
 import UsageCharacteristicsDialog from "./UsageCharacteristicsDialog";
 
 const payload: UsageCharacteristicsResponse = {
@@ -52,5 +53,11 @@ describe("UsageCharacteristicsDialog", () => {
     await screen.findByText(/89%/);
     expect(screen.getByRole("button", { name: "Week" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Day" })).toBeInTheDocument();
+  });
+
+  it("shows an error message when the query fails", async () => {
+    vi.mocked(getUsageCharacteristics).mockRejectedValueOnce(new Error("boom"));
+    renderDialog();
+    expect(await screen.findByText(/Could not load usage characteristics\./)).toBeInTheDocument();
   });
 });

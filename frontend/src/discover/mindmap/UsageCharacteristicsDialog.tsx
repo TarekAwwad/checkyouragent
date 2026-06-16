@@ -83,6 +83,9 @@ export default function UsageCharacteristicsDialog({ open, onClose, projectId }:
 
         <div className="uc-body">
           {query.isPending && <p className="uc-note">Loading…</p>}
+          {query.isError && (
+            <p className="uc-note">Could not load usage characteristics.</p>
+          )}
           {data && data.characteristics.length === 0 && (
             <p className="uc-note">No usage in this window.</p>
           )}
