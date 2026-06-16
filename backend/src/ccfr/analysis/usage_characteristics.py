@@ -147,3 +147,65 @@ def compute_characteristics(
 
     chars.sort(key=lambda c: c["share"], reverse=True)
     return chars
+
+
+def _session_spans(
+    conn: sqlite3.Connection, project_id: int | None,
+) -> dict[int, tuple[str | None, str | None]]:
+    sql = "SELECT id, first_ts, last_ts FROM sessions"
+    params: list[Any] = []
+    if project_id is not None:
+        sql += " WHERE project_id = ?"
+        params.append(project_id)
+    return {row["id"]: (row["first_ts"], row["last_ts"])
+            for row in conn.execute(sql, params).fetchall()}
+
+
+def _agent_types(
+    conn: sqlite3.Connection, project_id: int | None,
+) -> dict[tuple[int, str], str]:
+    sql = ("SELECT sa.parent_session_id AS sid, sa.agent_id, sa.agent_type "
+           "FROM subagents sa JOIN sessions s ON s.id = sa.parent_session_id")
+    params: list[Any] = []
+    if project_id is not None:
+        sql += " WHERE s.project_id = ?"
+        params.append(project_id)
+    return {(row["sid"], row["agent_id"]): (row["agent_type"] or "unspecified")
+            for row in conn.execute(sql, params).fetchall()}
+
+
+def usage_characteristics_analytics(
+    conn: sqlite3.Connection,
+    *,
+    project_id: int | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> dict[str, Any]:
+    """Overlapping-characteristics payload for the filtered corpus."""
+    table = load_price_table(pricing_path())
+    cost_available = bool(table)
+    events = load_events(conn, table, project_id=project_id,
+                         date_from=date_from, date_to=date_to)
+    total_usd = sum(e.cost for e in events)
+    total_tokens = sum(e.tokens for e in events)
+    use_cost = cost_available and total_usd > 0
+    characteristics = compute_characteristics(
+        events,
+        session_spans=_session_spans(conn, project_id),
+        agent_types=_agent_types(conn, project_id),
+        use_cost=use_cost,
+    )
+    return {
+        "meta": {
+            "project_id": project_id,
+            "window": {"date_from": date_from, "date_to": date_to},
+            "total_usd": round(total_usd, 6),
+            "total_tokens": int(total_tokens),
+            "cost_available": cost_available,
+            "costs_partial": any(not e.priced for e in events),
+            "sessions_analyzed": len({e.session_db_id for e in events}),
+            "share_basis": "cost" if use_cost else "tokens",
+            "basis_note": BASIS_NOTE,
+        },
+        "characteristics": characteristics,
+    }

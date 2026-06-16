@@ -113,3 +113,78 @@ def test_span_hours_handles_missing_timestamps() -> None:
     assert _span_hours(None, "2026-06-01T01:00:00Z") == 0.0
     assert _span_hours("2026-06-01T00:00:00Z", None) == 0.0
     assert _span_hours("2026-06-01T00:00:00Z", "2026-06-01T08:00:00Z") == 8.0
+
+
+import sqlite3
+
+from ccfr.analysis import usage_map as um
+from ccfr.analysis.usage_characteristics import usage_characteristics_analytics
+from ccfr.storage import init_db
+
+
+def _conn() -> sqlite3.Connection:
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    init_db(conn)
+    return conn
+
+
+def _seed(conn: sqlite3.Connection) -> None:
+    conn.execute("INSERT INTO imports (id, source_path, imported_at, file_count, status) "
+                 "VALUES (1, '/x', '2026-06-01T00:00:00Z', 1, 'complete')")
+    conn.execute("INSERT INTO projects (id, import_id, export_name, inferred_cwd) "
+                 "VALUES (1, 1, 'd--Alpha', '/workspace/alpha')")
+    conn.execute("INSERT INTO sessions (id, project_id, session_id, title, first_ts, last_ts) "
+                 "VALUES (1, 1, 's1', 'S1', '2026-06-01T00:00:00Z', '2026-06-01T10:00:00Z')")
+    conn.commit()
+
+
+def _add(conn, event_id, session_id, *, agent_id=None, base=200_000, out=40_000,
+         model="claude-opus-4-8") -> None:
+    conn.execute(
+        "INSERT INTO events (id, session_id, source_path, line_no, uuid, type, timestamp, agent_id, raw_json) "
+        "VALUES (?, ?, 'x.jsonl', 1, ?, 'assistant', '2026-06-01T10:00:00Z', ?, '{}')",
+        (event_id, session_id, f"u{event_id}", agent_id))
+    conn.execute(
+        "INSERT INTO messages (event_id, role, model, base_input_tokens, output_tokens) "
+        "VALUES (?, 'assistant', ?, ?, ?)", (event_id, model, base, out))
+    conn.commit()
+
+
+PRICE = {"claude-opus-4-8": um.ModelPrice(base_input=5, cache_write_5m=6.25,
+                                          cache_write_1h=10, cache_read=0.5, output=25)}
+
+
+def test_analytics_total_matches_usage_map(monkeypatch) -> None:
+    conn = _conn()
+    _seed(conn)
+    _add(conn, 1, 1)
+    _add(conn, 2, 1, agent_id="a1")
+    monkeypatch.setattr("ccfr.analysis.usage_characteristics.load_price_table", lambda _p: PRICE)
+    monkeypatch.setattr("ccfr.analysis.usage_map.load_price_table", lambda _p: PRICE)
+
+    chars_total = usage_characteristics_analytics(conn)["meta"]["total_usd"]
+    map_total = um.usage_map_analytics(conn)["meta"]["total_usd"]
+    assert chars_total == map_total
+
+
+def test_analytics_token_basis_when_no_pricing(monkeypatch) -> None:
+    conn = _conn()
+    _seed(conn)
+    _add(conn, 1, 1)
+    monkeypatch.setattr("ccfr.analysis.usage_characteristics.load_price_table", lambda _p: {})
+    payload = usage_characteristics_analytics(conn)
+    assert payload["meta"]["share_basis"] == "tokens"
+    assert payload["meta"]["cost_available"] is False
+
+
+def test_analytics_reads_agent_type_from_subagents(monkeypatch) -> None:
+    conn = _conn()
+    _seed(conn)
+    _add(conn, 1, 1, agent_id="a1")
+    conn.execute("INSERT INTO subagents (parent_session_id, agent_id, agent_type) "
+                 "VALUES (1, 'a1', 'general-purpose')")
+    conn.commit()
+    monkeypatch.setattr("ccfr.analysis.usage_characteristics.load_price_table", lambda _p: PRICE)
+    keys = [c["key"] for c in usage_characteristics_analytics(conn)["characteristics"]]
+    assert "agent_type:general-purpose" in keys
