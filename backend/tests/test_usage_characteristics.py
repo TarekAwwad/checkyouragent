@@ -178,6 +178,7 @@ def test_analytics_token_basis_when_no_pricing(monkeypatch) -> None:
     payload = usage_characteristics_analytics(conn)
     assert payload["meta"]["share_basis"] == "tokens"
     assert payload["meta"]["cost_available"] is False
+    assert "token" in payload["meta"]["basis_note"].lower()
 
 
 def test_analytics_reads_agent_type_from_subagents(monkeypatch) -> None:
@@ -206,5 +207,6 @@ def test_endpoint_returns_characteristics(monkeypatch) -> None:
     body = resp.json()
     assert "characteristics" in body
     assert body["meta"]["basis_note"]
+    assert "cost" in body["meta"]["basis_note"].lower()
     keys = [c["key"] for c in body["characteristics"]]
     assert "subagent_sessions" in keys

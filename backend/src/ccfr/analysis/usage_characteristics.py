@@ -33,6 +33,12 @@ BASIS_NOTE = (
     "rate-limit consumption, so expect directional, not exact, agreement."
 )
 
+TOKEN_BASIS_NOTE = (
+    "Shares are weighted by total tokens (no pricing table loaded). Claude "
+    "Code's /usage weights by rate-limit consumption, so expect directional, "
+    "not exact, agreement."
+)
+
 GUIDANCE = {
     "subagent_sessions": (
         "Each subagent runs its own requests. Be deliberate about spawning "
@@ -205,7 +211,7 @@ def usage_characteristics_analytics(
             "costs_partial": any(not e.priced for e in events),
             "sessions_analyzed": len({e.session_db_id for e in events}),
             "share_basis": "cost" if use_cost else "tokens",
-            "basis_note": BASIS_NOTE,
+            "basis_note": BASIS_NOTE if use_cost else TOKEN_BASIS_NOTE,
         },
         "characteristics": characteristics,
     }
