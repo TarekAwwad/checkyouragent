@@ -53,4 +53,8 @@ jobs:
         run: npm test
 
       - name: Audit dependencies
-        run: npm audit --audit-level=moderate
+        # Audit production deps strictly — those are what ship to users. Build/test
+        # tooling (vite, esbuild, jsdom) never reaches the bundle. The one residual
+        # dev-only advisory (GHSA-gv7w-rqvm-qjhr in esbuild) has no fix compatible
+        # with vite 6 and is a Deno-install-path RCE not reachable via npm.
+        run: npm audit --omit=dev --audit-level=moderate
