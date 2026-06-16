@@ -588,6 +588,10 @@ class UsagePhase(BaseModel):
     label: str
     cost_usd: float = 0
     tokens: int = 0
+    main_cost_usd: float = 0
+    subagent_cost_usd: float = 0
+    main_tokens: int = 0
+    subagent_tokens: int = 0
     share: float = 0
     tool_count: int = 0
     session_count: int = 0

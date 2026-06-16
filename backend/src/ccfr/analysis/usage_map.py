@@ -134,7 +134,8 @@ def aggregate_phases(events: list[EventRec]) -> dict[str, dict[str, Any]]:
     """
     acc: dict[str, dict[str, Any]] = {
         key: {"cost_usd": 0.0, "tokens": 0.0, "tool_count": 0, "sessions": set(),
-              "tools": {}}
+              "tools": {}, "main_cost": 0.0, "subagent_cost": 0.0,
+              "main_tokens": 0.0, "subagent_tokens": 0.0}
         for key in PHASE_KEYS
     }
     for event in events:
@@ -143,6 +144,12 @@ def aggregate_phases(events: list[EventRec]) -> dict[str, dict[str, Any]]:
             bucket["cost_usd"] += event.cost * weight
             bucket["tokens"] += event.tokens * weight
             bucket["sessions"].add(event.session_db_id)
+            if event.agent_id is None:
+                bucket["main_cost"] += event.cost * weight
+                bucket["main_tokens"] += event.tokens * weight
+            else:
+                bucket["subagent_cost"] += event.cost * weight
+                bucket["subagent_tokens"] += event.tokens * weight
         share = 1.0 / len(event.tool_calls) if event.tool_calls else 0.0
         for call in event.tool_calls:
             bucket = acc[classify_tool_call(call.tool_name, call.command)]
@@ -700,6 +707,10 @@ def usage_map_analytics(
             "label": spec["label"],
             "cost_usd": round(bucket["cost_usd"], 6),
             "tokens": int(round(bucket["tokens"])),
+            "main_cost_usd": round(bucket["main_cost"], 6),
+            "subagent_cost_usd": round(bucket["subagent_cost"], 6),
+            "main_tokens": int(round(bucket["main_tokens"])),
+            "subagent_tokens": int(round(bucket["subagent_tokens"])),
             "share": round(numerator / denominator, 6) if denominator > 0 else 0.0,
             "tool_count": bucket["tool_count"],
             "session_count": len(bucket["sessions"]),

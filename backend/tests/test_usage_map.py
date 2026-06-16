@@ -1014,6 +1014,18 @@ def test_load_events_captures_agent_id_and_input_context() -> None:
     assert third.input_context_tokens == 135  # 100 + 10 + 5 + 20, output excluded
 
 
+def test_aggregate_phases_splits_cost_by_origin() -> None:
+    main = _event(1, [ToolCallRec(tool_name="Read")], cost=3.0)          # agent_id None
+    sub = _event(2, [ToolCallRec(tool_name="Read")], cost=1.0)
+    sub = EventRec(**{**sub.__dict__, "agent_id": "a1"})
+    acc = aggregate_phases([main, sub])
+    bucket = acc["explore"]
+    assert bucket["main_cost"] == pytest.approx(3.0)
+    assert bucket["subagent_cost"] == pytest.approx(1.0)
+    # Conservation: origin split sums to the phase cost.
+    assert bucket["main_cost"] + bucket["subagent_cost"] == pytest.approx(bucket["cost_usd"])
+
+
 def test_tool_evidence_requires_a_valid_phase_qualifier(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(usage_map, "pricing_path", lambda: _pricing_csv(tmp_path))
     conn = _conn()
