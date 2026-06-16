@@ -14,15 +14,16 @@ from typing import Any
 
 from ccfr.analysis.pricing import (
     ModelPrice,
+    PriceTimeline,
     TokenBreakdown,
     cost_usd,
-    load_price_table,
+    load_price_timeline,
     match_price,
     normalize_model_key,
 )
 from ccfr.analysis.metrics import compute_loop_stats
 from ccfr.naming import project_display_name
-from ccfr.config import pricing_path
+from ccfr.config import pricing_dir, pricing_path
 
 # Payload category -> messages column. input_tokens == base+5m+1h+read, so we sum the four
 # breakdown columns plus output and never touch input_tokens (avoids double counting).
@@ -152,8 +153,8 @@ def _turn_cost_stat(values: list[float]) -> dict[str, Any]:
     }
 
 
-def session_turn_cost_breakdown(conn: sqlite3.Connection, session_id: int) -> dict[str, Any]:
-    table = load_price_table(pricing_path())
+def session_turn_cost_breakdown(conn: sqlite3.Connection, session_id: int, *, historical: bool = True) -> dict[str, Any]:
+    timeline = load_price_timeline(pricing_path(), pricing_dir())
     turn_start_rows = conn.execute(
         """
         SELECT
@@ -232,6 +233,7 @@ def session_turn_cost_breakdown(conn: sqlite3.Connection, session_id: int) -> di
         f"""
         SELECT
             e.id AS event_id,
+            e.timestamp AS event_ts,
             e.is_sidechain,
             m.role,
             m.model,
@@ -263,7 +265,7 @@ def session_turn_cost_breakdown(conn: sqlite3.Connection, session_id: int) -> di
         model = row["model"]
         if not model:
             continue
-        price = match_price(table, str(model))
+        price = timeline.price_for(str(model), row["event_ts"], historical=historical)
         if price is None:
             continue
 
@@ -302,14 +304,15 @@ def session_turn_cost_breakdown(conn: sqlite3.Connection, session_id: int) -> di
 
 def _turn_cost_stats(
     conn: sqlite3.Connection,
-    table: dict[str, ModelPrice],
+    timeline: PriceTimeline,
     *,
     where: str,
     params: list[Any],
     project_id: int | None,
     matches: Any,
+    historical: bool = True,
 ) -> dict[int, dict[str, Any]]:
-    if not table:
+    if not timeline.has_prices:
         return {}
     project_clause = "AND s.project_id = ?" if project_id is not None else ""
     project_params: list[Any] = [project_id] if project_id is not None else []
@@ -334,7 +337,7 @@ def _turn_cost_stats(
     costs_by_turn: dict[int, dict[int, float]] = {}
     for row in conn.execute(
         f"""
-        SELECT e.session_id AS session_id, e.id AS event_id, m.model AS model, { _token_value_select() }
+        SELECT e.session_id AS session_id, e.id AS event_id, e.timestamp AS event_ts, m.model AS model, { _token_value_select() }
         FROM events e
         JOIN messages m ON m.event_id = e.id
         JOIN sessions s ON s.id = e.session_id
@@ -345,7 +348,7 @@ def _turn_cost_stats(
     ).fetchall():
         if not matches(row["model"]):
             continue
-        price = match_price(table, row["model"])
+        price = timeline.price_for(row["model"], row["event_ts"], historical=historical)
         if price is None:
             continue
         turn_starts = turn_starts_by_session.get(row["session_id"], [])
@@ -370,8 +373,11 @@ def cost_analytics(
     date_to: str | None = None,
     project_id: int | None = None,
     model: str | None = None,
+    historical: bool = True,
 ) -> dict[str, Any]:
-    table = load_price_table(pricing_path())
+    timeline = load_price_timeline(pricing_path(), pricing_dir())
+    period_expr = timeline.sql_period_expr("e.timestamp", historical=historical)
+    price_available = timeline.has_prices
     model_key = normalize_model_key(model) if model else None
     where, params = _where(date_from, date_to, project_id)
     cols = _token_sum_select()
@@ -406,13 +412,13 @@ def cost_analytics(
     pm_rows = conn.execute(
         f"""
         SELECT s.project_id AS project_id, p.export_name AS project_name, p.inferred_cwd AS project_cwd,
-               m.model AS model, {cols}
+               m.model AS model, ({period_expr}) AS price_period, {cols}
         FROM messages m
         JOIN events e ON e.id = m.event_id
         JOIN sessions s ON s.id = e.session_id
         JOIN projects p ON p.id = s.project_id
         {where}
-        GROUP BY s.project_id, m.model
+        GROUP BY s.project_id, m.model, price_period
         """,
         params,
     ).fetchall()
@@ -421,7 +427,7 @@ def cost_analytics(
             continue
         breakdown = _breakdown(row)
         used = any(getattr(breakdown, c) for c in _CATEGORIES)
-        price = match_price(table, row["model"])
+        price = match_price(timeline.table_for_period(row["price_period"], historical=historical), row["model"])
         usd = cost_usd(price, breakdown) if price else 0.0
         label = row["model"] or "unknown"
         if price is None and used and row["model"]:
@@ -490,18 +496,18 @@ def cost_analytics(
     over_time: dict[str, dict[str, Any]] = {}
     for row in conn.execute(
         f"""
-        SELECT {bucket_expr} AS bucket, m.model AS model, {cols}
+        SELECT {bucket_expr} AS bucket, m.model AS model, ({period_expr}) AS price_period, {cols}
         FROM messages m
         JOIN events e ON e.id = m.event_id
         JOIN sessions s ON s.id = e.session_id
         {where}
-        GROUP BY bucket, m.model
+        GROUP BY bucket, m.model, price_period
         """,
         params,
     ).fetchall():
         if row["bucket"] is None or not matches(row["model"]):
             continue
-        price = match_price(table, row["model"])
+        price = match_price(timeline.table_for_period(row["price_period"], historical=historical), row["model"])
         if price is None:
             continue
         usd = cost_usd(price, _breakdown(row))
@@ -516,6 +522,7 @@ def cost_analytics(
         f"""
         SELECT s.id AS id, s.session_id AS session_id, s.title AS title,
                p.export_name AS project_name, p.inferred_cwd AS project_cwd, m.model AS model,
+               ({period_expr}) AS price_period,
                COALESCE(ss.turn_count, 0) AS turn_count,
                COALESCE(ss.tool_call_count, 0) AS tool_call_count,
                COALESCE(ss.subagent_count, 0) AS subagent_count,
@@ -536,13 +543,13 @@ def cost_analytics(
         JOIN projects p ON p.id = s.project_id
         LEFT JOIN session_stats ss ON ss.session_id = s.id
         {where}
-        GROUP BY s.id, m.model
+        GROUP BY s.id, m.model, price_period
         """,
         params,
     ).fetchall():
         if not matches(row["model"]):
             continue
-        price = match_price(table, row["model"])
+        price = match_price(timeline.table_for_period(row["price_period"], historical=historical), row["model"])
         usd = cost_usd(price, _breakdown(row)) if price else 0.0
         s = sessions.setdefault(
             row["id"],
@@ -565,19 +572,20 @@ def cost_analytics(
     for row in conn.execute(
         f"""
         SELECT {bucket_expr} AS bucket, s.id AS id, s.session_id AS session_id, s.title AS title,
-               p.export_name AS project_name, p.inferred_cwd AS project_cwd, m.model AS model, {cols}
+               p.export_name AS project_name, p.inferred_cwd AS project_cwd, m.model AS model,
+               ({period_expr}) AS price_period, {cols}
         FROM messages m
         JOIN events e ON e.id = m.event_id
         JOIN sessions s ON s.id = e.session_id
         JOIN projects p ON p.id = s.project_id
         {where}
-        GROUP BY bucket, s.id, m.model
+        GROUP BY bucket, s.id, m.model, price_period
         """,
         params,
     ).fetchall():
         if row["bucket"] is None or not matches(row["model"]):
             continue
-        price = match_price(table, row["model"])
+        price = match_price(timeline.table_for_period(row["price_period"], historical=historical), row["model"])
         usd = cost_usd(price, _breakdown(row)) if price else 0.0
         if usd == 0:
             continue
@@ -656,11 +664,12 @@ def cost_analytics(
     )
     turn_costs = _turn_cost_stats(
         conn,
-        table,
+        timeline,
         where=where,
         params=params,
         project_id=project_id,
         matches=matches,
+        historical=historical,
     )
     for session in sessions_out:
         session["turn_cost_stats"] = turn_costs.get(session["id"], _turn_cost_stat([]))
@@ -723,7 +732,7 @@ def cost_analytics(
 
     return {
         "meta": {
-            "available": bool(table),
+            "available": price_available,
             "unpriced_models": sorted(unpriced),
             "total_usd": round(total_usd, 6),
             "total_tokens": total_tokens,
