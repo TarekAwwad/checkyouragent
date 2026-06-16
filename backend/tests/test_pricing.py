@@ -5,7 +5,6 @@ from pathlib import Path
 
 from ccfr.analysis.pricing import (
     ModelPrice,
-    PriceTimeline,
     TokenBreakdown,
     cost_usd,
     load_price_table,
