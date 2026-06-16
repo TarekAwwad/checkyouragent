@@ -1,0 +1,149 @@
+"""Usage Characteristics: overlapping (non-partition) properties of usage.
+
+Mirrors /usage's "what's contributing to your limits usage?" panel: each entry
+is an independent characteristic ("N% of usage came from X"), not a breakdown,
+so shares may overlap and need not sum to 1. Cost-weighted (token-weighted when
+no pricing); thresholds are pinned to /usage for visual comparability.
+
+Built on usage_map.load_events so the denominator equals the usage-map total.
+Computation is on-demand from the rebuildable SQLite cache, like discovery.py.
+Design doc: docs/superpowers/specs/2026-06-16-usage-characteristics-design.md
+"""
+
+from __future__ import annotations
+
+import sqlite3
+from collections import defaultdict
+from datetime import datetime
+from typing import Any
+
+from ccfr.analysis.pricing import load_price_table
+from ccfr.analysis.usage_map import EventRec, load_events
+from ccfr.config import pricing_path
+
+# Thresholds pinned to /usage (tunable). Subagent-heavy ratio is our own choice
+# (/usage's exact definition is unknown) and documented as approximate.
+SUBAGENT_HEAVY_SESSION_RATIO = 0.5
+CONTEXT_BAND_TOKENS = 150_000
+LONG_SESSION_HOURS = 8
+AGENT_TYPE_MIN_SHARE = 0.05
+
+BASIS_NOTE = (
+    "Shares are weighted by cost (USD). Claude Code's /usage weights by "
+    "rate-limit consumption, so expect directional, not exact, agreement."
+)
+
+GUIDANCE = {
+    "subagent_sessions": (
+        "Each subagent runs its own requests. Be deliberate about spawning "
+        "them — and consider a cheaper model for simple subagents."
+    ),
+    "context_gt_150k": (
+        "Longer sessions are more expensive even when cached. /compact "
+        "mid-task, /clear when switching tasks."
+    ),
+    "duration_gte_8h": (
+        "Often background or loop sessions. Continuous usage adds up — make "
+        "sure it is intentional."
+    ),
+    "agent_type": (
+        "If this runs frequently, consider a cheaper model or tighter prompts "
+        "for this subagent type."
+    ),
+}
+
+
+def _span_hours(first_ts: str | None, last_ts: str | None) -> float:
+    """Wall-clock hours between two ISO timestamps; 0.0 for missing/unparseable."""
+    if not first_ts or not last_ts:
+        return 0.0
+    try:
+        a = datetime.fromisoformat(first_ts.replace("Z", "+00:00"))
+        b = datetime.fromisoformat(last_ts.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return 0.0
+    return max(0.0, (b - a).total_seconds() / 3600)
+
+
+def _char(key: str, headline: str, kind: str,
+          weight_num: float, cost_sum: float, total: float) -> dict[str, Any]:
+    guidance = GUIDANCE.get("agent_type" if key.startswith("agent_type:") else key, "")
+    return {
+        "key": key,
+        "headline": headline,
+        "kind": kind,
+        "share": round(weight_num / total, 6) if total > 0 else 0.0,
+        "cost_usd": round(cost_sum, 6),
+        "guidance": guidance,
+    }
+
+
+def compute_characteristics(
+    events: list[EventRec],
+    *,
+    session_spans: dict[int, tuple[str | None, str | None]],
+    agent_types: dict[tuple[int, str], str],
+    use_cost: bool,
+) -> list[dict[str, Any]]:
+    """Overlapping characteristics over already-loaded events. Pure: no DB.
+
+    `weight` is the share basis (cost when use_cost else raw tokens); `cost_usd`
+    is always the USD sum. Returned list is sorted by share descending.
+    """
+    def weight(e: EventRec) -> float:
+        return e.cost if use_cost else float(e.tokens)
+
+    total = sum(weight(e) for e in events)
+
+    sess_cost: dict[int, float] = defaultdict(float)
+    sess_weight: dict[int, float] = defaultdict(float)
+    sess_sub_weight: dict[int, float] = defaultdict(float)
+    ctx_weight = 0.0
+    ctx_cost = 0.0
+    type_weight: dict[str, float] = defaultdict(float)
+    type_cost: dict[str, float] = defaultdict(float)
+
+    for e in events:
+        w = weight(e)
+        sess_cost[e.session_db_id] += e.cost
+        sess_weight[e.session_db_id] += w
+        if e.agent_id is not None:
+            sess_sub_weight[e.session_db_id] += w
+            atype = agent_types.get((e.session_db_id, e.agent_id), "unspecified")
+            type_weight[atype] += w
+            type_cost[atype] += e.cost
+        if e.input_context_tokens > CONTEXT_BAND_TOKENS:
+            ctx_weight += w
+            ctx_cost += e.cost
+
+    heavy = [
+        sid for sid, wt in sess_weight.items()
+        if wt > 0 and sess_sub_weight.get(sid, 0.0) / wt >= SUBAGENT_HEAVY_SESSION_RATIO
+    ]
+    heavy_weight = sum(sess_weight[sid] for sid in heavy)
+    heavy_cost = sum(sess_cost[sid] for sid in heavy)
+
+    long_sids = [
+        sid for sid in sess_weight
+        if _span_hours(*session_spans.get(sid, (None, None))) >= LONG_SESSION_HOURS
+    ]
+    long_weight = sum(sess_weight[sid] for sid in long_sids)
+    long_cost = sum(sess_cost[sid] for sid in long_sids)
+
+    chars: list[dict[str, Any]] = [
+        _char("subagent_sessions", "subagent-heavy sessions", "session",
+              heavy_weight, heavy_cost, total),
+        _char("context_gt_150k", f">{CONTEXT_BAND_TOKENS // 1000}k context", "call",
+              ctx_weight, ctx_cost, total),
+        _char("duration_gte_8h", f"sessions active for {LONG_SESSION_HOURS}+ hours",
+              "session", long_weight, long_cost, total),
+    ]
+    for atype, wt in type_weight.items():
+        share = wt / total if total > 0 else 0.0
+        if share >= AGENT_TYPE_MIN_SHARE:
+            chars.append(_char(
+                f"agent_type:{atype}", f'subagents under "{atype}"', "subagent",
+                wt, type_cost[atype], total))
+
+    chars.sort(key=lambda c: c["share"], reverse=True)
+    return chars
