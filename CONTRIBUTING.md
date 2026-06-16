@@ -24,7 +24,6 @@ Frontend:
 ```powershell
 cd frontend
 npm install
-$env:VITE_API_BASE = "http://localhost:8000/api"
 npm run dev
 npm run test
 ```
