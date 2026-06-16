@@ -1,11 +1,12 @@
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { FileJson, ImageDown } from "lucide-react";
+import { FileJson, ImageDown, Gauge } from "lucide-react";
 import { getUsageMap, type UsageMapFilters } from "../../api/client";
 import type { Project } from "../../api/types";
 import EvidencePanel from "./EvidencePanel";
 import { exportJson, exportPng } from "./exportMap";
-import { phaseNode, type LeafMode, type MapNode } from "./forceModel";
+import { phaseNode, deriveOriginPhases, type LeafMode, type MapNode, type OriginFilter } from "./forceModel";
+import UsageCharacteristicsDialog from "./UsageCharacteristicsDialog";
 import MindmapCanvas from "./MindmapCanvas";
 
 interface Props {
@@ -22,6 +23,8 @@ export default function UsageMindmap({ projects }: Props) {
   const [selectedNode, setSelectedNode] = React.useState<MapNode | null>(null);
   const [compare, setCompare] = React.useState(false);
   const [leafMode, setLeafMode] = React.useState<LeafMode>("habits");
+  const [origin, setOrigin] = React.useState<OriginFilter>("all");
+  const [usageOpen, setUsageOpen] = React.useState(false);
   const boardRef = React.useRef<HTMLDivElement>(null);
 
   // A selection from the previous filter window may not exist in the new data;
@@ -97,9 +100,14 @@ export default function UsageMindmap({ projects }: Props) {
     );
   }
 
+  const basis = meta.share_basis;
+  const { phases: displayedPhases, total: displayedTotal } =
+    deriveOriginPhases(phases, origin, basis);
+  const splitEmpty = origin !== "all" && displayedTotal === 0;
+
   // Default selection: the costliest phase, so the evidence card is never empty.
   const fallbackNode = ((): MapNode | null => {
-    const top = [...phases].sort((a, b) => b.share - a.share)[0];
+    const top = [...displayedPhases].sort((a, b) => b.share - a.share)[0];
     if (!top || top.share === 0) return null;
     return phaseNode(top);
   })();
@@ -142,6 +150,16 @@ export default function UsageMindmap({ projects }: Props) {
                 </button>
               ))}
             </div>
+            <div className="segmented-control" role="group" aria-label="Origin">
+              {(["all", "main", "subagent"] as const).map((o) => (
+                <button key={o} type="button"
+                        aria-pressed={origin === o}
+                        className={origin === o ? "active" : ""}
+                        onClick={() => { setOrigin(o); setSelectedNode(null); }}>
+                  {o === "all" ? "All" : o === "main" ? "Main" : "Subagents"}
+                </button>
+              ))}
+            </div>
             <button type="button" className="ghost-action"
                     onClick={() => exportJson(query.data!)}>
               <FileJson size={14} />
@@ -156,6 +174,11 @@ export default function UsageMindmap({ projects }: Props) {
               <ImageDown size={14} />
               <span>Export PNG</span>
             </button>
+            <button type="button" className="ghost-action"
+                    onClick={() => setUsageOpen(true)}>
+              <Gauge size={14} />
+              <span>Compare to /usage</span>
+            </button>
           </div>
         </div>
 
@@ -167,25 +190,38 @@ export default function UsageMindmap({ projects }: Props) {
         )}
 
         <div className="mindmap-stage" ref={boardRef}>
-          <MindmapCanvas
-            phases={phases}
-            totalUsd={meta.total_usd}
-            costAvailable={meta.cost_available}
-            selectedNodeId={activeNode?.id ?? null}
-            onSelectNode={setSelectedNode}
-            previousShares={previousShares}
-            leafMode={leafMode}
-          />
-          {activeNode && (
-            <EvidencePanel
-              node={activeNode}
-              phases={phases}
-              filters={filters}
-              costAvailable={meta.cost_available}
-              previousShares={previousShares}
-            />
+          {splitEmpty ? (
+            <div className="empty-state">
+              No {origin === "main" ? "main-thread" : "subagent"} spend in this window.
+            </div>
+          ) : (
+            <>
+              <MindmapCanvas
+                phases={displayedPhases}
+                totalUsd={displayedTotal}
+                costAvailable={meta.cost_available}
+                selectedNodeId={activeNode?.id ?? null}
+                onSelectNode={setSelectedNode}
+                previousShares={origin === "all" ? previousShares : undefined}
+                leafMode={leafMode}
+              />
+              {activeNode && (
+                <EvidencePanel
+                  node={activeNode}
+                  phases={phases}
+                  filters={filters}
+                  costAvailable={meta.cost_available}
+                  previousShares={origin === "all" ? previousShares : undefined}
+                />
+              )}
+            </>
           )}
         </div>
+        <UsageCharacteristicsDialog
+          open={usageOpen}
+          onClose={() => setUsageOpen(false)}
+          projectId={projectId}
+        />
       </div>
     </main>
   );
