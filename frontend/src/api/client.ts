@@ -21,6 +21,7 @@ import type {
   TraceResponse,
   UsageMapResponse,
   UsageMapEvidenceResponse,
+  UsageCharacteristicsResponse,
 } from "./types";
 
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "http://localhost:8000/api").replace(/\/$/, "");
@@ -186,4 +187,11 @@ export function getUsageMapEvidence(node: string, filters: UsageMapFilters = {})
   const params = usageMapParams(filters);
   params.set("node", node);
   return request<UsageMapEvidenceResponse>(`/analytics/usage-map/evidence?${params}`);
+}
+
+export function getUsageCharacteristics(filters: UsageMapFilters = {}) {
+  const query = usageMapParams(filters).toString();
+  return request<UsageCharacteristicsResponse>(
+    `/analytics/usage-characteristics${query ? `?${query}` : ""}`,
+  );
 }
