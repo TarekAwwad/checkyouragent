@@ -257,6 +257,49 @@ html:has(.glossary-dialog[open]) { overflow: hidden; }
   overflow-x: auto;
 }
 
+/* Usage Characteristics modal — /usage-style overlapping-characteristics list.
+   Frame styles are inherited from .glossary-dialog/.glossary-panel. */
+.usage-characteristics-dialog .uc-subtitle {
+  margin: 4px 0 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.usage-characteristics-dialog .uc-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.usage-characteristics-dialog .uc-row {
+  border-left: 2px solid var(--border-2);
+  padding-left: 10px;
+}
+.usage-characteristics-dialog .uc-headline {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text);
+}
+.usage-characteristics-dialog .uc-headline strong {
+  font-variant-numeric: tabular-nums;
+}
+.usage-characteristics-dialog .uc-guidance {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.usage-characteristics-dialog .uc-note {
+  color: var(--muted);
+  font-size: 13px;
+}
+.usage-characteristics-dialog .uc-caveat {
+  margin-top: 16px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  color: var(--faint);
+  font-size: 11px;
+  font-style: italic;
+}
+
 .page { flex: 1; width: 100%; max-width: var(--page-max-width); margin: 0 auto; padding: 22px var(--page-gutter); }
 .import-page { overflow: auto; width: 100%; }
 
