@@ -37,6 +37,20 @@ That makes it a base for deeper work on coding-agent usage patterns, optimizatio
 | --- | --- | --- |
 | ![Import page showing mounted source, cache totals, and project import controls](docs/screenshots/import.png) | ![Session workspace showing event density, subagents, tool usage, trace lanes, loops, and token chart](docs/screenshots/session-workspace.png) | ![Cost outlier view showing turn distribution and the selected expensive turn drivers](docs/screenshots/cost-analytics-2.png) |
 
+## Historical (time-aware) pricing
+
+Model prices change over time, so the cost views can value each session either at the rate in effect on its date or at today's rate. A **Historical pricing** toggle in the sidebar flips between the two:
+
+- **On** (default) — each session's spend is priced at the rates effective on its own date.
+- **Off** — every session is valued at the current rate.
+
+Prices come from CSVs of US dollars per million tokens:
+
+- `pricing.csv` (repo root) is the **undated baseline**, effective from the beginning of time.
+- Each `pricing/pricing-YYYY-MM-DD.csv` is a full price snapshot that takes effect on the date in its filename. A session is priced by the baseline overlaid with every snapshot whose date is on or before the session's date (later snapshots win per model).
+
+To record a price change, drop a new `pricing/pricing-YYYY-MM-DD.csv` with the same columns as `pricing.csv` — never edit old snapshots. Both `pricing.csv` and the `pricing/` directory are mounted read-only into the Docker backend and reloaded per request, so price edits take effect on the next request without a rebuild. With no `pricing/` directory the app prices everything at the baseline.
+
 ## Project Docs
 
 - [Contributing](CONTRIBUTING.md)

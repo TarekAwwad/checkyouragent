@@ -320,6 +320,92 @@ def test_cost_analytics_uses_leaf_folder_name_when_cwd_known(seeded: sqlite3.Con
     assert "agent-dashboard" in {s["project_name"] for s in payload["sessions"]}
 
 
+def _conn_two_dated_opus(tmp_path):
+    """One project, two assistant messages (1M base-input each) on claude-opus-4-1,
+    dated Jan 2026 and Aug 2026 — straddling a 2026-07-01 price change."""
+    from ccfr.storage import connect, init_db
+    conn = connect(tmp_path / "ca.sqlite3")
+    init_db(conn)
+    conn.execute("INSERT INTO imports(source_path, imported_at, status) VALUES('x','x','done')")
+    conn.execute("INSERT INTO projects(import_id, export_name) VALUES(1,'proj')")
+    for sid, ts in enumerate(["2026-01-15T10:00:00Z", "2026-08-15T10:00:00Z"], start=1):
+        conn.execute("INSERT INTO sessions(project_id, session_id, first_ts, last_ts) VALUES(1,?,?,?)",
+                     (f"s{sid}", ts, ts))
+        conn.execute("INSERT INTO events(session_id, source_path, line_no, type, timestamp, raw_json) "
+                     "VALUES(?,?,?,?,?,'{}')", (sid, "f", sid, "assistant", ts))
+        conn.execute("INSERT INTO messages(event_id, role, model, base_input_tokens, output_tokens) "
+                     "VALUES(?, 'assistant', 'claude-opus-4-1', 1000000, 0)", (sid,))
+    conn.commit()
+    return conn
+
+
+def test_cost_analytics_prices_by_period(monkeypatch, tmp_path):
+    from ccfr.api import analytics
+
+    conn = _conn_two_dated_opus(tmp_path)
+    baseline = tmp_path / "pricing.csv"
+    baseline.write_text(
+        "model,base-input-tokens,5m-cache-writes,1h-cache-writes,cache-hits-&-refreshes,output-tokens\n"
+        "Claude-Opus-4.1,15,0,0,0,75\n",
+        encoding="utf-8",
+    )
+    sheets = tmp_path / "pricing"
+    sheets.mkdir()
+    (sheets / "pricing-2026-07-01.csv").write_text(
+        "model,base-input-tokens,5m-cache-writes,1h-cache-writes,cache-hits-&-refreshes,output-tokens\n"
+        "Claude-Opus-4.1,5,0,0,0,25\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(analytics, "pricing_path", lambda: baseline)
+    monkeypatch.setattr(analytics, "pricing_dir", lambda: sheets)
+
+    on = analytics.cost_analytics(conn, historical=True)
+    off = analytics.cost_analytics(conn, historical=False)
+    # ON: $15 (Jan) + $5 (Aug) = $20. OFF: both at current $5 = $10.
+    assert round(on["meta"]["total_usd"], 2) == 20.0
+    assert round(off["meta"]["total_usd"], 2) == 10.0
+
+
+def test_cost_analytics_tolerates_null_event_timestamp(monkeypatch, tmp_path):
+    import math
+
+    from ccfr.api import analytics
+
+    conn = _conn_two_dated_opus(tmp_path)
+    # A third session/event whose events.timestamp is NULL: with historical pricing ON and a
+    # snapshot present, sql_period_expr yields a NULL price_period for this row. The request
+    # must not crash on int(None) — the unknown date falls back to the oldest (baseline) table.
+    conn.execute("INSERT INTO sessions(project_id, session_id, first_ts, last_ts) "
+                 "VALUES(1, 's3', NULL, NULL)")
+    conn.execute("INSERT INTO events(session_id, source_path, line_no, type, timestamp, raw_json) "
+                 "VALUES(3, 'f', 3, 'assistant', NULL, '{}')")
+    conn.execute("INSERT INTO messages(event_id, role, model, base_input_tokens, output_tokens) "
+                 "VALUES(3, 'assistant', 'claude-opus-4-1', 1000000, 0)")
+    conn.commit()
+
+    baseline = tmp_path / "pricing.csv"
+    baseline.write_text(
+        "model,base-input-tokens,5m-cache-writes,1h-cache-writes,cache-hits-&-refreshes,output-tokens\n"
+        "Claude-Opus-4.1,15,0,0,0,75\n",
+        encoding="utf-8",
+    )
+    sheets = tmp_path / "pricing"
+    sheets.mkdir()
+    (sheets / "pricing-2026-07-01.csv").write_text(
+        "model,base-input-tokens,5m-cache-writes,1h-cache-writes,cache-hits-&-refreshes,output-tokens\n"
+        "Claude-Opus-4.1,5,0,0,0,25\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(analytics, "pricing_path", lambda: baseline)
+    monkeypatch.setattr(analytics, "pricing_dir", lambda: sheets)
+
+    payload = analytics.cost_analytics(conn, historical=True)
+    total = payload["meta"]["total_usd"]
+    assert math.isfinite(total)
+    # $15 (Jan) + $5 (Aug) + $15 (NULL -> baseline fallback) = $35.
+    assert round(total, 2) == 35.0
+
+
 def test_cost_analytics_sums_multi_model_session(seeded: sqlite3.Connection) -> None:
     # Add a second model's usage to the FIRST session and re-query.
     s1_id = next(

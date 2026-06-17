@@ -16,6 +16,10 @@ class RuntimeConfigResponse(BaseModel):
     is_docker: bool = False
 
 
+class SettingsResponse(BaseModel):
+    historical_pricing: bool = True
+
+
 class CacheStatsResponse(BaseModel):
     project_count: int
     session_count: int

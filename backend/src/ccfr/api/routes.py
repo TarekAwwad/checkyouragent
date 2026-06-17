@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -7,8 +8,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlite3 import Connection
 
 from ccfr.api import analytics, repository
-from ccfr.api.deps import get_db
+from ccfr.api.deps import get_db, get_historical_pricing
 from ccfr.api.import_progress import import_progress_store
+from ccfr.settings import Settings, read_settings, write_settings
 from ccfr.analysis.context_economics import (
     context_economics_analytics,
     session_context_economics,
@@ -32,6 +34,7 @@ from ccfr.api.schemas import (
     SearchResult,
     SessionCard,
     SessionContextEconomicsResponse,
+    SettingsResponse,
     SubagentResponse,
     TimelineItem,
     TurnCostBreakdown,
@@ -83,6 +86,17 @@ def get_config() -> RuntimeConfigResponse:
         database_path=str(database_path()),
         is_docker=is_docker(),
     )
+
+
+@router.get("/settings", response_model=SettingsResponse)
+def get_settings() -> SettingsResponse:
+    return SettingsResponse(**asdict(read_settings()))
+
+
+@router.put("/settings", response_model=SettingsResponse)
+def update_settings(payload: SettingsResponse) -> SettingsResponse:
+    saved = write_settings(Settings(historical_pricing=payload.historical_pricing))
+    return SettingsResponse(**asdict(saved))
 
 
 @router.post("/imports", response_model=ImportSummaryResponse)
@@ -146,8 +160,11 @@ def get_stats(conn: Connection = Depends(get_db)) -> CacheStatsResponse:
 
 
 @router.get("/projects", response_model=list[ProjectResponse])
-def list_projects(conn: Connection = Depends(get_db)) -> list[ProjectResponse]:
-    return [ProjectResponse(**row) for row in repository.list_projects(conn)]
+def list_projects(
+    conn: Connection = Depends(get_db),
+    historical: bool = Depends(get_historical_pricing),
+) -> list[ProjectResponse]:
+    return [ProjectResponse(**row) for row in repository.list_projects(conn, historical=historical)]
 
 
 @router.get("/sessions", response_model=list[SessionCard])
@@ -159,6 +176,7 @@ def list_sessions(
     date_from: str | None = None,
     date_to: str | None = None,
     conn: Connection = Depends(get_db),
+    historical: bool = Depends(get_historical_pricing),
 ) -> list[SessionCard]:
     rows = repository.list_sessions(
         conn,
@@ -168,6 +186,7 @@ def list_sessions(
         has_errors=has_errors,
         date_from=date_from,
         date_to=date_to,
+        historical=historical,
     )
     return [SessionCard(**row) for row in rows]
 
@@ -189,17 +208,25 @@ def get_timeline(session_id: int, conn: Connection = Depends(get_db)) -> list[Ti
 
 
 @router.get("/sessions/{session_id}/trace", response_model=TraceResponse)
-def get_trace(session_id: int, conn: Connection = Depends(get_db)) -> TraceResponse:
+def get_trace(
+    session_id: int,
+    conn: Connection = Depends(get_db),
+    historical: bool = Depends(get_historical_pricing),
+) -> TraceResponse:
     if repository.get_session(conn, session_id) is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    return TraceResponse(**repository.get_trace(conn, session_id))
+    return TraceResponse(**repository.get_trace(conn, session_id, historical=historical))
 
 
 @router.get("/sessions/{session_id}/turn-costs", response_model=TurnCostBreakdown)
-def get_turn_costs(session_id: int, conn: Connection = Depends(get_db)) -> TurnCostBreakdown:
+def get_turn_costs(
+    session_id: int,
+    conn: Connection = Depends(get_db),
+    historical: bool = Depends(get_historical_pricing),
+) -> TurnCostBreakdown:
     if repository.get_session(conn, session_id) is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    return TurnCostBreakdown(**analytics.session_turn_cost_breakdown(conn, session_id))
+    return TurnCostBreakdown(**analytics.session_turn_cost_breakdown(conn, session_id, historical=historical))
 
 
 @router.get("/sessions/{session_id}/subagents", response_model=list[SubagentResponse])
@@ -245,10 +272,12 @@ def get_cost_analytics(
     project_id: int | None = None,
     model: str | None = None,
     conn: Connection = Depends(get_db),
+    historical: bool = Depends(get_historical_pricing),
 ) -> CostAnalyticsResponse:
     return CostAnalyticsResponse(
         **analytics.cost_analytics(
-            conn, date_from=date_from, date_to=date_to, project_id=project_id, model=model
+            conn, date_from=date_from, date_to=date_to, project_id=project_id, model=model,
+            historical=historical,
         )
     )
 
@@ -258,9 +287,10 @@ def get_discovery_analytics(
     project_id: int | None = None,
     min_support: int = Query(default=5, ge=1),
     conn: Connection = Depends(get_db),
+    historical: bool = Depends(get_historical_pricing),
 ) -> DiscoveryResponse:
     return DiscoveryResponse(
-        **discovery_analytics(conn, project_id=project_id, min_support=min_support)
+        **discovery_analytics(conn, project_id=project_id, min_support=min_support, historical=historical)
     )
 
 
@@ -269,9 +299,10 @@ def get_context_economics(
     project_id: int | None = None,
     min_support: int = Query(default=3, ge=1),
     conn: Connection = Depends(get_db),
+    historical: bool = Depends(get_historical_pricing),
 ) -> ContextEconomicsResponse:
     return ContextEconomicsResponse(
-        **context_economics_analytics(conn, project_id=project_id, min_support=min_support)
+        **context_economics_analytics(conn, project_id=project_id, min_support=min_support, historical=historical)
     )
 
 
@@ -280,8 +311,9 @@ def get_context_economics(
 def get_session_context_economics(
     session_id: int,
     conn: Connection = Depends(get_db),
+    historical: bool = Depends(get_historical_pricing),
 ) -> SessionContextEconomicsResponse:
-    return SessionContextEconomicsResponse(**session_context_economics(conn, session_id))
+    return SessionContextEconomicsResponse(**session_context_economics(conn, session_id, historical=historical))
 
 
 @router.get("/analytics/usage-map", response_model=UsageMapResponse)
@@ -290,10 +322,11 @@ def get_usage_map(
     date_from: str | None = None,
     date_to: str | None = None,
     conn: Connection = Depends(get_db),
+    historical: bool = Depends(get_historical_pricing),
 ) -> UsageMapResponse:
     return UsageMapResponse(
         **usage_map_analytics(conn, project_id=project_id,
-                              date_from=date_from, date_to=date_to)
+                              date_from=date_from, date_to=date_to, historical=historical)
     )
 
 
@@ -304,10 +337,11 @@ def get_usage_map_evidence(
     date_from: str | None = None,
     date_to: str | None = None,
     conn: Connection = Depends(get_db),
+    historical: bool = Depends(get_historical_pricing),
 ) -> UsageMapEvidenceResponse:
     try:
         payload = usage_map_evidence(conn, node=node, project_id=project_id,
-                                     date_from=date_from, date_to=date_to)
+                                     date_from=date_from, date_to=date_to, historical=historical)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"Unknown node: {node}") from exc
     return UsageMapEvidenceResponse(**payload)
@@ -319,8 +353,9 @@ def get_usage_characteristics(
     date_from: str | None = None,
     date_to: str | None = None,
     conn: Connection = Depends(get_db),
+    historical: bool = Depends(get_historical_pricing),
 ) -> UsageCharacteristicsResponse:
     return UsageCharacteristicsResponse(
         **usage_characteristics_analytics(conn, project_id=project_id,
-                                          date_from=date_from, date_to=date_to)
+                                          date_from=date_from, date_to=date_to, historical=historical)
     )

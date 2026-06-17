@@ -8,10 +8,10 @@ from dataclasses import dataclass
 from statistics import NormalDist
 from typing import Any
 
-from ccfr.analysis.pricing import TokenBreakdown, cost_usd, load_price_table, match_price
+from ccfr.analysis.pricing import TokenBreakdown, cost_usd, load_price_timeline, match_price
 from ccfr.analysis.risk_patterns import _command_family
 from ccfr.naming import project_display_name
-from ccfr.config import pricing_path
+from ccfr.config import pricing_dir, pricing_path
 
 
 SECTION_LIMIT = 8
@@ -59,10 +59,11 @@ def discovery_analytics(
     *,
     project_id: int | None = None,
     min_support: int = 5,
+    historical: bool = True,
 ) -> dict[str, Any]:
     """Return on-demand driver discovery results from the rebuildable SQLite cache."""
     min_support = max(1, int(min_support or 1))
-    sessions, cost_available = _session_subjects(conn, project_id=project_id)
+    sessions, cost_available = _session_subjects(conn, project_id=project_id, historical=historical)
     tool_calls = _tool_call_subjects(conn, project_id=project_id)
     rejection_slices = _rejection_slice_subjects(conn, project_id=project_id)
 
@@ -288,8 +289,8 @@ def _summary(labels: list[str], lift: float) -> str:
     return f"{' and '.join(labels)} is {lift:.1f}x more likely than baseline."
 
 
-def _session_subjects(conn: sqlite3.Connection, *, project_id: int | None) -> tuple[list[Subject], bool]:
-    costs, available = _scoped_session_costs(conn, project_id=project_id)
+def _session_subjects(conn: sqlite3.Connection, *, project_id: int | None, historical: bool = True) -> tuple[list[Subject], bool]:
+    costs, available = _scoped_session_costs(conn, project_id=project_id, historical=historical)
     rows = conn.execute(
         f"""
         SELECT
@@ -558,15 +559,18 @@ def _feature_label(symbol: str) -> str:
     return _title(symbol.replace(":", " "))
 
 
-def _scoped_session_costs(conn: sqlite3.Connection, *, project_id: int | None) -> tuple[dict[int, float], bool]:
-    table = load_price_table(pricing_path())
-    if not table:
+def _scoped_session_costs(conn: sqlite3.Connection, *, project_id: int | None,
+                          historical: bool = True) -> tuple[dict[int, float], bool]:
+    timeline = load_price_timeline(pricing_path(), pricing_dir())
+    if not timeline.has_prices:
         return {}, False
+    period_expr = timeline.sql_period_expr("e.timestamp", historical=historical)
     rows = conn.execute(
         f"""
         SELECT
             e.session_id,
             m.model,
+            ({period_expr}) AS price_period,
             COALESCE(SUM(m.base_input_tokens), 0) AS base_input,
             COALESCE(SUM(m.cache_5m_tokens), 0) AS cache_write_5m,
             COALESCE(SUM(m.cache_1h_tokens), 0) AS cache_write_1h,
@@ -576,12 +580,13 @@ def _scoped_session_costs(conn: sqlite3.Connection, *, project_id: int | None) -
         JOIN events e ON e.id = m.event_id
         JOIN sessions s ON s.id = e.session_id
         {_project_where(project_id, "s")}
-        GROUP BY e.session_id, m.model
+        GROUP BY e.session_id, m.model, price_period
         """,
         _project_params(project_id),
     ).fetchall()
     costs: dict[int, float] = {}
     for row in rows:
+        table = timeline.table_for_period(row["price_period"], historical=historical)
         price = match_price(table, row["model"])
         if price is None:
             continue

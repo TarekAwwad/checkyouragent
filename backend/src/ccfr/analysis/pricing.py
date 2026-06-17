@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import csv
 import re
+from bisect import bisect_right
 from dataclasses import dataclass
+from datetime import date, datetime
 from pathlib import Path
 
 
@@ -126,3 +128,118 @@ def cost_usd(price: ModelPrice, tokens: TokenBreakdown) -> float:
         + tokens.output * price.output
     )
     return total / 1_000_000
+
+
+def _coerce_date(when: object) -> date | None:
+    """Best-effort fold of a date / datetime / ISO string to a date; None when unknown."""
+    if when is None:
+        return None
+    if isinstance(when, datetime):
+        return when.date()
+    if isinstance(when, date):
+        return when
+    text = str(when).strip()
+    if not text:
+        return None
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).date()
+    except ValueError:
+        try:
+            return date.fromisoformat(text[:10])
+        except ValueError:
+            return None
+
+
+# A dated snapshot file: pricing-YYYY-MM-DD.csv (date parsed from the filename).
+_SHEET_RE = re.compile(r"^pricing-(\d{4})-(\d{2})-(\d{2})\.csv$")
+
+
+@dataclass(frozen=True)
+class _Snapshot:
+    date: date
+    table: dict[str, ModelPrice]
+
+
+class PriceTimeline:
+    """Baseline prices plus dated snapshots, resolvable to a table for any date.
+
+    The merged table for a date is the baseline overlaid with every snapshot whose
+    effective date is <= that date, applied oldest-first (later snapshots win per model).
+    """
+
+    def __init__(self, baseline: dict[str, ModelPrice], snapshots: list[_Snapshot]) -> None:
+        self._baseline = baseline
+        self._snapshots = sorted(snapshots, key=lambda s: s.date)
+        self._boundaries = [s.date for s in self._snapshots]
+        self._period_cache: dict[int, dict[str, ModelPrice]] = {}
+        self._current: dict[str, ModelPrice] | None = None
+
+    @property
+    def has_prices(self) -> bool:
+        return bool(self._baseline) or any(snap.table for snap in self._snapshots)
+
+    def boundaries(self) -> list[date]:
+        return list(self._boundaries)
+
+    def _merge_through(self, count: int) -> dict[str, ModelPrice]:
+        merged = dict(self._baseline)
+        for snap in self._snapshots[:count]:
+            merged.update(snap.table)
+        return merged
+
+    def current_table(self) -> dict[str, ModelPrice]:
+        if self._current is None:
+            self._current = self._merge_through(len(self._snapshots))
+        return dict(self._current)
+
+    def table_for_period(self, period: int | None, *, historical: bool = True) -> dict[str, ModelPrice]:
+        if not historical:
+            return self.current_table()
+        period = max(0, min(int(period) if period is not None else 0, len(self._snapshots)))
+        if period not in self._period_cache:
+            self._period_cache[period] = self._merge_through(period)
+        return dict(self._period_cache[period])
+
+    def period_index(self, when: object) -> int:
+        day = _coerce_date(when)
+        if day is None:
+            return 0
+        return bisect_right(self._boundaries, day)
+
+    def table_for(self, when: object, *, historical: bool = True) -> dict[str, ModelPrice]:
+        if not historical:
+            return self.current_table()
+        return self.table_for_period(self.period_index(when), historical=True)
+
+    def price_for(self, model: str | None, when: object, *, historical: bool = True) -> ModelPrice | None:
+        return match_price(self.table_for(when, historical=historical), model)
+
+    def sql_period_expr(self, column: str = "e.timestamp", *, historical: bool = True) -> str:
+        """SQL yielding the 0-based price-period index for a timestamp column.
+
+        Booleans are 0/1 in SQLite, so summing `(date(col) >= 'd')` over the sorted
+        boundaries gives exactly ``period_index``. Returns the constant ``0`` when
+        historical is off or there are no snapshots (groups collapse to one period)."""
+        if not historical or not self._boundaries:
+            return "0"
+        terms = " + ".join(f"(date({column}) >= '{d.isoformat()}')" for d in self._boundaries)
+        return f"({terms})"
+
+
+def load_price_timeline(baseline_path: Path, sheets_dir: Path) -> PriceTimeline:
+    """Load the baseline CSV plus every pricing-YYYY-MM-DD.csv in ``sheets_dir``."""
+    baseline = load_price_table(baseline_path)
+    snapshots: list[_Snapshot] = []
+    if sheets_dir.is_dir():
+        for child in sorted(sheets_dir.iterdir()):
+            if not child.is_file():
+                continue
+            match = _SHEET_RE.match(child.name)
+            if not match:
+                continue
+            try:
+                day = date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
+            except ValueError:
+                continue
+            snapshots.append(_Snapshot(date=day, table=load_price_table(child)))
+    return PriceTimeline(baseline, snapshots)

@@ -9,6 +9,8 @@ vi.mock("./api/client", () => ({
   listProjects: vi.fn(async () => []),
   listSessions: vi.fn(async () => []),
   discoverSourceProjects: vi.fn(async () => []),
+  getSettings: vi.fn(async () => ({ historical_pricing: true })),
+  updateSettings: vi.fn(async (s: { historical_pricing: boolean }) => s),
   getRuntimeConfig: vi.fn(async () => ({ import_root: "/srv/Data", database_path: "/srv/ccfr.sqlite3", is_docker: false })),
   getCacheStats: vi.fn(async () => ({
     project_count: 0, session_count: 0, event_count: 0,

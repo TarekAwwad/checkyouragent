@@ -158,11 +158,11 @@ beforeEach(() => {
   getSessionTurnCosts.mockResolvedValue(turnBreakdown);
 });
 
-function renderPage(onOpenSession = () => {}) {
+function renderPage(onOpenSession = () => {}, historical?: boolean) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <CostAnalyticsPage onOpenSession={onOpenSession} />
+      <CostAnalyticsPage onOpenSession={onOpenSession} historical={historical} />
     </QueryClientProvider>,
   );
 }
@@ -177,6 +177,27 @@ describe("CostAnalyticsPage", () => {
     expect(await screen.findByText("Session insights")).toBeInTheDocument();
     expect(await screen.findAllByText("Turn distribution")).not.toHaveLength(0);
     expect(screen.queryByRole("button", { name: "Review" })).not.toBeInTheDocument();
+  });
+
+  it("passes the pricing mode to the request and refetches when it flips", async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const view = render(
+      <QueryClientProvider client={qc}>
+        <CostAnalyticsPage onOpenSession={() => {}} historical={true} />
+      </QueryClientProvider>,
+    );
+    await screen.findAllByText("alpha");
+    expect(getCostAnalytics.mock.calls[0][1]).toBe(true);
+
+    view.rerender(
+      <QueryClientProvider client={qc}>
+        <CostAnalyticsPage onOpenSession={() => {}} historical={false} />
+      </QueryClientProvider>,
+    );
+    // Flipping the mode must drive a fresh request carrying the new mode.
+    await vi.waitFor(() =>
+      expect(getCostAnalytics.mock.calls.some((c) => c[1] === false)).toBe(true),
+    );
   });
 
   it("shows the unavailable message on $-tiles when pricing is missing", async () => {
@@ -214,6 +235,20 @@ describe("CostAnalyticsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open session page" }));
 
     expect(onOpenSession).toHaveBeenCalledWith(7);
+  });
+
+  it("describes historical pricing mode in the cost note", async () => {
+    renderPage();
+    expect(
+      await screen.findByText(/priced at the rates in effect on each session/i),
+    ).toBeInTheDocument();
+  });
+
+  it("switches the cost note to current-rate wording when historical pricing is off", async () => {
+    renderPage(() => {}, false);
+    expect(
+      await screen.findByText(/priced at current rates for every session/i),
+    ).toBeInTheDocument();
   });
 
   it("shows an error instead of loading forever when analytics fails", async () => {

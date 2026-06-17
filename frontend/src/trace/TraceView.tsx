@@ -845,8 +845,8 @@ function TraceView({ trace, selectedEventId, playheadTimestamp, onSelect }: Prop
                 className="trace-cost"
                 title={
                   trace.cost.unpriced_models.length > 0
-                    ? `Estimated from pricing.csv · excludes unpriced model(s): ${trace.cost.unpriced_models.join(", ")}`
-                    : "Estimated session cost from pricing.csv"
+                    ? `Priced at rates effective on the session date · excludes unpriced model(s): ${trace.cost.unpriced_models.join(", ")}`
+                    : "Priced at rates effective on the session date"
                 }
               >
                 {formatUsd(trace.cost.usd)}

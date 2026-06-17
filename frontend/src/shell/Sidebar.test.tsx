@@ -95,3 +95,54 @@ describe("Sidebar", () => {
     expect(props.onDismissGlossaryHint).toHaveBeenCalled();
   });
 });
+
+describe("Sidebar historical-pricing toggle", () => {
+  it("renders and toggles", () => {
+    const onToggle = vi.fn();
+    render(
+      <Sidebar
+        view="map"
+        discoverTechnique="subgroup"
+        collapsed={false}
+        sessionEnabled={false}
+        theme="dark"
+        onSelectView={vi.fn()}
+        onSelectTechnique={vi.fn()}
+        onToggleCollapsed={vi.fn()}
+        onToggleTheme={vi.fn()}
+        onOpenGlossary={vi.fn()}
+        historicalPricing={true}
+        onToggleHistoricalPricing={onToggle}
+      />,
+    );
+    const btn = screen.getByRole("button", { name: /historical pricing/i });
+    expect(btn).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(btn);
+    expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("reflects on/off state on the toggle button", () => {
+    const base = {
+      view: "map" as const,
+      discoverTechnique: "subgroup",
+      collapsed: false,
+      sessionEnabled: false,
+      theme: "dark" as const,
+      onSelectView: vi.fn(),
+      onSelectTechnique: vi.fn(),
+      onToggleCollapsed: vi.fn(),
+      onToggleTheme: vi.fn(),
+      onOpenGlossary: vi.fn(),
+      onToggleHistoricalPricing: vi.fn(),
+    };
+    const { rerender } = render(<Sidebar {...base} historicalPricing={true} />);
+    let btn = screen.getByRole("button", { name: /historical pricing/i });
+    expect(btn).toHaveClass("is-active");
+    expect(btn).toHaveAttribute("aria-pressed", "true");
+
+    rerender(<Sidebar {...base} historicalPricing={false} />);
+    btn = screen.getByRole("button", { name: /historical pricing/i });
+    expect(btn).not.toHaveClass("is-active");
+    expect(btn).toHaveAttribute("aria-pressed", "false");
+  });
+});

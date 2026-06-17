@@ -643,3 +643,7 @@ export interface UsageCharacteristicsResponse {
   meta: UsageCharacteristicsMeta;
   characteristics: UsageCharacteristic[];
 }
+
+export interface Settings {
+  historical_pricing: boolean;
+}

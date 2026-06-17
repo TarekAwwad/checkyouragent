@@ -17,9 +17,9 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Any
 
-from ccfr.analysis.pricing import load_price_table
+from ccfr.analysis.pricing import load_price_timeline
 from ccfr.analysis.usage_map import EventRec, load_events
-from ccfr.config import pricing_path
+from ccfr.config import pricing_dir, pricing_path
 
 # Thresholds pinned to /usage (tunable). Subagent-heavy ratio is our own choice
 # (/usage's exact definition is unknown) and documented as approximate.
@@ -195,14 +195,15 @@ def _agent_types(
 def usage_characteristics_analytics(
     conn: sqlite3.Connection,
     *,
+    historical: bool = True,
     project_id: int | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
 ) -> dict[str, Any]:
     """Overlapping-characteristics payload for the filtered corpus."""
-    table = load_price_table(pricing_path())
-    cost_available = bool(table)
-    events = load_events(conn, table, project_id=project_id,
+    timeline = load_price_timeline(pricing_path(), pricing_dir())
+    cost_available = timeline.has_prices
+    events = load_events(conn, timeline, historical=historical, project_id=project_id,
                          date_from=date_from, date_to=date_to)
     total_usd = sum(e.cost for e in events)
     total_tokens = sum(e.tokens for e in events)

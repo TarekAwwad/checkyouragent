@@ -7,28 +7,30 @@ from typing import Any
 from ccfr.analysis.pricing import (
     TokenBreakdown,
     cost_usd,
-    load_price_table,
+    load_price_timeline,
     match_price,
 )
 from ccfr.analysis.trace import build_trace
 from ccfr.naming import project_display_name
-from ccfr.config import pricing_path
+from ccfr.config import pricing_dir, pricing_path
 
 _COST_CATEGORIES = ("base_input", "cache_write_5m", "cache_write_1h", "cache_read", "output")
 
 
-def session_cost(conn: sqlite3.Connection, session_id: int) -> dict[str, Any]:
+def session_cost(conn: sqlite3.Connection, session_id: int, *, historical: bool = True) -> dict[str, Any]:
     """Estimate the session's dollar cost from per-model token breakdowns.
 
-    Tokens are grouped by model and priced via pricing.csv (per million). Models with
-    usage but no price row are reported in ``unpriced_models`` so the UI can flag that
-    the estimate is partial. When no price table is available, ``available`` is False.
+    Tokens are grouped by model and price-period and priced via the PriceTimeline
+    (per million). Models with usage but no price row are reported in
+    ``unpriced_models``. When no price table is available, ``available`` is False.
     """
-    table = load_price_table(pricing_path())
+    timeline = load_price_timeline(pricing_path(), pricing_dir())
+    period_expr = timeline.sql_period_expr("e.timestamp", historical=historical)
     rows = conn.execute(
-        """
+        f"""
         SELECT
             m.model AS model,
+            ({period_expr}) AS price_period,
             COALESCE(SUM(m.base_input_tokens), 0) AS base_input,
             COALESCE(SUM(m.cache_5m_tokens), 0) AS cache_write_5m,
             COALESCE(SUM(m.cache_1h_tokens), 0) AS cache_write_1h,
@@ -37,7 +39,7 @@ def session_cost(conn: sqlite3.Connection, session_id: int) -> dict[str, Any]:
         FROM messages m
         JOIN events e ON e.id = m.event_id
         WHERE e.session_id = ?
-        GROUP BY m.model
+        GROUP BY m.model, price_period
         """,
         (session_id,),
     ).fetchall()
@@ -50,6 +52,7 @@ def session_cost(conn: sqlite3.Connection, session_id: int) -> dict[str, Any]:
         used = any(getattr(breakdown, category) for category in _COST_CATEGORIES)
         for category in _COST_CATEGORIES:
             tokens_total[category] += getattr(breakdown, category)
+        table = timeline.table_for_period(row["price_period"], historical=historical)
         price = match_price(table, row["model"])
         if price is None:
             if used and row["model"]:
@@ -59,25 +62,25 @@ def session_cost(conn: sqlite3.Connection, session_id: int) -> dict[str, Any]:
 
     return {
         "usd": round(total_usd, 6),
-        "available": bool(table),
+        "available": timeline.has_prices,
         "unpriced_models": sorted(unpriced),
         "tokens": tokens_total,
     }
 
 
-def session_cost_map(conn: sqlite3.Connection) -> tuple[dict[int, float], bool]:
-    """Estimate every session's dollar cost in one pass.
+def session_cost_map(conn: sqlite3.Connection, *, historical: bool = True) -> tuple[dict[int, float], bool]:
+    """Estimate every session's dollar cost in one pass, priced by each session's date.
 
-    Returns ``({session_id: usd}, available)``. ``available`` is False when no price
-    table is loaded; sessions whose models are all unpriced are simply absent from the
-    map (treated as 0 by callers). Costs are rounded to match :func:`session_cost`.
+    Returns ``({session_id: usd}, available)``.
     """
-    table = load_price_table(pricing_path())
+    timeline = load_price_timeline(pricing_path(), pricing_dir())
+    period_expr = timeline.sql_period_expr("e.timestamp", historical=historical)
     rows = conn.execute(
-        """
+        f"""
         SELECT
             e.session_id AS session_id,
             m.model AS model,
+            ({period_expr}) AS price_period,
             COALESCE(SUM(m.base_input_tokens), 0) AS base_input,
             COALESCE(SUM(m.cache_5m_tokens), 0) AS cache_write_5m,
             COALESCE(SUM(m.cache_1h_tokens), 0) AS cache_write_1h,
@@ -85,23 +88,24 @@ def session_cost_map(conn: sqlite3.Connection) -> tuple[dict[int, float], bool]:
             COALESCE(SUM(m.output_tokens), 0) AS output
         FROM messages m
         JOIN events e ON e.id = m.event_id
-        GROUP BY e.session_id, m.model
+        GROUP BY e.session_id, m.model, price_period
         """
     ).fetchall()
 
     costs: dict[int, float] = {}
     for row in rows:
+        table = timeline.table_for_period(row["price_period"], historical=historical)
         price = match_price(table, row["model"])
         if price is None:
             continue
         breakdown = TokenBreakdown(**{category: int(row[category]) for category in _COST_CATEGORIES})
         costs[row["session_id"]] = costs.get(row["session_id"], 0.0) + cost_usd(price, breakdown)
-    return {sid: round(usd, 6) for sid, usd in costs.items()}, bool(table)
+    return {sid: round(usd, 6) for sid, usd in costs.items()}, timeline.has_prices
 
 
-def project_cost_map(conn: sqlite3.Connection) -> tuple[dict[int, float], bool]:
+def project_cost_map(conn: sqlite3.Connection, *, historical: bool = True) -> tuple[dict[int, float], bool]:
     """Aggregate session costs to ``({project_id: usd}, available)``."""
-    session_costs, available = session_cost_map(conn)
+    session_costs, available = session_cost_map(conn, historical=historical)
     project_costs: dict[int, float] = {}
     if session_costs:
         for row in conn.execute("SELECT id, project_id FROM sessions").fetchall():
@@ -173,7 +177,7 @@ def import_summary_stats(conn: sqlite3.Connection, import_id: int) -> dict[str, 
     return {key: int(conn.execute(sql, (import_id,)).fetchone()[0]) for key, sql in counts.items()}
 
 
-def list_projects(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+def list_projects(conn: sqlite3.Connection, *, historical: bool = True) -> list[dict[str, Any]]:
     rows = conn.execute(
         """
         SELECT
@@ -191,7 +195,7 @@ def list_projects(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         ORDER BY p.export_name
         """
     ).fetchall()
-    costs, available = project_cost_map(conn)
+    costs, available = project_cost_map(conn, historical=historical)
     projects = rows_to_dicts(rows)
     for project in projects:
         project["display_name"] = project_display_name(project["export_name"], project["inferred_cwd"])
@@ -211,6 +215,7 @@ def list_sessions(
     date_from: str | None = None,
     date_to: str | None = None,
     with_cost: bool = True,
+    historical: bool = True,
 ) -> list[dict[str, Any]]:
     clauses: list[str] = []
     params: list[Any] = []
@@ -311,7 +316,7 @@ def list_sessions(
         params,
     ).fetchall()
     sessions = rows_to_dicts(rows)
-    costs, available = session_cost_map(conn) if with_cost else ({}, False)
+    costs, available = session_cost_map(conn, historical=historical) if with_cost else ({}, False)
     for session in sessions:
         session["project_name"] = project_display_name(
             session["project_name"], session.pop("project_cwd", None) or session.get("cwd"),
@@ -386,7 +391,7 @@ def get_timeline(conn: sqlite3.Connection, session_id: int) -> list[dict[str, An
 
 
 
-def get_trace(conn: sqlite3.Connection, session_id: int) -> dict[str, Any]:
+def get_trace(conn: sqlite3.Connection, session_id: int, *, historical: bool = True) -> dict[str, Any]:
     rows = conn.execute(
         """
         SELECT
@@ -466,7 +471,7 @@ def get_trace(conn: sqlite3.Connection, session_id: int) -> dict[str, Any]:
             }
         )
     trace = build_trace(session_id=session_id, rows=normalized, result_ts_by_use_id=result_ts)
-    trace["cost"] = session_cost(conn, session_id)
+    trace["cost"] = session_cost(conn, session_id, historical=historical)
     return trace
 
 
