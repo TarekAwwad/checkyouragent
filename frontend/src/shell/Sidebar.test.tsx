@@ -95,3 +95,29 @@ describe("Sidebar", () => {
     expect(props.onDismissGlossaryHint).toHaveBeenCalled();
   });
 });
+
+describe("Sidebar historical-pricing toggle", () => {
+  it("renders and toggles", () => {
+    const onToggle = vi.fn();
+    render(
+      <Sidebar
+        view="map"
+        discoverTechnique="subgroup"
+        collapsed={false}
+        sessionEnabled={false}
+        theme="dark"
+        onSelectView={vi.fn()}
+        onSelectTechnique={vi.fn()}
+        onToggleCollapsed={vi.fn()}
+        onToggleTheme={vi.fn()}
+        onOpenGlossary={vi.fn()}
+        historicalPricing={true}
+        onToggleHistoricalPricing={onToggle}
+      />,
+    );
+    const btn = screen.getByRole("button", { name: /historical pricing/i });
+    expect(btn).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(btn);
+    expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+});

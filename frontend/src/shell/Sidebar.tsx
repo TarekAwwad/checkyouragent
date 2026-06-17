@@ -1,5 +1,5 @@
 // frontend/src/shell/Sidebar.tsx
-import { Activity, HelpCircle, Moon, PanelLeft, PanelLeftClose, Sun } from "lucide-react";
+import { Activity, History, HelpCircle, Moon, PanelLeft, PanelLeftClose, Sun } from "lucide-react";
 import { NAV_ITEMS, type View } from "./navConfig";
 import { TECHNIQUES } from "../discover/techniques";
 
@@ -14,6 +14,8 @@ interface Props {
   onToggleCollapsed: () => void;
   onToggleTheme: () => void;
   onOpenGlossary: () => void;
+  historicalPricing: boolean;
+  onToggleHistoricalPricing: () => void;
   // First-run hint that surfaces the glossary. When true, the help button
   // pulses and a dismissable coachmark is shown.
   glossaryHint?: boolean;
@@ -33,6 +35,8 @@ export default function Sidebar({
   onOpenGlossary,
   glossaryHint = false,
   onDismissGlossaryHint,
+  historicalPricing,
+  onToggleHistoricalPricing,
 }: Props) {
   return (
     <aside className={`app-sidebar ${collapsed ? "is-collapsed" : ""}`} aria-label="Primary">
@@ -84,6 +88,19 @@ export default function Sidebar({
       </nav>
 
       <div className="sb-foot">
+        <button
+          className={`sb-action ${historicalPricing ? "is-active" : ""}`}
+          onClick={onToggleHistoricalPricing}
+          aria-pressed={historicalPricing}
+          aria-label="Historical pricing"
+          title={
+            historicalPricing
+              ? "Historical pricing on — spend uses rates effective on each session's date"
+              : "Historical pricing off — spend uses current rates for all sessions"
+          }
+        >
+          <History size={16} />
+        </button>
         <div className="sb-glossary">
           <button
             className={`sb-action ${glossaryHint ? "is-hinted" : ""}`}

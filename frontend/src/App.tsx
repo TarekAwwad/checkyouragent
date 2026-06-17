@@ -13,6 +13,7 @@ import type { View } from "./shell/navConfig";
 import { DEFAULT_TECHNIQUE } from "./discover/techniques";
 import { useCollapsed } from "./shell/useCollapsed";
 import { useGlossaryHint } from "./shell/useGlossaryHint";
+import { useSettings } from "./shell/useSettings";
 import { useTheme } from "./theme/useTheme";
 
 function App() {
@@ -26,6 +27,7 @@ function App() {
   const [focusEventId, setFocusEventId] = React.useState<number | null>(null);
   const { theme, toggle } = useTheme();
   const { collapsed, toggle: toggleCollapsed } = useCollapsed();
+  const { historicalPricing, setHistoricalPricing } = useSettings();
   const { seen: glossaryHintSeen, dismiss: dismissGlossaryHint } = useGlossaryHint();
   const [glossaryOpen, setGlossaryOpen] = React.useState(false);
   const autoRouted = React.useRef(false);
@@ -78,6 +80,8 @@ function App() {
         onToggleCollapsed={toggleCollapsed}
         onToggleTheme={toggle}
         onOpenGlossary={openGlossary}
+        historicalPricing={historicalPricing}
+        onToggleHistoricalPricing={() => setHistoricalPricing(!historicalPricing)}
         glossaryHint={!glossaryHintSeen}
         onDismissGlossaryHint={dismissGlossaryHint}
       />
