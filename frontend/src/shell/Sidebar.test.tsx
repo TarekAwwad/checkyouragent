@@ -120,4 +120,29 @@ describe("Sidebar historical-pricing toggle", () => {
     fireEvent.click(btn);
     expect(onToggle).toHaveBeenCalledTimes(1);
   });
+
+  it("reflects on/off state on the toggle button", () => {
+    const base = {
+      view: "map" as const,
+      discoverTechnique: "subgroup",
+      collapsed: false,
+      sessionEnabled: false,
+      theme: "dark" as const,
+      onSelectView: vi.fn(),
+      onSelectTechnique: vi.fn(),
+      onToggleCollapsed: vi.fn(),
+      onToggleTheme: vi.fn(),
+      onOpenGlossary: vi.fn(),
+      onToggleHistoricalPricing: vi.fn(),
+    };
+    const { rerender } = render(<Sidebar {...base} historicalPricing={true} />);
+    let btn = screen.getByRole("button", { name: /historical pricing/i });
+    expect(btn).toHaveClass("is-active");
+    expect(btn).toHaveAttribute("aria-pressed", "true");
+
+    rerender(<Sidebar {...base} historicalPricing={false} />);
+    btn = screen.getByRole("button", { name: /historical pricing/i });
+    expect(btn).not.toHaveClass("is-active");
+    expect(btn).toHaveAttribute("aria-pressed", "false");
+  });
 });

@@ -13,6 +13,8 @@ import SessionInsights, { TurnDistributionSection } from "./SessionInsights";
 
 interface Props {
   onOpenSession: (sessionId: number) => void;
+  /** Whether historical (date-effective) pricing is active; drives the pricing-mode note. */
+  historical?: boolean;
 }
 
 function defaultFrom(): string {
@@ -21,7 +23,7 @@ function defaultFrom(): string {
   return d.toISOString();
 }
 
-export default function CostAnalyticsPage({ onOpenSession }: Props) {
+export default function CostAnalyticsPage({ onOpenSession, historical = true }: Props) {
   const [filters, setFilters] = React.useState<CostAnalyticsFilters>({ dateFrom: defaultFrom() });
   const query = useQuery({
     queryKey: ["cost-analytics", filters],
@@ -40,8 +42,9 @@ export default function CostAnalyticsPage({ onOpenSession }: Props) {
       <div className="cost-page-inner">
         <FilterBar filters={filters} meta={payload?.meta} onChange={setFilters} />
         <p className="cost-pricing-note">
-          Spend is priced at the rates in effect on each session&apos;s date. Toggle historical pricing in the sidebar to
-          value everything at current rates.
+          {historical
+            ? "Spend is priced at the rates in effect on each session's date. Toggle historical pricing in the sidebar to value everything at current rates."
+            : "Spend is priced at current rates for every session. Toggle historical pricing in the sidebar to value each session at the rates in effect on its date."}
         </p>
         {query.isError ? (
           <div className="empty-state panel-error">

@@ -111,6 +111,13 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   border: 1px solid var(--border); background: var(--bg); color: var(--muted); border-radius: 9px;
 }
 .sb-action:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--border-2)); }
+/* Toggled-on footer action (e.g. historical pricing): clearly "lit", mirroring .sb-item.active. */
+.sb-action.is-active {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg));
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border-2));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
+}
 .sb-collapse { margin-left: auto; }
 
 /* Collapsed: hide text, center icons */
@@ -907,6 +914,7 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
 /* ---- Cost analytics page ---- */
 .cost-page { flex: 1; min-height: 0; overflow-y: auto; width: 100%; }
 .cost-page-inner { max-width: var(--page-max-width); margin: 0 auto; padding: 18px var(--page-gutter); display: flex; flex-direction: column; gap: 14px; }
+.cost-pricing-note { margin: -6px 0 0; color: var(--faint); font-size: 11.5px; }
 .cost-page-header { display: flex; align-items: center; gap: 18px; }
 .cost-page-header .cost-filterbar { flex: 1; min-width: 0; }
 

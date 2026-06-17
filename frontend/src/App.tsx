@@ -98,7 +98,9 @@ function App() {
             onOpenSession={openSession}
           />
         )}
-        {view === "cost" && <CostAnalyticsPage onOpenSession={openSessionById} />}
+        {view === "cost" && (
+          <CostAnalyticsPage onOpenSession={openSessionById} historical={historicalPricing} />
+        )}
         {view === "discover" && (
           <DiscoverPage
             projects={projects.data ?? []}

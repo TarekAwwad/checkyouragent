@@ -158,11 +158,11 @@ beforeEach(() => {
   getSessionTurnCosts.mockResolvedValue(turnBreakdown);
 });
 
-function renderPage(onOpenSession = () => {}) {
+function renderPage(onOpenSession = () => {}, historical?: boolean) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <CostAnalyticsPage onOpenSession={onOpenSession} />
+      <CostAnalyticsPage onOpenSession={onOpenSession} historical={historical} />
     </QueryClientProvider>,
   );
 }
@@ -214,6 +214,20 @@ describe("CostAnalyticsPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open session page" }));
 
     expect(onOpenSession).toHaveBeenCalledWith(7);
+  });
+
+  it("describes historical pricing mode in the cost note", async () => {
+    renderPage();
+    expect(
+      await screen.findByText(/priced at the rates in effect on each session/i),
+    ).toBeInTheDocument();
+  });
+
+  it("switches the cost note to current-rate wording when historical pricing is off", async () => {
+    renderPage(() => {}, false);
+    expect(
+      await screen.findByText(/priced at current rates for every session/i),
+    ).toBeInTheDocument();
   });
 
   it("shows an error instead of loading forever when analytics fails", async () => {
