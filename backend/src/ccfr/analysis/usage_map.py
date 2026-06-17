@@ -22,13 +22,12 @@ from typing import Any, Callable
 
 from ccfr.analysis.context_economics import accrue_tax, load_threads, run_detectors
 from ccfr.analysis.pricing import (
-    ModelPrice,
+    PriceTimeline,
     TokenBreakdown,
     cost_usd,
-    load_price_table,
-    match_price,
+    load_price_timeline,
 )
-from ccfr.config import pricing_path
+from ccfr.config import pricing_dir, pricing_path
 from ccfr.naming import project_display_name
 
 logger = logging.getLogger(__name__)
@@ -178,8 +177,9 @@ def _parse_input(raw_json: str | None) -> dict[str, Any]:
 
 def load_events(
     conn: sqlite3.Connection,
-    table: dict[str, ModelPrice],
+    timeline: PriceTimeline,
     *,
+    historical: bool = True,
     project_id: int | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
@@ -276,7 +276,7 @@ def load_events(
 
     events: list[EventRec] = []
     for row in rows:
-        price = match_price(table, row["model"])
+        price = timeline.price_for(row["model"], row["ts"], historical=historical)
         # Total billed tokens (all four input categories + output) — same definition
         # as context_economics' context_tokens; used for the token-fallback shares.
         tokens = row["base"] + row["c5"] + row["c1"] + row["cr"] + row["out"]
@@ -521,8 +521,9 @@ def _in_window(ts: str | None, date_from: str | None, date_to: str | None) -> bo
 
 def detect_context_habits(
     conn: sqlite3.Connection,
-    table: dict[str, ModelPrice],
+    timeline: PriceTimeline,
     *,
+    historical: bool = True,
     project_id: int | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
@@ -535,7 +536,7 @@ def detect_context_habits(
     memoise at the call site if this ends up on a hot path."""
     threads, _skipped = load_threads(conn, project_id=project_id)
     for thread in threads:
-        accrue_tax(thread, table)
+        accrue_tax(thread, timeline, historical=historical)
     results = run_detectors(threads)
     findings: list[HabitFinding] = []
     for archetype, (recs, _thresholds) in results.items():
@@ -603,9 +604,10 @@ SESSION_DETECTORS: list[Callable[[list[EventRec]], list[HabitFinding]]] = [
 
 def run_habit_detectors(
     conn: sqlite3.Connection,
-    table: dict[str, ModelPrice],
+    timeline: PriceTimeline,
     events: list[EventRec],
     *,
+    historical: bool = True,
     project_id: int | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
@@ -625,7 +627,7 @@ def run_habit_detectors(
                                  getattr(detector, "__name__", repr(detector)))
     try:
         findings.extend(detect_context_habits(
-            conn, table, project_id=project_id,
+            conn, timeline, historical=historical, project_id=project_id,
             date_from=date_from, date_to=date_to,
         ))
     except Exception:
@@ -662,6 +664,7 @@ def aggregate_habits(findings: list[HabitFinding]) -> list[dict[str, Any]]:
 def usage_map_analytics(
     conn: sqlite3.Connection,
     *,
+    historical: bool = True,
     project_id: int | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
@@ -669,13 +672,13 @@ def usage_map_analytics(
     """The full usage-map tree for the filtered corpus. Shares are cost-based
     when pricing is available (and non-zero), token-based otherwise; either way
     the phases partition the corpus, so shares sum to 1."""
-    table = load_price_table(pricing_path())
-    cost_available = bool(table)
-    events = load_events(conn, table, project_id=project_id,
+    timeline = load_price_timeline(pricing_path(), pricing_dir())
+    cost_available = timeline.has_prices
+    events = load_events(conn, timeline, historical=historical, project_id=project_id,
                          date_from=date_from, date_to=date_to)
     phase_acc = aggregate_phases(events)
     leaves = aggregate_habits(run_habit_detectors(
-        conn, table, events, project_id=project_id,
+        conn, timeline, events, historical=historical, project_id=project_id,
         date_from=date_from, date_to=date_to,
     )) if events else []
 
@@ -741,6 +744,7 @@ def usage_map_evidence(
     conn: sqlite3.Connection,
     *,
     node: str,
+    historical: bool = True,
     project_id: int | None = None,
     date_from: str | None = None,
     date_to: str | None = None,
@@ -748,8 +752,8 @@ def usage_map_evidence(
     """Receipts for one map node: the rule that put it there, and the sessions
     that fed it (cost-descending). Raises KeyError for unknown nodes."""
     kind, _, key = node.partition(":")
-    table = load_price_table(pricing_path())
-    events = load_events(conn, table, project_id=project_id,
+    timeline = load_price_timeline(pricing_path(), pricing_dir())
+    events = load_events(conn, timeline, historical=historical, project_id=project_id,
                          date_from=date_from, date_to=date_to)
 
     sessions: dict[int, dict[str, Any]] = {}
@@ -789,7 +793,7 @@ def usage_map_evidence(
         label, rule = spec["label"], spec["rule"]
         findings = [
             f for f in run_habit_detectors(
-                conn, table, events, project_id=project_id,
+                conn, timeline, events, historical=historical, project_id=project_id,
                 date_from=date_from, date_to=date_to,
             )
             if f.habit_key == habit_key

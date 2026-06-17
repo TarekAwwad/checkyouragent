@@ -158,52 +158,73 @@ def _add(conn, event_id, session_id, *, agent_id=None, base=200_000, out=40_000,
     conn.commit()
 
 
-PRICE = {"claude-opus-4-8": um.ModelPrice(base_input=5, cache_write_5m=6.25,
-                                          cache_write_1h=10, cache_read=0.5, output=25)}
+def _pricing_csv(tmp_path):
+    """Baseline price sheet matching the opus row used across these tests."""
+    csv = tmp_path / "pricing.csv"
+    csv.write_text(
+        "model,base-input-tokens,5m-cache-writes,1h-cache-writes,"
+        "cache-hits-&-refreshes,output-tokens\n"
+        "claude-opus-4-8,5,6.25,10,0.50,25\n",
+        encoding="utf-8",
+    )
+    return csv
 
 
-def test_analytics_total_matches_usage_map(monkeypatch) -> None:
+def _use_pricing(monkeypatch, tmp_path):
+    """Point both modules' pricing_path at a real CSV and pricing_dir at an
+    empty (nonexistent) sheets dir, so load_price_timeline yields a single
+    baseline period."""
+    csv = _pricing_csv(tmp_path)
+    sheets = tmp_path / "pricing"
+    for mod in ("ccfr.analysis.usage_characteristics", "ccfr.analysis.usage_map"):
+        monkeypatch.setattr(f"{mod}.pricing_path", lambda csv=csv: csv)
+        monkeypatch.setattr(f"{mod}.pricing_dir", lambda sheets=sheets: sheets)
+
+
+def test_analytics_total_matches_usage_map(monkeypatch, tmp_path) -> None:
     conn = _conn()
     _seed(conn)
     _add(conn, 1, 1)
     _add(conn, 2, 1, agent_id="a1")
-    monkeypatch.setattr("ccfr.analysis.usage_characteristics.load_price_table", lambda _p: PRICE)
-    monkeypatch.setattr("ccfr.analysis.usage_map.load_price_table", lambda _p: PRICE)
+    _use_pricing(monkeypatch, tmp_path)
 
     chars_total = usage_characteristics_analytics(conn)["meta"]["total_usd"]
     map_total = um.usage_map_analytics(conn)["meta"]["total_usd"]
     assert chars_total == map_total
 
 
-def test_analytics_token_basis_when_no_pricing(monkeypatch) -> None:
+def test_analytics_token_basis_when_no_pricing(monkeypatch, tmp_path) -> None:
     conn = _conn()
     _seed(conn)
     _add(conn, 1, 1)
-    monkeypatch.setattr("ccfr.analysis.usage_characteristics.load_price_table", lambda _p: {})
+    monkeypatch.setattr("ccfr.analysis.usage_characteristics.pricing_path",
+                        lambda: tmp_path / "missing.csv")
+    monkeypatch.setattr("ccfr.analysis.usage_characteristics.pricing_dir",
+                        lambda: tmp_path / "pricing")
     payload = usage_characteristics_analytics(conn)
     assert payload["meta"]["share_basis"] == "tokens"
     assert payload["meta"]["cost_available"] is False
     assert "token" in payload["meta"]["basis_note"].lower()
 
 
-def test_analytics_reads_agent_type_from_subagents(monkeypatch) -> None:
+def test_analytics_reads_agent_type_from_subagents(monkeypatch, tmp_path) -> None:
     conn = _conn()
     _seed(conn)
     _add(conn, 1, 1, agent_id="a1")
     conn.execute("INSERT INTO subagents (parent_session_id, agent_id, agent_type) "
                  "VALUES (1, 'a1', 'general-purpose')")
     conn.commit()
-    monkeypatch.setattr("ccfr.analysis.usage_characteristics.load_price_table", lambda _p: PRICE)
+    _use_pricing(monkeypatch, tmp_path)
     keys = [c["key"] for c in usage_characteristics_analytics(conn)["characteristics"]]
     assert "agent_type:general-purpose" in keys
 
 
-def test_endpoint_returns_characteristics(monkeypatch) -> None:
+def test_endpoint_returns_characteristics(monkeypatch, tmp_path) -> None:
     conn = _conn()
     _seed(conn)
     _add(conn, 1, 1)
     _add(conn, 2, 1, agent_id="a1")
-    monkeypatch.setattr("ccfr.analysis.usage_characteristics.load_price_table", lambda _p: PRICE)
+    _use_pricing(monkeypatch, tmp_path)
     app = create_app()
     app.dependency_overrides[get_db] = lambda: conn
     client = TestClient(app)

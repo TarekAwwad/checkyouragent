@@ -238,30 +238,17 @@ def calibrate_contributors(
     return contributors
 
 
-def accrue_tax(
-    thread: ThreadRec,
-    timeline: PriceTimeline | dict[str, Any],
-    *,
-    historical: bool = True,
-) -> bool:
+def accrue_tax(thread: ThreadRec, timeline: PriceTimeline, *, historical: bool = True) -> bool:
     """Price each contributor's carry: one 5m cache write at entry, then one
     cache read per subsequent call until its epoch ends. Returns False when any
     call's model has no price row (those calls contribute $0 and the payload
     flags cost as partially unavailable).
-
-    ``timeline`` may be a :class:`PriceTimeline` (historical-aware) or a plain
-    ``dict[str, ModelPrice]`` (backward-compatible, treated as a single-period
-    flat table).
     """
     fully_priced = True
     thread.read_prices = []
     thread.write_prices = []
-    _is_timeline = isinstance(timeline, PriceTimeline)
     for call in thread.calls:
-        if _is_timeline:
-            price = timeline.price_for(call.model, call.ts, historical=historical)  # type: ignore[union-attr]
-        else:
-            price = match_price(timeline, call.model)  # type: ignore[arg-type]
+        price = timeline.price_for(call.model, call.ts, historical=historical)
         if price is None:
             fully_priced = False
             thread.read_prices.append(0.0)

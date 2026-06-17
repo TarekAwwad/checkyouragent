@@ -7,7 +7,7 @@ import sqlite3
 import pytest
 from fastapi.testclient import TestClient
 
-from ccfr.analysis.pricing import ModelPrice
+from ccfr.analysis.pricing import ModelPrice, PriceTimeline
 from ccfr.analysis import usage_map
 from ccfr.analysis.usage_map import (
     HABIT_BY_KEY,
@@ -180,10 +180,15 @@ def test_aggregate_phases_null_tool_name_gets_no_tool_entry() -> None:
     assert acc["converse"]["tool_count"] == 1
 
 
-PRICE_TABLE = {
-    "claude-opus-4-8": ModelPrice(base_input=5, cache_write_5m=6.25,
-                                  cache_write_1h=10, cache_read=0.5, output=25),
-}
+# A flat (single-period) timeline so the direct-unit tests below can pass it
+# wherever load_events / detectors now expect a PriceTimeline.
+PRICE_TABLE = PriceTimeline(
+    {
+        "claude-opus-4-8": ModelPrice(base_input=5, cache_write_5m=6.25,
+                                      cache_write_1h=10, cache_read=0.5, output=25),
+    },
+    [],
+)
 
 
 def _conn() -> sqlite3.Connection:
@@ -1107,3 +1112,52 @@ def test_usage_map_tool_evidence_bad_phase_is_404(api_client: TestClient) -> Non
     resp = api_client.get("/api/analytics/usage-map/evidence",
                           params={"node": "tool:Read@nonsense"})
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Historical pricing (date-aware PriceTimeline)
+# ---------------------------------------------------------------------------
+
+def _conn_two_dated_opus(tmp_path):
+    """One project, two assistant messages (1M base-input each) on claude-opus-4-1,
+    dated Jan 2026 and Aug 2026 — straddling a 2026-07-01 price change."""
+    from ccfr.storage import connect, init_db
+    conn = connect(tmp_path / "um.sqlite3")
+    init_db(conn)
+    conn.execute("INSERT INTO imports(source_path, imported_at, status) VALUES('x','x','done')")
+    conn.execute("INSERT INTO projects(import_id, export_name) VALUES(1,'proj')")
+    for sid, ts in enumerate(["2026-01-15T10:00:00Z", "2026-08-15T10:00:00Z"], start=1):
+        conn.execute("INSERT INTO sessions(project_id, session_id, first_ts, last_ts) VALUES(1,?,?,?)",
+                     (f"s{sid}", ts, ts))
+        conn.execute("INSERT INTO events(session_id, source_path, line_no, type, timestamp, raw_json) "
+                     "VALUES(?,?,?,?,?,'{}')", (sid, "f", sid, "assistant", ts))
+        conn.execute("INSERT INTO messages(event_id, role, model, base_input_tokens, output_tokens) "
+                     "VALUES(?, 'assistant', 'claude-opus-4-1', 1000000, 0)", (sid,))
+    conn.commit()
+    return conn
+
+
+def test_usage_map_total_prices_by_period(monkeypatch, tmp_path):
+    from ccfr.analysis import usage_map
+
+    conn = _conn_two_dated_opus(tmp_path)
+    baseline = tmp_path / "pricing.csv"
+    baseline.write_text(
+        "model,base-input-tokens,5m-cache-writes,1h-cache-writes,cache-hits-&-refreshes,output-tokens\n"
+        "Claude-Opus-4.1,15,0,0,0,75\n",
+        encoding="utf-8",
+    )
+    sheets = tmp_path / "pricing"
+    sheets.mkdir()
+    (sheets / "pricing-2026-07-01.csv").write_text(
+        "model,base-input-tokens,5m-cache-writes,1h-cache-writes,cache-hits-&-refreshes,output-tokens\n"
+        "Claude-Opus-4.1,5,0,0,0,25\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(usage_map, "pricing_path", lambda: baseline)
+    monkeypatch.setattr(usage_map, "pricing_dir", lambda: sheets)
+
+    on = usage_map.usage_map_analytics(conn, historical=True)["meta"]["total_usd"]
+    off = usage_map.usage_map_analytics(conn, historical=False)["meta"]["total_usd"]
+    assert round(on, 2) == 20.0
+    assert round(off, 2) == 10.0
