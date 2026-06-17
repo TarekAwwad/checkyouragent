@@ -287,9 +287,10 @@ def get_discovery_analytics(
     project_id: int | None = None,
     min_support: int = Query(default=5, ge=1),
     conn: Connection = Depends(get_db),
+    historical: bool = Depends(get_historical_pricing),
 ) -> DiscoveryResponse:
     return DiscoveryResponse(
-        **discovery_analytics(conn, project_id=project_id, min_support=min_support)
+        **discovery_analytics(conn, project_id=project_id, min_support=min_support, historical=historical)
     )
 
 
@@ -298,9 +299,10 @@ def get_context_economics(
     project_id: int | None = None,
     min_support: int = Query(default=3, ge=1),
     conn: Connection = Depends(get_db),
+    historical: bool = Depends(get_historical_pricing),
 ) -> ContextEconomicsResponse:
     return ContextEconomicsResponse(
-        **context_economics_analytics(conn, project_id=project_id, min_support=min_support)
+        **context_economics_analytics(conn, project_id=project_id, min_support=min_support, historical=historical)
     )
 
 
@@ -309,8 +311,9 @@ def get_context_economics(
 def get_session_context_economics(
     session_id: int,
     conn: Connection = Depends(get_db),
+    historical: bool = Depends(get_historical_pricing),
 ) -> SessionContextEconomicsResponse:
-    return SessionContextEconomicsResponse(**session_context_economics(conn, session_id))
+    return SessionContextEconomicsResponse(**session_context_economics(conn, session_id, historical=historical))
 
 
 @router.get("/analytics/usage-map", response_model=UsageMapResponse)
@@ -319,10 +322,11 @@ def get_usage_map(
     date_from: str | None = None,
     date_to: str | None = None,
     conn: Connection = Depends(get_db),
+    historical: bool = Depends(get_historical_pricing),
 ) -> UsageMapResponse:
     return UsageMapResponse(
         **usage_map_analytics(conn, project_id=project_id,
-                              date_from=date_from, date_to=date_to)
+                              date_from=date_from, date_to=date_to, historical=historical)
     )
 
 
@@ -333,10 +337,11 @@ def get_usage_map_evidence(
     date_from: str | None = None,
     date_to: str | None = None,
     conn: Connection = Depends(get_db),
+    historical: bool = Depends(get_historical_pricing),
 ) -> UsageMapEvidenceResponse:
     try:
         payload = usage_map_evidence(conn, node=node, project_id=project_id,
-                                     date_from=date_from, date_to=date_to)
+                                     date_from=date_from, date_to=date_to, historical=historical)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"Unknown node: {node}") from exc
     return UsageMapEvidenceResponse(**payload)
@@ -348,8 +353,9 @@ def get_usage_characteristics(
     date_from: str | None = None,
     date_to: str | None = None,
     conn: Connection = Depends(get_db),
+    historical: bool = Depends(get_historical_pricing),
 ) -> UsageCharacteristicsResponse:
     return UsageCharacteristicsResponse(
         **usage_characteristics_analytics(conn, project_id=project_id,
-                                          date_from=date_from, date_to=date_to)
+                                          date_from=date_from, date_to=date_to, historical=historical)
     )
