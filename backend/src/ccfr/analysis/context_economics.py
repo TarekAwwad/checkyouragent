@@ -19,8 +19,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
 
-from ccfr.analysis.pricing import load_price_table, match_price
-from ccfr.config import pricing_path
+from ccfr.analysis.pricing import PriceTimeline, load_price_timeline, match_price
+from ccfr.config import pricing_dir, pricing_path
 from ccfr.naming import project_display_name
 
 # --- Estimation and detection constants -------------------------------------
@@ -238,16 +238,30 @@ def calibrate_contributors(
     return contributors
 
 
-def accrue_tax(thread: ThreadRec, table: dict[str, Any]) -> bool:
+def accrue_tax(
+    thread: ThreadRec,
+    timeline: PriceTimeline | dict[str, Any],
+    *,
+    historical: bool = True,
+) -> bool:
     """Price each contributor's carry: one 5m cache write at entry, then one
     cache read per subsequent call until its epoch ends. Returns False when any
     call's model has no price row (those calls contribute $0 and the payload
-    flags cost as partially unavailable)."""
+    flags cost as partially unavailable).
+
+    ``timeline`` may be a :class:`PriceTimeline` (historical-aware) or a plain
+    ``dict[str, ModelPrice]`` (backward-compatible, treated as a single-period
+    flat table).
+    """
     fully_priced = True
     thread.read_prices = []
     thread.write_prices = []
+    _is_timeline = isinstance(timeline, PriceTimeline)
     for call in thread.calls:
-        price = match_price(table, call.model)
+        if _is_timeline:
+            price = timeline.price_for(call.model, call.ts, historical=historical)  # type: ignore[union-attr]
+        else:
+            price = match_price(timeline, call.model)  # type: ignore[arg-type]
         if price is None:
             fully_priced = False
             thread.read_prices.append(0.0)
@@ -807,26 +821,28 @@ def _thumbnail(thread: ThreadRec, finding: FindingRec) -> dict[str, Any]:
 
 
 def _corpus_total_usd(conn: sqlite3.Connection, project_id: int | None,
-                      table: dict[str, Any]) -> float:
+                      timeline: PriceTimeline, *, historical: bool = True) -> float:
     where, params = "", []
     if project_id is not None:
         where = "WHERE s.project_id = ?"
         params.append(project_id)
+    period_expr = timeline.sql_period_expr("e.timestamp", historical=historical)
     rows = conn.execute(
         f"""
-        SELECT m.model, SUM(m.base_input_tokens) AS base, SUM(m.cache_5m_tokens) AS c5,
+        SELECT m.model, ({period_expr}) AS price_period,
+               SUM(m.base_input_tokens) AS base, SUM(m.cache_5m_tokens) AS c5,
                SUM(m.cache_1h_tokens) AS c1, SUM(m.cache_read_tokens) AS cr,
                SUM(m.output_tokens) AS out
         FROM messages m
         JOIN events e ON e.id = m.event_id
         JOIN sessions s ON s.id = e.session_id
-        {where} GROUP BY m.model
+        {where} GROUP BY m.model, price_period
         """,
         params,
     ).fetchall()
     total = 0.0
     for row in rows:
-        price = match_price(table, row["model"])
+        price = match_price(timeline.table_for_period(row["price_period"], historical=historical), row["model"])
         if price is None:
             continue
         total += (
@@ -854,7 +870,7 @@ def _week_start(ts: str | None) -> str | None:
 
 
 def _corpus_weekly_usd(conn: sqlite3.Connection, project_id: int | None,
-                       table: dict[str, Any]) -> dict[str, float]:
+                       timeline: PriceTimeline, *, historical: bool = True) -> dict[str, float]:
     """Total billed spend bucketed by ISO week (Monday start).
 
     Grouped by model+day in SQL to keep the row count small, then folded into
@@ -880,7 +896,7 @@ def _corpus_weekly_usd(conn: sqlite3.Connection, project_id: int | None,
     weekly: dict[str, float] = defaultdict(float)
     for row in rows:
         week = _week_start(row["day"])
-        price = match_price(table, row["model"])
+        price = timeline.price_for(row["model"], row["day"], historical=historical)
         if week is None or price is None:
             continue
         weekly[week] += (
@@ -931,14 +947,15 @@ def context_economics_analytics(
     *,
     project_id: int | None = None,
     min_support: int = 3,
+    historical: bool = True,
 ) -> dict[str, Any]:
     """Corpus-level Context Economics payload (Discover landing view)."""
     min_support = max(1, int(min_support or 1))
-    table = load_price_table(pricing_path())
-    cost_available = bool(table)
+    timeline = load_price_timeline(pricing_path(), pricing_dir())
+    cost_available = timeline.has_prices
     threads, skipped = load_threads(conn, project_id=project_id)
     for thread in threads:
-        accrue_tax(thread, table)
+        accrue_tax(thread, timeline, historical=historical)
     results = run_detectors(threads)
     thread_by_session: dict[tuple[int, str | None], ThreadRec] = {
         (t.session_db_id, t.agent_id): t for t in threads
@@ -982,7 +999,7 @@ def context_economics_analytics(
             "findings": [_finding_payload(f) for f in findings[:FINDINGS_LIMIT]] if meets else [],
         })
 
-    total_usd = _corpus_total_usd(conn, project_id, table) if cost_available else 0.0
+    total_usd = _corpus_total_usd(conn, project_id, timeline, historical=historical) if cost_available else 0.0
     # avoidable is a subset of carry reads/writes that are themselves part of
     # total, so it should not exceed total. The clamp is defense-in-depth against
     # the estimate-vs-actual gap (savings use calibrated token estimates; total
@@ -993,7 +1010,7 @@ def context_economics_analytics(
     )
     trend: list[dict[str, Any]] = []
     if cost_available:
-        weekly_total = _corpus_weekly_usd(conn, project_id, table)
+        weekly_total = _corpus_weekly_usd(conn, project_id, timeline, historical=historical)
         weeks = sorted(set(weekly_total) | set(avoidable_weekly))[-TREND_WEEKS:]
         trend = [
             {
@@ -1023,7 +1040,8 @@ def context_economics_analytics(
     }
 
 
-def session_context_economics(conn: sqlite3.Connection, session_db_id: int) -> dict[str, Any]:
+def session_context_economics(conn: sqlite3.Connection, session_db_id: int, *,
+                              historical: bool = True) -> dict[str, Any]:
     """Drill-down payload for one session.
 
     Detection runs session-locally: corpus-relative thresholds are computed
@@ -1034,10 +1052,10 @@ def session_context_economics(conn: sqlite3.Connection, session_db_id: int) -> d
     Findings are routed to the thread that owns their event_id, so sidechain
     findings stay on the sidechain thread.
     """
-    table = load_price_table(pricing_path())
+    timeline = load_price_timeline(pricing_path(), pricing_dir())
     threads, _skipped = load_threads(conn, session_db_id=session_db_id)
     for thread in threads:
-        accrue_tax(thread, table)
+        accrue_tax(thread, timeline, historical=historical)
     results = run_detectors(threads)
 
     payload_threads = []
@@ -1070,4 +1088,4 @@ def session_context_economics(conn: sqlite3.Connection, session_db_id: int) -> d
                 if f.session_id == thread.session_db_id and f.event_id in thread_event_ids
             ],
         })
-    return {"threads": payload_threads, "cost_available": bool(table)}
+    return {"threads": payload_threads, "cost_available": timeline.has_prices}

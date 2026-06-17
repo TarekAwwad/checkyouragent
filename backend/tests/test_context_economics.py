@@ -152,7 +152,7 @@ def test_calibrate_many_items_still_sum_to_delta() -> None:
 # ---------------------------------------------------------------------------
 
 from ccfr.analysis.context_economics import ThreadRec, _carry_usd, accrue_tax
-from ccfr.analysis.pricing import ModelPrice
+from ccfr.analysis.pricing import ModelPrice, PriceTimeline
 
 
 PRICE_TABLE = {
@@ -161,6 +161,9 @@ PRICE_TABLE = {
     "claude-sonnet-4-6": ModelPrice(base_input=1, cache_write_5m=1, cache_write_1h=1,
                                     cache_read=1, output=1),
 }
+
+# Wrap the flat table in a no-snapshot timeline for use with the updated API.
+PRICE_TIMELINE = PriceTimeline(PRICE_TABLE, [])
 
 
 def _thread(calls: list[CallRec], items: dict[int, list[RawItem]] | None = None) -> ThreadRec:
@@ -174,7 +177,7 @@ def test_accrue_tax_is_write_once_plus_read_per_carried_call() -> None:
     calls = [_call(1, 10_000), _call(2, 16_000), _call(3, 16_000), _call(4, 16_000)]
     items = {1: [RawItem(kind="tool_result", label="Read a.py", raw_chars=24_000)]}
     thread = _thread(calls, items)
-    priced = accrue_tax(thread, PRICE_TABLE)
+    priced = accrue_tax(thread, PRICE_TIMELINE)
 
     assert priced is True
     read = next(c for c in thread.contributors if c.label == "Read a.py")
@@ -190,7 +193,7 @@ def test_accrue_tax_unknown_model_reports_unpriced() -> None:
     calls = [CallRec(event_id=1, ts=None, model="mystery-model", context_tokens=5_000,
                      output_tokens=0)]
     thread = _thread(calls)
-    assert accrue_tax(thread, PRICE_TABLE) is False
+    assert accrue_tax(thread, PRICE_TIMELINE) is False
     assert thread.contributors[0].accrued_usd == 0.0
 
 
@@ -204,7 +207,7 @@ def test_accrue_tax_mixed_pricing_keeps_known_costs() -> None:
                 context_tokens=14_000, output_tokens=0),
     ]
     thread = _thread(calls)
-    assert accrue_tax(thread, PRICE_TABLE) is False
+    assert accrue_tax(thread, PRICE_TIMELINE) is False
     assert thread.read_prices == [1 / 1e6, 1 / 1e6, 0.0]
     baseline = next(c for c in thread.contributors if c.kind == "baseline")
     # 10k tokens: write at 0 + read at 1 + $0 read at the unpriced call 2.
@@ -214,7 +217,7 @@ def test_accrue_tax_mixed_pricing_keeps_known_costs() -> None:
 def test_carry_usd_is_reads_only_over_the_span() -> None:
     calls = [_call(1, 10_000), _call(2, 12_000), _call(3, 13_000), _call(4, 14_000)]
     thread = _thread(calls)
-    accrue_tax(thread, PRICE_TABLE)
+    accrue_tax(thread, PRICE_TIMELINE)
     # 1000 tokens carried from after call 0 through call 2 = reads at calls 1,2
     # only (no entry write): 1000 * (1 + 1) / 1e6.
     assert _carry_usd(thread, 1_000, 0, 2) == pytest.approx(2_000 / 1e6)
@@ -417,7 +420,7 @@ from ccfr.analysis.context_economics import Claims, detect_rereads
 
 def _priced_thread(calls, items=None) -> ThreadRec:
     thread = _thread(calls, items)
-    accrue_tax(thread, PRICE_TABLE)
+    accrue_tax(thread, PRICE_TIMELINE)
     return thread
 
 
@@ -654,7 +657,7 @@ def _gapped_thread() -> ThreadRec:
         calls.append(CallRec(event_id=9 + j, ts=_ts(minute), model="claude-sonnet-4-6",
                              context_tokens=161_000 + j * 1_000, output_tokens=0))
     thread = _thread(calls)
-    accrue_tax(thread, PRICE_TABLE)
+    accrue_tax(thread, PRICE_TIMELINE)
     return thread
 
 
@@ -696,7 +699,7 @@ def test_detect_stale_continuation_skips_small_resumed_context() -> None:
         CallRec(event_id=2, ts=_ts(200), model="claude-sonnet-4-6",
                 context_tokens=6_000, output_tokens=0),
     ])
-    accrue_tax(small, PRICE_TABLE)
+    accrue_tax(small, PRICE_TIMELINE)
     threads = [small]
     for n in range(9):  # pad so corpus p75 context is large
         threads.append(_priced_thread([_call(1, 200_000), _call(2, 200_000)]))
@@ -721,6 +724,7 @@ def economics_conn(conn: sqlite3.Connection, tmp_path: Path,
         encoding="utf-8",
     )
     monkeypatch.setattr(context_economics, "pricing_path", lambda: csv)
+    monkeypatch.setattr(context_economics, "pricing_dir", lambda: tmp_path / "pricing")
     # Three sessions that each re-read the same file once (clears min_support=3).
     for n in range(3):
         add_session(conn, uuid=f"re-{n}", title=f"Re-reader {n}", calls=[
@@ -784,6 +788,7 @@ def test_corpus_payload_without_pricing_is_token_only(
     conn: sqlite3.Connection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(context_economics, "pricing_path", lambda: tmp_path / "missing.csv")
+    monkeypatch.setattr(context_economics, "pricing_dir", lambda: tmp_path / "pricing")
     add_session(conn, uuid="np", calls=[{"context": 10_000, "minute": 1}])
     payload = context_economics_analytics(conn)
     assert payload["meta"]["cost_available"] is False
@@ -794,6 +799,7 @@ def test_corpus_payload_without_pricing_is_token_only(
 def test_corpus_payload_empty_db_is_stable(conn: sqlite3.Connection, tmp_path: Path,
                                            monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(context_economics, "pricing_path", lambda: tmp_path / "missing.csv")
+    monkeypatch.setattr(context_economics, "pricing_dir", lambda: tmp_path / "pricing")
     payload = context_economics_analytics(conn)
     assert payload["meta"]["sessions_analyzed"] == 0
     assert [a["findings"] for a in payload["archetypes"]] == [[], [], [], []]
@@ -860,6 +866,7 @@ def test_session_payload_without_pricing_is_token_only(
     conn: sqlite3.Connection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(context_economics, "pricing_path", lambda: tmp_path / "missing.csv")
+    monkeypatch.setattr(context_economics, "pricing_dir", lambda: tmp_path / "pricing")
     sid = add_session(conn, uuid="nz", calls=[
         {"context": 10_000, "minute": 1}, {"context": 20_000, "minute": 2},
     ])
@@ -920,3 +927,51 @@ def test_context_economics_endpoints(economics_conn: sqlite3.Connection, tmp_pat
     ]
     assert session.status_code == 200
     assert session.json()["threads"][0]["calls"]
+
+
+# ---------------------------------------------------------------------------
+# Historical pricing: period-aware cost totals
+# ---------------------------------------------------------------------------
+
+def _conn_two_dated_opus(tmp_path):
+    """One project, two assistant messages (1M base-input each) on claude-opus-4-1,
+    dated Jan 2026 and Aug 2026 — straddling a 2026-07-01 price change."""
+    from ccfr.storage import connect, init_db
+    conn = connect(tmp_path / "ce.sqlite3")
+    init_db(conn)
+    conn.execute("INSERT INTO imports(source_path, imported_at, status) VALUES('x','x','done')")
+    conn.execute("INSERT INTO projects(import_id, export_name) VALUES(1,'proj')")
+    for sid, ts in enumerate(["2026-01-15T10:00:00Z", "2026-08-15T10:00:00Z"], start=1):
+        conn.execute("INSERT INTO sessions(project_id, session_id, first_ts, last_ts) VALUES(1,?,?,?)",
+                     (f"s{sid}", ts, ts))
+        conn.execute("INSERT INTO events(session_id, source_path, line_no, type, timestamp, raw_json) "
+                     "VALUES(?,?,?,?,?,'{}')", (sid, "f", sid, "assistant", ts))
+        conn.execute("INSERT INTO messages(event_id, role, model, base_input_tokens, output_tokens) "
+                     "VALUES(?, 'assistant', 'claude-opus-4-1', 1000000, 0)", (sid,))
+    conn.commit()
+    return conn
+
+
+def test_corpus_total_prices_by_period(monkeypatch, tmp_path):
+    from ccfr.analysis import context_economics as ce
+
+    conn = _conn_two_dated_opus(tmp_path)
+    baseline = tmp_path / "pricing.csv"
+    baseline.write_text(
+        "model,base-input-tokens,5m-cache-writes,1h-cache-writes,cache-hits-&-refreshes,output-tokens\n"
+        "Claude-Opus-4.1,15,0,0,0,75\n",
+        encoding="utf-8",
+    )
+    sheets = tmp_path / "pricing"
+    sheets.mkdir()
+    (sheets / "pricing-2026-07-01.csv").write_text(
+        "model,base-input-tokens,5m-cache-writes,1h-cache-writes,cache-hits-&-refreshes,output-tokens\n"
+        "Claude-Opus-4.1,5,0,0,0,25\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ce, "pricing_path", lambda: baseline)
+    monkeypatch.setattr(ce, "pricing_dir", lambda: sheets)
+
+    timeline = ce.load_price_timeline(baseline, sheets)
+    assert round(ce._corpus_total_usd(conn, None, timeline, historical=True), 2) == 20.0
+    assert round(ce._corpus_total_usd(conn, None, timeline, historical=False), 2) == 10.0
