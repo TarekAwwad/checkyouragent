@@ -15,6 +15,7 @@ import type {
   SearchResult,
   SessionCard,
   SessionContextEconomicsResponse,
+  Settings,
   Subagent,
   TimelineItem,
   TurnCostBreakdown,
@@ -197,4 +198,15 @@ export function getUsageCharacteristics(filters: UsageMapFilters = {}) {
   return request<UsageCharacteristicsResponse>(
     `/analytics/usage-characteristics${query ? `?${query}` : ""}`,
   );
+}
+
+export function getSettings() {
+  return request<Settings>("/settings");
+}
+
+export function updateSettings(settings: Settings) {
+  return request<Settings>("/settings", {
+    method: "PUT",
+    body: JSON.stringify(settings),
+  });
 }
