@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlite3 import Connection
 
 from ccfr.api import analytics, repository
-from ccfr.api.deps import get_db
+from ccfr.api.deps import get_db, get_historical_pricing
 from ccfr.api.import_progress import import_progress_store
 from ccfr.settings import Settings, read_settings, write_settings
 from ccfr.analysis.context_economics import (
@@ -160,8 +160,11 @@ def get_stats(conn: Connection = Depends(get_db)) -> CacheStatsResponse:
 
 
 @router.get("/projects", response_model=list[ProjectResponse])
-def list_projects(conn: Connection = Depends(get_db)) -> list[ProjectResponse]:
-    return [ProjectResponse(**row) for row in repository.list_projects(conn)]
+def list_projects(
+    conn: Connection = Depends(get_db),
+    historical: bool = Depends(get_historical_pricing),
+) -> list[ProjectResponse]:
+    return [ProjectResponse(**row) for row in repository.list_projects(conn, historical=historical)]
 
 
 @router.get("/sessions", response_model=list[SessionCard])
@@ -173,6 +176,7 @@ def list_sessions(
     date_from: str | None = None,
     date_to: str | None = None,
     conn: Connection = Depends(get_db),
+    historical: bool = Depends(get_historical_pricing),
 ) -> list[SessionCard]:
     rows = repository.list_sessions(
         conn,
@@ -182,6 +186,7 @@ def list_sessions(
         has_errors=has_errors,
         date_from=date_from,
         date_to=date_to,
+        historical=historical,
     )
     return [SessionCard(**row) for row in rows]
 
@@ -203,17 +208,25 @@ def get_timeline(session_id: int, conn: Connection = Depends(get_db)) -> list[Ti
 
 
 @router.get("/sessions/{session_id}/trace", response_model=TraceResponse)
-def get_trace(session_id: int, conn: Connection = Depends(get_db)) -> TraceResponse:
+def get_trace(
+    session_id: int,
+    conn: Connection = Depends(get_db),
+    historical: bool = Depends(get_historical_pricing),
+) -> TraceResponse:
     if repository.get_session(conn, session_id) is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    return TraceResponse(**repository.get_trace(conn, session_id))
+    return TraceResponse(**repository.get_trace(conn, session_id, historical=historical))
 
 
 @router.get("/sessions/{session_id}/turn-costs", response_model=TurnCostBreakdown)
-def get_turn_costs(session_id: int, conn: Connection = Depends(get_db)) -> TurnCostBreakdown:
+def get_turn_costs(
+    session_id: int,
+    conn: Connection = Depends(get_db),
+    historical: bool = Depends(get_historical_pricing),
+) -> TurnCostBreakdown:
     if repository.get_session(conn, session_id) is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    return TurnCostBreakdown(**analytics.session_turn_cost_breakdown(conn, session_id))
+    return TurnCostBreakdown(**analytics.session_turn_cost_breakdown(conn, session_id, historical=historical))
 
 
 @router.get("/sessions/{session_id}/subagents", response_model=list[SubagentResponse])
@@ -259,10 +272,12 @@ def get_cost_analytics(
     project_id: int | None = None,
     model: str | None = None,
     conn: Connection = Depends(get_db),
+    historical: bool = Depends(get_historical_pricing),
 ) -> CostAnalyticsResponse:
     return CostAnalyticsResponse(
         **analytics.cost_analytics(
-            conn, date_from=date_from, date_to=date_to, project_id=project_id, model=model
+            conn, date_from=date_from, date_to=date_to, project_id=project_id, model=model,
+            historical=historical,
         )
     )
 
