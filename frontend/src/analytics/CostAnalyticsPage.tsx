@@ -39,6 +39,10 @@ export default function CostAnalyticsPage({ onOpenSession }: Props) {
     <main className="cost-page">
       <div className="cost-page-inner">
         <FilterBar filters={filters} meta={payload?.meta} onChange={setFilters} />
+        <p className="cost-pricing-note">
+          Spend is priced at the rates in effect on each session&apos;s date. Toggle historical pricing in the sidebar to
+          value everything at current rates.
+        </p>
         {query.isError ? (
           <div className="empty-state panel-error">
             <strong>Cost analytics failed.</strong>
