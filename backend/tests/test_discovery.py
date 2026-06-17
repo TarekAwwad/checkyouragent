@@ -358,6 +358,50 @@ def test_discovery_empty_db_is_stable(tmp_path: Path, monkeypatch: pytest.Monkey
     assert payload["sections"]["rejections"]["baseline_count"] == 0
 
 
+def _conn_two_dated_opus(tmp_path):
+    """One project, two assistant messages (1M base-input each) on claude-opus-4-1,
+    dated Jan 2026 and Aug 2026 — straddling a 2026-07-01 price change."""
+    from ccfr.storage import connect, init_db
+    conn = connect(tmp_path / "disc.sqlite3")
+    init_db(conn)
+    conn.execute("INSERT INTO imports(source_path, imported_at, status) VALUES('x','x','done')")
+    conn.execute("INSERT INTO projects(import_id, export_name) VALUES(1,'proj')")
+    for sid, ts in enumerate(["2026-01-15T10:00:00Z", "2026-08-15T10:00:00Z"], start=1):
+        conn.execute("INSERT INTO sessions(project_id, session_id, first_ts, last_ts) VALUES(1,?,?,?)",
+                     (f"s{sid}", ts, ts))
+        conn.execute("INSERT INTO events(session_id, source_path, line_no, type, timestamp, raw_json) "
+                     "VALUES(?,?,?,?,?,'{}')", (sid, "f", sid, "assistant", ts))
+        conn.execute("INSERT INTO messages(event_id, role, model, base_input_tokens, output_tokens) "
+                     "VALUES(?, 'assistant', 'claude-opus-4-1', 1000000, 0)", (sid,))
+    conn.commit()
+    return conn
+
+
+def test_scoped_session_costs_prices_by_period(monkeypatch, tmp_path):
+    from ccfr.analysis import discovery
+
+    conn = _conn_two_dated_opus(tmp_path)
+    baseline = tmp_path / "pricing.csv"
+    baseline.write_text(
+        "model,base-input-tokens,5m-cache-writes,1h-cache-writes,cache-hits-&-refreshes,output-tokens\n"
+        "Claude-Opus-4.1,15,0,0,0,75\n",
+        encoding="utf-8",
+    )
+    sheets = tmp_path / "pricing"
+    sheets.mkdir()
+    (sheets / "pricing-2026-07-01.csv").write_text(
+        "model,base-input-tokens,5m-cache-writes,1h-cache-writes,cache-hits-&-refreshes,output-tokens\n"
+        "Claude-Opus-4.1,5,0,0,0,25\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(discovery, "pricing_path", lambda: baseline)
+    monkeypatch.setattr(discovery, "pricing_dir", lambda: sheets)
+
+    costs, available = discovery._scoped_session_costs(conn, project_id=None, historical=True)
+    assert available is True
+    assert costs == {1: 15.0, 2: 5.0}
+
+
 def test_discovery_endpoint_returns_payload(seeded: tuple[sqlite3.Connection, int, int], tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     conn, alpha, _beta = seeded
     monkeypatch.setattr("ccfr.main.database_path", lambda: tmp_path / "startup.sqlite3")
