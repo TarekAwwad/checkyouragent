@@ -14,6 +14,9 @@ services:
       - ccfr-data:/app/data
       # Mount pricing.csv read-only so edits take effect on the next request (no rebuild).
       - ./pricing.csv:/app/pricing.csv:ro
+      # Mount the dated price-snapshot dir too, so historical pricing works in
+      # Docker and new snapshots are picked up on the next request (no rebuild).
+      - ./pricing:/app/pricing:ro
 
   frontend:
     build:

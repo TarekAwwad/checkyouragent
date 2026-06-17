@@ -19,5 +19,13 @@ def get_db() -> Iterator[Connection]:
         conn.close()
 
 
-def get_historical_pricing() -> bool:
+def get_historical_pricing(historical: bool | None = None) -> bool:
+    """Resolve the pricing mode for a request.
+
+    An explicit ``?historical=`` query param wins so the request URL encodes the
+    mode (two modes never share one cacheable URL); absent it, the persisted
+    server-side setting applies.
+    """
+    if historical is not None:
+        return historical
     return read_settings().historical_pricing

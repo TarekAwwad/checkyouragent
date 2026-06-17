@@ -179,6 +179,27 @@ describe("CostAnalyticsPage", () => {
     expect(screen.queryByRole("button", { name: "Review" })).not.toBeInTheDocument();
   });
 
+  it("passes the pricing mode to the request and refetches when it flips", async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const view = render(
+      <QueryClientProvider client={qc}>
+        <CostAnalyticsPage onOpenSession={() => {}} historical={true} />
+      </QueryClientProvider>,
+    );
+    await screen.findAllByText("alpha");
+    expect(getCostAnalytics.mock.calls[0][1]).toBe(true);
+
+    view.rerender(
+      <QueryClientProvider client={qc}>
+        <CostAnalyticsPage onOpenSession={() => {}} historical={false} />
+      </QueryClientProvider>,
+    );
+    // Flipping the mode must drive a fresh request carrying the new mode.
+    await vi.waitFor(() =>
+      expect(getCostAnalytics.mock.calls.some((c) => c[1] === false)).toBe(true),
+    );
+  });
+
   it("shows the unavailable message on $-tiles when pricing is missing", async () => {
     getCostAnalytics.mockResolvedValueOnce({ ...payload, meta: { ...payload.meta, available: false } });
     renderPage();

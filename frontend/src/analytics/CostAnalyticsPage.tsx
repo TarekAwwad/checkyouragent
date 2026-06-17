@@ -26,8 +26,11 @@ function defaultFrom(): string {
 export default function CostAnalyticsPage({ onOpenSession, historical = true }: Props) {
   const [filters, setFilters] = React.useState<CostAnalyticsFilters>({ dateFrom: defaultFrom() });
   const query = useQuery({
-    queryKey: ["cost-analytics", filters],
-    queryFn: () => getCostAnalytics(filters),
+    // `historical` is part of the key so flipping the price mode is a distinct
+    // query (and a distinct request URL), not a same-URL refetch that could be
+    // served stale from cache.
+    queryKey: ["cost-analytics", filters, historical],
+    queryFn: () => getCostAnalytics(filters, historical),
   });
 
   const payload = query.data;

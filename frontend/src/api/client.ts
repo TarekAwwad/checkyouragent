@@ -32,6 +32,10 @@ const API_BASE = (import.meta.env.VITE_API_BASE ?? "/api").replace(/\/$/, "");
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
+    // Always hit the backend: analytics responses carry no cache headers and some
+    // (e.g. the price-mode toggle) change server-side state without changing the
+    // URL, so a cached body would otherwise be served stale.
+    cache: "no-store",
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
     ...init,
   });
@@ -138,12 +142,15 @@ export function search(q: string, sessionId?: number) {
   return request<SearchResult[]>(`/search?${params.toString()}`);
 }
 
-export function getCostAnalytics(filters: CostAnalyticsFilters = {}) {
+export function getCostAnalytics(filters: CostAnalyticsFilters = {}, historical?: boolean) {
   const params = new URLSearchParams();
   if (filters.dateFrom) params.set("date_from", filters.dateFrom);
   if (filters.dateTo) params.set("date_to", filters.dateTo);
   if (filters.projectId) params.set("project_id", String(filters.projectId));
   if (filters.model) params.set("model", filters.model);
+  // Encode the pricing mode in the URL so the two modes never share one cacheable
+  // request (the backend falls back to the persisted setting when it's absent).
+  if (historical !== undefined) params.set("historical", String(historical));
   const query = params.toString();
   return request<CostAnalyticsResponse>(`/analytics/cost${query ? `?${query}` : ""}`);
 }

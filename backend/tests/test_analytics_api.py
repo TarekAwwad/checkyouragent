@@ -129,6 +129,18 @@ def test_cost_analytics_toggle_honors_historical_setting(toggle_client: TestClie
     assert round(off["meta"]["total_usd"], 2) == 10.0
 
 
+def test_cost_analytics_query_param_overrides_persisted_setting(toggle_client: TestClient) -> None:
+    # An explicit ?historical= wins over the persisted setting so the request URL
+    # itself encodes the mode (no two modes share a cacheable URL).
+    toggle_client.put("/api/settings", json={"historical_pricing": True})
+    off = toggle_client.get("/api/analytics/cost", params={"historical": "false"}).json()
+    on = toggle_client.get("/api/analytics/cost", params={"historical": "true"}).json()
+    assert round(off["meta"]["total_usd"], 2) == 10.0  # current rate for both
+    assert round(on["meta"]["total_usd"], 2) == 20.0  # date-effective
+    # No param → falls back to the persisted setting (ON → 20).
+    assert round(toggle_client.get("/api/analytics/cost").json()["meta"]["total_usd"], 2) == 20.0
+
+
 @pytest.fixture()
 def usage_map_toggle_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """Client seeded identically to toggle_client but with usage_map pricing monkeypatched."""
