@@ -7,6 +7,11 @@ user-authored free text (MCP server names, model aliases, custom agent names) le
 """
 from __future__ import annotations
 
+import hashlib
+import sqlite3
+from dataclasses import dataclass, field
+from datetime import date, datetime
+
 from ccfr.analysis.risk_patterns import _command_family, _error_class
 
 SCHEMA_VERSION = 1
@@ -71,3 +76,164 @@ def result_symbol(is_error: bool, output: str | None) -> str:
     if not is_error:
         return "RESULT:ok"
     return f"RESULT:error:{_error_class(output or '')}"
+
+
+def _sid(salt: str, project_id: int, session_id: str) -> str:
+    return hashlib.sha256(f"{salt}|{project_id}|{session_id}".encode()).hexdigest()
+
+
+def _date_only(ts: str | None) -> str | None:
+    if not ts:
+        return None
+    return ts.split("T", 1)[0]
+
+
+def _parse_ts(ts: str | None) -> datetime | None:
+    if not ts:
+        return None
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _duration_s(first_ts: str | None, last_ts: str | None) -> int:
+    start, end = _parse_ts(first_ts), _parse_ts(last_ts)
+    if start is None or end is None:
+        return 0
+    return max(0, int((end - start).total_seconds()))
+
+
+@dataclass
+class ContributionBundle:
+    contributor_id: str
+    generated_at: str
+    app_version: str
+    sessions: list[dict] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "contributor_id": self.contributor_id,
+            "generated_at": self.generated_at,
+            "app_version": self.app_version,
+            "sessions": self.sessions,
+        }
+
+
+def build_contribution(
+    conn: sqlite3.Connection,
+    *,
+    salt: str,
+    contributor_id: str,
+    app_version: str,
+    generated_on: date,
+) -> ContributionBundle:
+    sessions: list[dict] = []
+    session_rows = conn.execute(
+        """
+        SELECT s.id, s.project_id, s.session_id, s.first_ts, s.last_ts
+        FROM sessions s
+        ORDER BY s.id
+        """
+    ).fetchall()
+
+    for s in session_rows:
+        session_pk = int(s["id"])
+        sessions.append({
+            "sid": _sid(salt, int(s["project_id"]), str(s["session_id"])),
+            "models": _session_models(conn, session_pk),
+            "first_date": _date_only(s["first_ts"]),
+            "duration_s": _duration_s(s["first_ts"], s["last_ts"]),
+            "tokens": _session_tokens(conn, session_pk),
+            "stats": _session_stats(conn, session_pk),
+            "risk_categories": _session_risk_categories(conn, session_pk),
+            "subagents": _session_subagents(conn, session_pk),
+            "sequence": [],  # populated in Task 4
+        })
+
+    return ContributionBundle(
+        contributor_id=contributor_id,
+        generated_at=generated_on.isoformat(),
+        app_version=app_version,
+        sessions=sessions,
+    )
+
+
+def _session_models(conn: sqlite3.Connection, session_pk: int) -> list[str]:
+    rows = conn.execute(
+        """
+        SELECT DISTINCT m.model
+        FROM messages m JOIN events e ON e.id = m.event_id
+        WHERE e.session_id = ? AND m.model IS NOT NULL
+        """,
+        (session_pk,),
+    ).fetchall()
+    return sorted({bucket_model(r["model"]) for r in rows})
+
+
+def _session_tokens(conn: sqlite3.Connection, session_pk: int) -> dict:
+    row = conn.execute(
+        """
+        SELECT
+            COALESCE(SUM(m.input_tokens), 0)       AS input,
+            COALESCE(SUM(m.output_tokens), 0)      AS output,
+            COALESCE(SUM(m.base_input_tokens), 0)  AS base,
+            COALESCE(SUM(m.cache_5m_tokens), 0)    AS cache_5m,
+            COALESCE(SUM(m.cache_1h_tokens), 0)    AS cache_1h,
+            COALESCE(SUM(m.cache_read_tokens), 0)  AS cache_read
+        FROM messages m JOIN events e ON e.id = m.event_id
+        WHERE e.session_id = ?
+        """,
+        (session_pk,),
+    ).fetchone()
+    return {k: int(row[k]) for k in ("input", "output", "base", "cache_5m", "cache_1h", "cache_read")}
+
+
+def _session_stats(conn: sqlite3.Connection, session_pk: int) -> dict:
+    row = conn.execute(
+        """
+        SELECT turn_count, tool_call_count, subagent_count, error_count,
+               system_count, loop_count, max_repeat, persisted_output_count
+        FROM session_stats WHERE session_id = ?
+        """,
+        (session_pk,),
+    ).fetchone()
+    if row is None:
+        return {k: 0 for k in (
+            "turns", "tool_calls", "subagents", "errors",
+            "system", "loops", "max_repeat", "persisted_outputs",
+        )}
+    return {
+        "turns": int(row["turn_count"]),
+        "tool_calls": int(row["tool_call_count"]),
+        "subagents": int(row["subagent_count"]),
+        "errors": int(row["error_count"]),
+        "system": int(row["system_count"]),
+        "loops": int(row["loop_count"]),
+        "max_repeat": int(row["max_repeat"]),
+        "persisted_outputs": int(row["persisted_output_count"]),
+    }
+
+
+def _session_risk_categories(conn: sqlite3.Connection, session_pk: int) -> list[str]:
+    rows = conn.execute(
+        "SELECT DISTINCT category FROM risk_findings WHERE session_id = ? ORDER BY category",
+        (session_pk,),
+    ).fetchall()
+    return [str(r["category"]) for r in rows]
+
+
+def _session_subagents(conn: sqlite3.Connection, session_pk: int) -> list[dict]:
+    rows = conn.execute(
+        """
+        SELECT agent_type, event_count
+        FROM subagents WHERE parent_session_id = ?
+        ORDER BY id
+        """,
+        (session_pk,),
+    ).fetchall()
+    return [
+        {"agent_type": bucket_agent_type(r["agent_type"]), "event_count": int(r["event_count"])}
+        for r in rows
+    ]
