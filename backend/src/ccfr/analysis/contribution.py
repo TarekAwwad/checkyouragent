@@ -38,7 +38,9 @@ PASSTHROUGH_TOOLS = frozenset({
 def bucket_model(raw: str | None) -> str:
     if not raw:
         return "unknown"
-    for known in KNOWN_MODELS:
+    # Longest (most specific) id first so a family that is a prefix of another
+    # can't shadow it under frozenset's nondeterministic iteration order.
+    for known in sorted(KNOWN_MODELS, key=len, reverse=True):
         if raw == known or raw.startswith(known + "-"):
             return known
     return "other"
