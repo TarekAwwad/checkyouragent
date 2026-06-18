@@ -317,3 +317,31 @@ def _session_subagents(conn: sqlite3.Connection, session_pk: int) -> list[dict]:
         {"agent_type": bucket_agent_type(r["agent_type"]), "event_count": int(r["event_count"])}
         for r in rows
     ]
+
+
+def bundle_manifest(bundle: ContributionBundle) -> dict:
+    sessions = bundle.sessions
+    return {
+        "session_count": len(sessions),
+        "sequence_step_count": sum(len(s["sequence"]) for s in sessions),
+        "included_fields": [
+            "Model (bucketed)", "Token counts + cache breakdown",
+            "Session timings (date-only) and per-step deltas",
+            "Tool/event sequence (structural symbols only)",
+            "Counts (turns, tool calls, subagents, errors, loops)",
+            "Risk categories", "Subagent types (bucketed) + counts",
+        ],
+        "excluded": [
+            "Prompts and your messages", "Model reasoning / assistant text",
+            "File contents", "Tool inputs and outputs", "Shell commands",
+            "File paths, working directories, branch names", "Session titles",
+            "Subagent descriptions", "Any free text whatsoever",
+        ],
+        "fingerprint_caveat": (
+            "This bundle contains no content, but it is a structural fingerprint: "
+            "exact token counts, timing deltas, and the ordered tool sequence are "
+            "distinctive. Someone who already has access to your original sessions "
+            "could in principle correlate this bundle back to them. \"No content\" "
+            "does not mean \"fully anonymous.\""
+        ),
+    }

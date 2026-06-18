@@ -190,3 +190,16 @@ def test_bundle_sequence_is_closed_vocabulary(tmp_path):
         assert isinstance(step["dt_s"], int) and step["dt_s"] >= 0
     # The bucketed mcp call must be present (proves the mcp__ name was collapsed).
     assert any(step["sym"] == "CALL:mcp" for step in steps)
+
+
+def test_bundle_manifest_summarizes_counts_and_exclusions(tmp_path):
+    bundle = _bundle_from_sanitized(tmp_path)
+    manifest = contrib.bundle_manifest(bundle)
+    assert manifest["session_count"] == 3
+    assert manifest["sequence_step_count"] == sum(
+        len(s["sequence"]) for s in bundle.to_dict()["sessions"])
+    # The excluded list names content categories in plain language.
+    joined = " ".join(manifest["excluded"]).lower()
+    assert "prompt" in joined and "file content" in joined
+    # The honesty caveat is present and non-empty.
+    assert "fingerprint" in manifest["fingerprint_caveat"].lower()
