@@ -95,7 +95,9 @@ def get_settings() -> SettingsResponse:
 
 @router.put("/settings", response_model=SettingsResponse)
 def update_settings(payload: SettingsResponse) -> SettingsResponse:
-    saved = write_settings(Settings(historical_pricing=payload.historical_pricing))
+    current = read_settings()
+    current.historical_pricing = payload.historical_pricing
+    saved = write_settings(current)
     return SettingsResponse(**asdict(saved))
 
 
