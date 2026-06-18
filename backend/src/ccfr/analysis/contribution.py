@@ -8,6 +8,7 @@ user-authored free text (MCP server names, model aliases, custom agent names) le
 from __future__ import annotations
 
 import hashlib
+import json
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -121,6 +122,82 @@ class ContributionBundle:
         }
 
 
+def _loads(raw) -> dict:
+    if not raw:
+        return {}
+    try:
+        value = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _command_text(raw_json, input_preview) -> str:
+    raw = _loads(raw_json)
+    input_obj = raw.get("input") if isinstance(raw.get("input"), dict) else {}
+    return str((input_obj or {}).get("command") or input_preview or "")
+
+
+def _session_sequence(conn: sqlite3.Connection, session_pk: int) -> list[dict]:
+    calls = conn.execute(
+        """
+        SELECT tc.event_id, e.timestamp AS ts, tc.tool_name, tc.raw_json, tc.input_preview,
+               COALESCE(m.output_tokens, 0) AS out_tok
+        FROM tool_calls tc
+        JOIN events e ON e.id = tc.event_id
+        LEFT JOIN messages m ON m.event_id = tc.event_id
+        WHERE tc.session_id = ?
+        """,
+        (session_pk,),
+    ).fetchall()
+    results = conn.execute(
+        """
+        SELECT tr.event_id, e.timestamp AS ts, tr.is_error, tr.output_preview
+        FROM tool_results tr
+        JOIN events e ON e.id = tr.event_id
+        WHERE tr.session_id = ?
+        """,
+        (session_pk,),
+    ).fetchall()
+
+    # (sort_ts, event_id, kind_order, builder) — calls (0) before results (1) at equal time.
+    items: list[tuple] = []
+    for c in calls:
+        items.append((c["ts"] or "", int(c["event_id"]), 0, "call", c))
+    for r in results:
+        items.append((r["ts"] or "", int(r["event_id"]), 1, "result", r))
+    items.sort(key=lambda it: (it[0], it[1], it[2]))
+
+    sequence: list[dict] = []
+    prev_dt: datetime | None = None
+    out_tok_seen: set[int] = set()
+    for ts, event_id, _order, kind, row in items:
+        now = _parse_ts(ts)
+        dt_s = 0
+        if prev_dt is not None and now is not None:
+            dt_s = max(0, int((now - prev_dt).total_seconds()))
+        if now is not None:
+            prev_dt = now
+
+        if kind == "call":
+            command = _command_text(row["raw_json"], row["input_preview"])
+            out_tok = int(row["out_tok"]) if event_id not in out_tok_seen else 0
+            out_tok_seen.add(event_id)
+            sequence.append({
+                "sym": call_symbol(row["tool_name"], command),
+                "fam": "tool_call",
+                "dt_s": dt_s,
+                "out_tok": out_tok,
+            })
+        else:
+            sequence.append({
+                "sym": result_symbol(bool(row["is_error"]), row["output_preview"]),
+                "fam": "tool_result",
+                "dt_s": dt_s,
+            })
+    return sequence
+
+
 def build_contribution(
     conn: sqlite3.Connection,
     *,
@@ -149,7 +226,7 @@ def build_contribution(
             "stats": _session_stats(conn, session_pk),
             "risk_categories": _session_risk_categories(conn, session_pk),
             "subagents": _session_subagents(conn, session_pk),
-            "sequence": [],  # populated in Task 4
+            "sequence": _session_sequence(conn, session_pk),
         })
 
     return ContributionBundle(

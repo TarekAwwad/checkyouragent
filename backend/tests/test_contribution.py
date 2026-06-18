@@ -99,3 +99,94 @@ def test_bundle_excludes_paths_titles_branches(tmp_path):
     assert "/workspace/alpha" not in blob
     assert "/workspace/beta" not in blob
     assert "importer.py" not in blob  # tool-input file path
+
+
+def _export_with_sentinels(tmp_path):
+    """A one-session export whose content fields carry unique sentinels."""
+    root = tmp_path / "sentinel-export"
+    project = root / "d--Secret"
+    sid = "44444444-4444-4444-4444-444444444444"
+    project.mkdir(parents=True)
+    rows = [
+        {"type": "system", "uuid": "sys", "timestamp": "2026-02-01T08:00:00Z",
+         "cwd": "/Users/real/secret/path", "version": "9.9.9",
+         "entrypoint": "claude", "gitBranch": "feature/SECRET_BRANCH"},
+        {"type": "user", "uuid": "u1", "timestamp": "2026-02-01T08:00:01Z",
+         "message": {"role": "user", "content": "SECRET_PROMPT_abc do the thing"}},
+        {"type": "assistant", "uuid": "a1", "parentUuid": "u1",
+         "timestamp": "2026-02-01T08:00:02Z",
+         "message": {"id": "m1", "role": "assistant", "model": "SECRET_MODEL_zzz",
+                     "stop_reason": "tool_use",
+                     "content": [
+                        {"type": "tool_use", "id": "t1", "name": "Bash",
+                         "input": {"command": "git push --force SECRET_TOKEN_xyz"}},
+                        {"type": "tool_use", "id": "t2", "name": "mcp__SECRETSERVER__deploy",
+                         "input": {"target": "/Users/real/secret/path"}},
+                     ],
+                     "usage": {"input_tokens": 10, "output_tokens": 5}}},
+        {"type": "user", "uuid": "u2", "parentUuid": "a1",
+         "timestamp": "2026-02-01T08:00:03Z",
+         "message": {"role": "user", "content": [
+             {"type": "tool_result", "tool_use_id": "t1", "is_error": True,
+              "content": "Permission denied SECRET_OUTPUT_qqq"},
+             {"type": "tool_result", "tool_use_id": "t2",
+              "content": "deployed SECRET_OUTPUT_rrr"}]}},
+    ]
+    (project / f"{sid}.jsonl").write_text(
+        "\n".join(json.dumps(r) for r in rows), encoding="utf-8")
+    return root
+
+
+SENTINELS = [
+    "SECRET_PROMPT_abc", "SECRET_TOKEN_xyz", "SECRET_OUTPUT_qqq", "SECRET_OUTPUT_rrr",
+    "SECRET_MODEL_zzz", "mcp__SECRETSERVER__deploy", "/Users/real/secret/path",
+    "feature/SECRET_BRANCH", "9.9.9",
+]
+
+
+def _allowed_syms():
+    families = {"empty", "test", "lint_typecheck", "build", "git", "deps", "delete",
+                "network", "script", "search", "list", "other"}
+    error_classes = {"permission_denied", "user_rejected", "edit_without_read",
+                     "file_changed", "validation", "parallel_cancel", "timeout",
+                     "missing_module", "missing_command", "git", "test_failure",
+                     "exit2", "exit1", "unknown"}
+    allowed = {"CALL:Agent", "CALL:mcp", "CALL:other", "RESULT:ok"}
+    allowed |= {f"CALL:{n}" for n in contrib.PASSTHROUGH_TOOLS}
+    allowed |= {f"CALL:inspect:{n}" for n in contrib.INSPECT_TOOLS}
+    allowed |= {f"CALL:write:{n}" for n in contrib.WRITE_TOOLS}
+    allowed |= {f"CALL:{s}:{f}" for s in contrib.SHELL_TOOLS for f in families}
+    allowed |= {f"RESULT:error:{c}" for c in error_classes}
+    return allowed
+
+
+def test_bundle_never_leaks_sentinels(tmp_path):
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    init_db(conn)
+    import_export(conn, _export_with_sentinels(tmp_path))
+    bundle = contrib.build_contribution(
+        conn, salt="abcd" * 16, contributor_id="cid",
+        app_version="0.1.0", generated_on=datetime.date(2026, 6, 18))
+    blob = json.dumps(bundle.to_dict())
+    for sentinel in SENTINELS:
+        assert sentinel not in blob, f"leaked sentinel: {sentinel}"
+
+
+def test_bundle_sequence_is_closed_vocabulary(tmp_path):
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    init_db(conn)
+    import_export(conn, _export_with_sentinels(tmp_path))
+    bundle = contrib.build_contribution(
+        conn, salt="abcd" * 16, contributor_id="cid",
+        app_version="0.1.0", generated_on=datetime.date(2026, 6, 18))
+    allowed = _allowed_syms()
+    steps = [step for s in bundle.to_dict()["sessions"] for step in s["sequence"]]
+    assert steps, "expected a non-empty sequence"
+    for step in steps:
+        assert step["fam"] in {"tool_call", "tool_result"}
+        assert step["sym"] in allowed, f"unexpected sym: {step['sym']}"
+        assert isinstance(step["dt_s"], int) and step["dt_s"] >= 0
+    # The bucketed mcp call must be present (proves the mcp__ name was collapsed).
+    assert any(step["sym"] == "CALL:mcp" for step in steps)
