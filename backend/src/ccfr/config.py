@@ -70,3 +70,8 @@ def allowed_origins() -> list[str]:
 
 def is_docker() -> bool:
     return Path("/.dockerenv").exists()
+
+
+def app_version() -> str:
+    """App release version for contribution bundles. Keep in sync with pyproject."""
+    return "0.1.0"
