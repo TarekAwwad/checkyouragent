@@ -132,16 +132,19 @@ def _loads(raw) -> dict:
     return value if isinstance(value, dict) else {}
 
 
-def _command_text(raw_json, input_preview) -> str:
+def _command_text(raw_json) -> str:
     raw = _loads(raw_json)
     input_obj = raw.get("input") if isinstance(raw.get("input"), dict) else {}
-    return str((input_obj or {}).get("command") or input_preview or "")
+    # Only the shell `command` field is ever needed (transiently, to derive a
+    # closed command_family). input_preview is a full input dump (may contain
+    # paths/targets) and is never safe to treat as command text — so it is dropped.
+    return str((input_obj or {}).get("command") or "")
 
 
 def _session_sequence(conn: sqlite3.Connection, session_pk: int) -> list[dict]:
     calls = conn.execute(
         """
-        SELECT tc.event_id, e.timestamp AS ts, tc.tool_name, tc.raw_json, tc.input_preview,
+        SELECT tc.event_id, e.timestamp AS ts, tc.tool_name, tc.raw_json,
                COALESCE(m.output_tokens, 0) AS out_tok
         FROM tool_calls tc
         JOIN events e ON e.id = tc.event_id
@@ -180,7 +183,7 @@ def _session_sequence(conn: sqlite3.Connection, session_pk: int) -> list[dict]:
             prev_dt = now
 
         if kind == "call":
-            command = _command_text(row["raw_json"], row["input_preview"])
+            command = _command_text(row["raw_json"])
             out_tok = int(row["out_tok"]) if event_id not in out_tok_seen else 0
             out_tok_seen.add(event_id)
             sequence.append({
