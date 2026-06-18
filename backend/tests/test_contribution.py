@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import datetime
+import json
 import sqlite3
 
 from ccfr.analysis import contribution as contrib
+from ccfr.ingest import import_export
+from ccfr.storage import init_db
+from tests.fixtures import sanitized_export
 
 
 def test_bucket_model_known_and_unknown():
@@ -37,14 +42,6 @@ def test_result_symbol_is_closed_enum():
         "RESULT:error:permission_denied"
 
 
-import datetime
-import json
-
-from ccfr.ingest import import_export
-from ccfr.storage import init_db
-from tests.fixtures import sanitized_export
-
-
 def _bundle_from_sanitized(tmp_path):
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
@@ -76,7 +73,7 @@ def test_bundle_aggregates_sessions_with_hashed_ids(tmp_path):
         assert "T" not in session["first_date"]
         # models are bucketed to the closed vocabulary.
         for model in session["models"]:
-            assert model in contrib.KNOWN_MODELS or model in {"other", "unknown"}
+            assert model in contrib.KNOWN_MODELS or model == "other"
 
 
 def test_bundle_token_and_stat_fidelity(tmp_path):
