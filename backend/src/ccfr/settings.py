@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 import secrets
 import uuid
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 
 from ccfr.config import data_dir
@@ -45,14 +45,17 @@ def write_settings(settings: Settings) -> Settings:
     path = _settings_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     # Preserve existing contributor identity if the incoming settings omits it.
+    # Use replace() to create a copy so we don't mutate the caller's object.
+    to_write = settings
     if settings.contributor_salt is None or settings.contributor_id is None:
         existing = read_settings()
-        if settings.contributor_salt is None:
-            settings.contributor_salt = existing.contributor_salt
-        if settings.contributor_id is None:
-            settings.contributor_id = existing.contributor_id
-    path.write_text(json.dumps(asdict(settings), indent=2), encoding="utf-8")
-    return settings
+        to_write = replace(
+            settings,
+            contributor_salt=settings.contributor_salt or existing.contributor_salt,
+            contributor_id=settings.contributor_id or existing.contributor_id,
+        )
+    path.write_text(json.dumps(asdict(to_write), indent=2), encoding="utf-8")
+    return to_write
 
 
 def contributor_identity() -> tuple[str, str]:

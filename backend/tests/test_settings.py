@@ -38,3 +38,16 @@ def test_contributor_identity_mints_and_persists(tmp_path, monkeypatch):
     loaded = settings_mod.read_settings()
     assert loaded.contributor_salt == salt1
     assert loaded.contributor_id == cid1
+
+
+def test_write_settings_does_not_mutate_input(tmp_path, monkeypatch):
+    import ccfr.settings as settings_mod
+    monkeypatch.setattr(settings_mod, "data_dir", lambda: tmp_path)
+    # Persist an identity first.
+    salt, cid = settings_mod.contributor_identity()
+    # A bare write should preserve identity on disk WITHOUT mutating the arg.
+    arg = settings_mod.Settings(historical_pricing=False)
+    settings_mod.write_settings(arg)
+    assert arg.contributor_salt is None and arg.contributor_id is None  # input untouched
+    reloaded = settings_mod.read_settings()
+    assert reloaded.contributor_salt == salt and reloaded.contributor_id == cid  # disk preserved
