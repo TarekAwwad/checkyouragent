@@ -6,6 +6,7 @@ import ImportPage from "./pages/ImportPage";
 import TriageBoard from "./triage/TriageBoard";
 import SessionWorkspace from "./pages/SessionWorkspace";
 import CostAnalyticsPage from "./analytics/CostAnalyticsPage";
+import ContributePage from "./contribute/ContributePage";
 import DiscoverPage from "./discover/DiscoverPage";
 import GlossaryDialog from "./glossary/GlossaryDialog";
 import Sidebar from "./shell/Sidebar";
@@ -101,6 +102,7 @@ function App() {
         {view === "cost" && (
           <CostAnalyticsPage onOpenSession={openSessionById} historical={historicalPricing} />
         )}
+        {view === "contribute" && <ContributePage />}
         {view === "discover" && (
           <DiscoverPage
             projects={projects.data ?? []}
