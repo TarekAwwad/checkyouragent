@@ -8,12 +8,9 @@ user-authored free text (MCP server names, model aliases, custom agent names) le
 from __future__ import annotations
 
 import hashlib
-import json
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import date, datetime
-
-from ccfr.analysis.risk_patterns import _command_family, _error_class
 
 SCHEMA_VERSION = 1
 
@@ -40,6 +37,18 @@ PASSTHROUGH_TOOLS = frozenset({
     "BashOutput", "KillShell", "ExitPlanMode",
 })
 
+# Mirror the closed vocabularies produced by risk_patterns._command_family / _error_class.
+# Unknown values bucket to a safe generic ("other"), never echoed content.
+COMMAND_FAMILIES = frozenset({
+    "empty", "test", "lint_typecheck", "build", "git", "deps", "delete",
+    "network", "script", "search", "list", "other",
+})
+ERROR_CLASSES = frozenset({
+    "permission_denied", "user_rejected", "edit_without_read", "file_changed",
+    "validation", "parallel_cancel", "timeout", "missing_module",
+    "missing_command", "git", "test_failure", "exit2", "exit1", "unknown",
+})
+
 
 def bucket_model(raw: str | None) -> str:
     if not raw:
@@ -56,27 +65,37 @@ def bucket_agent_type(raw: str | None) -> str:
     return raw if raw in KNOWN_AGENT_TYPES else "custom"
 
 
-def call_symbol(tool_name: str | None, command: str | None) -> str:
-    name = tool_name or "unknown"
-    if name in SHELL_TOOLS:
-        return f"CALL:{name}:{_command_family(command or '')}"
-    if name in INSPECT_TOOLS:
-        return f"CALL:inspect:{name}"
-    if name in WRITE_TOOLS:
-        return f"CALL:write:{name}"
-    if name == "Agent":
-        return "CALL:Agent"
-    if name in PASSTHROUGH_TOOLS:
-        return f"CALL:{name}"
-    if name.startswith("mcp__"):
+def sanitize_symbol(symbol: str, family: str) -> str:
+    """Re-bucket a precomputed event_features symbol into the closed vocabulary.
+
+    event_features.symbol is mostly closed by construction (CALL:Bash:<family>,
+    RESULT:error:<class>, CALL:inspect:Read, ...), but risk_patterns' fallback
+    emits CALL:<raw_tool_name> for unrecognized tools (including user-configured
+    mcp__<server>__<tool> names). Collapse those; validate the rest defensively.
+    """
+    if family == "tool_result":
+        if symbol == "RESULT:ok":
+            return symbol
+        if symbol.startswith("RESULT:error:"):
+            cls = symbol.split(":", 2)[2]
+            return symbol if cls in ERROR_CLASSES else "RESULT:error:other"
+        return "RESULT:other"
+    if family != "tool_call":
+        return ""  # only tool_call / tool_result steps are emitted
+    parts = symbol.split(":")
+    if len(parts) == 3 and parts[1] in SHELL_TOOLS:
+        return symbol if parts[2] in COMMAND_FAMILIES else f"CALL:{parts[1]}:other"
+    if len(parts) == 3 and parts[1] == "inspect" and parts[2] in INSPECT_TOOLS:
+        return symbol
+    if len(parts) == 3 and parts[1] == "write" and parts[2] in WRITE_TOOLS:
+        return symbol
+    if symbol == "CALL:Agent":
+        return symbol
+    if len(parts) == 2 and parts[1] in PASSTHROUGH_TOOLS:
+        return symbol
+    if len(parts) >= 2 and parts[1].startswith("mcp__"):
         return "CALL:mcp"
     return "CALL:other"
-
-
-def result_symbol(is_error: bool, output: str | None) -> str:
-    if not is_error:
-        return "RESULT:ok"
-    return f"RESULT:error:{_error_class(output or '')}"
 
 
 def _sid(salt: str, project_id: int, session_id: str) -> str:
@@ -122,82 +141,47 @@ class ContributionBundle:
         }
 
 
-def _loads(raw) -> dict:
-    if not raw:
-        return {}
-    try:
-        value = json.loads(raw)
-    except (json.JSONDecodeError, TypeError):
-        return {}
-    return value if isinstance(value, dict) else {}
-
-
-def _command_text(raw_json) -> str:
-    raw = _loads(raw_json)
-    input_obj = raw.get("input") if isinstance(raw.get("input"), dict) else {}
-    # Only the shell `command` field is ever needed (transiently, to derive a
-    # closed command_family). input_preview is a full input dump (may contain
-    # paths/targets) and is never safe to treat as command text — so it is dropped.
-    return str((input_obj or {}).get("command") or "")
-
-
 def _session_sequence(conn: sqlite3.Connection, session_pk: int) -> list[dict]:
-    calls = conn.execute(
+    # Source structural symbols from precomputed event_features (populated by
+    # rebuild_risk_patterns at import). Restrict to the session_main + sidechain
+    # slices so each event's features appear exactly once (turn slices are subsets
+    # of session_main). NO content column (raw_json / *_preview / attributes_json)
+    # is read here.
+    rows = conn.execute(
         """
-        SELECT tc.event_id, e.timestamp AS ts, tc.tool_name, tc.raw_json,
+        SELECT ef.event_id, ef.symbol, ef.family, e.timestamp AS ts, ef.position,
                COALESCE(m.output_tokens, 0) AS out_tok
-        FROM tool_calls tc
-        JOIN events e ON e.id = tc.event_id
-        LEFT JOIN messages m ON m.event_id = tc.event_id
-        WHERE tc.session_id = ?
+        FROM event_features ef
+        JOIN sequence_slices ss ON ss.id = ef.sequence_slice_id
+        JOIN events e ON e.id = ef.event_id
+        LEFT JOIN messages m ON m.event_id = ef.event_id
+        WHERE ef.session_id = ?
+          AND ef.family IN ('tool_call', 'tool_result')
+          AND ss.kind IN ('session_main', 'sidechain')
+        ORDER BY e.timestamp, ef.position, ef.event_id
         """,
         (session_pk,),
     ).fetchall()
-    results = conn.execute(
-        """
-        SELECT tr.event_id, e.timestamp AS ts, tr.is_error, tr.output_preview
-        FROM tool_results tr
-        JOIN events e ON e.id = tr.event_id
-        WHERE tr.session_id = ?
-        """,
-        (session_pk,),
-    ).fetchall()
-
-    # (sort_ts, event_id, kind_order, builder) — calls (0) before results (1) at equal time.
-    items: list[tuple] = []
-    for c in calls:
-        items.append((c["ts"] or "", int(c["event_id"]), 0, "call", c))
-    for r in results:
-        items.append((r["ts"] or "", int(r["event_id"]), 1, "result", r))
-    items.sort(key=lambda it: (it[0], it[1], it[2]))
 
     sequence: list[dict] = []
     prev_dt: datetime | None = None
     out_tok_seen: set[int] = set()
-    for ts, event_id, _order, kind, row in items:
-        now = _parse_ts(ts)
+    for row in rows:
+        now = _parse_ts(row["ts"])
         dt_s = 0
         if prev_dt is not None and now is not None:
             dt_s = max(0, int((now - prev_dt).total_seconds()))
         if now is not None:
             prev_dt = now
-
-        if kind == "call":
-            command = _command_text(row["raw_json"])
+        family = str(row["family"])
+        sym = sanitize_symbol(str(row["symbol"]), family)
+        if family == "tool_call":
+            event_id = int(row["event_id"])
             out_tok = int(row["out_tok"]) if event_id not in out_tok_seen else 0
             out_tok_seen.add(event_id)
-            sequence.append({
-                "sym": call_symbol(row["tool_name"], command),
-                "fam": "tool_call",
-                "dt_s": dt_s,
-                "out_tok": out_tok,
-            })
+            sequence.append({"sym": sym, "fam": "tool_call", "dt_s": dt_s, "out_tok": out_tok})
         else:
-            sequence.append({
-                "sym": result_symbol(bool(row["is_error"]), row["output_preview"]),
-                "fam": "tool_result",
-                "dt_s": dt_s,
-            })
+            sequence.append({"sym": sym, "fam": "tool_result", "dt_s": dt_s})
     return sequence
 
 

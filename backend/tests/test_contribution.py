@@ -25,21 +25,33 @@ def test_bucket_agent_type_known_and_custom():
     assert contrib.bucket_agent_type(None) == "custom"
 
 
-def test_call_symbol_buckets_mcp_and_unknown_tools():
-    assert contrib.call_symbol("Read", None) == "CALL:inspect:Read"
-    assert contrib.call_symbol("Edit", None) == "CALL:write:Edit"
-    assert contrib.call_symbol("Bash", "git push --force") == "CALL:Bash:git"
-    assert contrib.call_symbol("Agent", None) == "CALL:Agent"
-    # MCP server names are user-configured free text -> collapsed.
-    assert contrib.call_symbol("mcp__SECRETSERVER__deploy", None) == "CALL:mcp"
-    # Any other unrecognized tool name -> generic.
-    assert contrib.call_symbol("SomePrivateTool", None) == "CALL:other"
+def test_sanitize_symbol_tool_calls():
+    # Shell calls with valid command family pass through unchanged.
+    assert contrib.sanitize_symbol("CALL:Bash:git", "tool_call") == "CALL:Bash:git"
+    # Shell calls with unknown family bucket to :other.
+    assert contrib.sanitize_symbol("CALL:Bash:weirdfam", "tool_call") == "CALL:Bash:other"
+    # Inspect tools pass through unchanged.
+    assert contrib.sanitize_symbol("CALL:inspect:Read", "tool_call") == "CALL:inspect:Read"
+    # Write tools pass through unchanged.
+    assert contrib.sanitize_symbol("CALL:write:Edit", "tool_call") == "CALL:write:Edit"
+    # Agent call passes through unchanged.
+    assert contrib.sanitize_symbol("CALL:Agent", "tool_call") == "CALL:Agent"
+    # Passthrough tools pass through unchanged.
+    assert contrib.sanitize_symbol("CALL:WebFetch", "tool_call") == "CALL:WebFetch"
+    # MCP tool names (user-configured free text) collapse to CALL:mcp.
+    assert contrib.sanitize_symbol("CALL:mcp__SECRETSERVER__deploy", "tool_call") == "CALL:mcp"
+    # Any other unrecognised tool name buckets to CALL:other.
+    assert contrib.sanitize_symbol("CALL:SomePrivateTool", "tool_call") == "CALL:other"
 
 
-def test_result_symbol_is_closed_enum():
-    assert contrib.result_symbol(False, "anything") == "RESULT:ok"
-    assert contrib.result_symbol(True, "Permission to use Bash has been denied") == \
+def test_sanitize_symbol_tool_results():
+    # Successful result passes through unchanged.
+    assert contrib.sanitize_symbol("RESULT:ok", "tool_result") == "RESULT:ok"
+    # Known error class passes through unchanged.
+    assert contrib.sanitize_symbol("RESULT:error:permission_denied", "tool_result") == \
         "RESULT:error:permission_denied"
+    # Unknown error class buckets to :other (never echoes free-text error class).
+    assert contrib.sanitize_symbol("RESULT:error:weird", "tool_result") == "RESULT:error:other"
 
 
 def _bundle_from_sanitized(tmp_path):
@@ -150,8 +162,8 @@ def _allowed_syms():
     error_classes = {"permission_denied", "user_rejected", "edit_without_read",
                      "file_changed", "validation", "parallel_cancel", "timeout",
                      "missing_module", "missing_command", "git", "test_failure",
-                     "exit2", "exit1", "unknown"}
-    allowed = {"CALL:Agent", "CALL:mcp", "CALL:other", "RESULT:ok"}
+                     "exit2", "exit1", "unknown", "other"}
+    allowed = {"CALL:Agent", "CALL:mcp", "CALL:other", "RESULT:ok", "RESULT:other"}
     allowed |= {f"CALL:{n}" for n in contrib.PASSTHROUGH_TOOLS}
     allowed |= {f"CALL:inspect:{n}" for n in contrib.INSPECT_TOOLS}
     allowed |= {f"CALL:write:{n}" for n in contrib.WRITE_TOOLS}
