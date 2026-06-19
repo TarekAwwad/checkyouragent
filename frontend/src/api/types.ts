@@ -658,7 +658,7 @@ export interface ContributionManifest {
 
 export interface ContributionPreview {
   manifest: ContributionManifest;
-  bundle: Record<string, unknown>;
+  bundle: { sessions?: unknown[] } & Record<string, unknown>;
 }
 
 export interface ContributionExportResult {

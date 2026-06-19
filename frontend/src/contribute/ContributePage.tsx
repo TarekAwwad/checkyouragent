@@ -9,7 +9,7 @@ export default function ContributePage() {
   if (preview.isError || !preview.data) return <div className="page">Could not build a contribution preview.</div>;
 
   const { manifest, bundle } = preview.data;
-  const sample = (bundle.sessions as unknown[] | undefined)?.[0];
+  const sample = bundle.sessions?.[0];
 
   return (
     <div className="page contribute-page">
