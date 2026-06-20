@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import secrets
 from dataclasses import asdict
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -128,9 +129,11 @@ def contribution_export(conn: Connection = Depends(get_db)) -> ContributionExpor
     bundle = _current_bundle(conn)
     out_dir = config.data_dir() / "contributions"
     out_dir.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    path = out_dir / f"contribution-{stamp}.json"
-    path.write_text(json.dumps(bundle.to_dict(), indent=2), encoding="utf-8")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S_%fZ")
+    path = out_dir / f"contribution-{stamp}-{secrets.token_hex(4)}.json"
+    # Exclusive create: never silently overwrite a prior export.
+    with path.open("x", encoding="utf-8") as fh:
+        fh.write(json.dumps(bundle.to_dict(), indent=2))
     return ContributionExportResponse(path=str(path), session_count=len(bundle.sessions))
 
 
