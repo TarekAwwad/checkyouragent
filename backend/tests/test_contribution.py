@@ -215,3 +215,19 @@ def test_bundle_manifest_summarizes_counts_and_exclusions(tmp_path):
     assert "prompt" in joined and "file content" in joined
     # The honesty caveat is present and non-empty.
     assert "fingerprint" in manifest["fingerprint_caveat"].lower()
+
+
+def test_bundle_includes_stop_reason_counts(tmp_path):
+    bundle = _bundle_from_sanitized(tmp_path)
+    data = bundle.to_dict()
+    # Every session has a stop_reasons map; keys are the closed vocabulary (+ "other"); values are ints.
+    seen_any = False
+    for session in data["sessions"]:
+        assert "stop_reasons" in session
+        for key, count in session["stop_reasons"].items():
+            assert key in contrib.KNOWN_STOP_REASONS or key == "other"
+            assert isinstance(count, int) and count > 0
+            seen_any = True
+    # The sanitized fixture has assistant messages with stop_reason "tool_use".
+    assert seen_any
+    assert any(s["stop_reasons"].get("tool_use", 0) > 0 for s in data["sessions"])

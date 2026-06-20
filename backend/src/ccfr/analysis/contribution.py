@@ -49,6 +49,12 @@ ERROR_CLASSES = frozenset({
     "missing_command", "git", "test_failure", "exit2", "exit1", "unknown",
 })
 
+# Closed model stop_reason vocabulary; unknown values bucket to "other".
+KNOWN_STOP_REASONS = frozenset({
+    "tool_use", "end_turn", "max_tokens", "stop_sequence",
+    "pause_turn", "refusal", "model_context_window_exceeded",
+})
+
 
 def bucket_model(raw: str | None) -> str:
     if not raw:
@@ -211,6 +217,7 @@ def build_contribution(
             "duration_s": _duration_s(s["first_ts"], s["last_ts"]),
             "tokens": _session_tokens(conn, session_pk),
             "stats": _session_stats(conn, session_pk),
+            "stop_reasons": _session_stop_reasons(conn, session_pk),
             "risk_categories": _session_risk_categories(conn, session_pk),
             "subagents": _session_subagents(conn, session_pk),
             "sequence": _session_sequence(conn, session_pk),
@@ -280,6 +287,23 @@ def _session_stats(conn: sqlite3.Connection, session_pk: int) -> dict:
     }
 
 
+def _session_stop_reasons(conn: sqlite3.Connection, session_pk: int) -> dict:
+    rows = conn.execute(
+        """
+        SELECT m.stop_reason AS sr, COUNT(*) AS n
+        FROM messages m JOIN events e ON e.id = m.event_id
+        WHERE e.session_id = ? AND m.stop_reason IS NOT NULL AND m.stop_reason != ''
+        GROUP BY m.stop_reason
+        """,
+        (session_pk,),
+    ).fetchall()
+    counts: dict[str, int] = {}
+    for row in rows:
+        key = str(row["sr"]) if str(row["sr"]) in KNOWN_STOP_REASONS else "other"
+        counts[key] = counts.get(key, 0) + int(row["n"])
+    return counts
+
+
 def _session_risk_categories(conn: sqlite3.Connection, session_pk: int) -> list[str]:
     rows = conn.execute(
         "SELECT DISTINCT category FROM risk_findings WHERE session_id = ? ORDER BY category",
@@ -313,7 +337,7 @@ def bundle_manifest(bundle: ContributionBundle) -> dict:
             "Session timings (date-only) and per-step deltas",
             "Tool/event sequence (structural symbols only)",
             "Counts (turns, tool calls, subagents, errors, loops)",
-            "Risk categories", "Subagent types (bucketed) + counts",
+            "Stop reasons (counts)", "Risk categories", "Subagent types (bucketed) + counts",
         ],
         "excluded": [
             "Prompts and your messages", "Model reasoning / assistant text",
