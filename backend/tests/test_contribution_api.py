@@ -53,20 +53,19 @@ def test_export_writes_local_file(client, tmp_path):
     assert parsed["schema_version"] == 1
 
 
-@pytest.mark.skip(
-    reason=(
-        "socket.socket cannot be patched on Windows+asyncio: the ProactorEventLoop "
-        "calls socket.socketpair() during self-pipe setup BEFORE the ASGI handler runs, "
-        "so the guard fires against the TestClient infrastructure, not the export code. "
-        "See review fix-D report: a narrower guard (e.g. httpx-level or urllib3-level) "
-        "is needed on this platform."
-    )
-)
 def test_export_makes_no_network_calls(client, tmp_path, monkeypatch):
+    # Guard against a regression that adds an outbound "phone home" to export.
+    # Patch the outbound-connection primitives (NOT socket.socket itself, which
+    # asyncio's Windows self-pipe needs) so any real network attempt fails loudly.
     import socket
-    def _no_socket(*args, **kwargs):
-        raise AssertionError("contribution export must not open a network socket")
-    monkeypatch.setattr(socket, "socket", _no_socket)
+    import urllib.request
+
+    def _no_net(*args, **kwargs):
+        raise AssertionError("contribution export must not make a network connection")
+
+    monkeypatch.setattr(socket, "create_connection", _no_net)
+    monkeypatch.setattr(urllib.request, "urlopen", _no_net)
+
     resp = client.post("/api/contribution/export")
     assert resp.status_code == 200
     written = list((tmp_path / "contributions").glob("contribution-*.json"))
