@@ -30,3 +30,4 @@ docs/superpowers/*
 docs/PROJECT_STATE.md
 docker-compose-local.yml
 /pricing
+/tmp/
