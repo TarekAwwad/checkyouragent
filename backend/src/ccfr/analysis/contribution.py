@@ -348,8 +348,6 @@ def bundle_manifest(bundle: ContributionBundle) -> dict:
         "fingerprint_caveat": (
             "This bundle contains no content, but it is a structural fingerprint: "
             "exact token counts, timing deltas, and the ordered tool sequence are "
-            "distinctive. Someone who already has access to your original sessions "
-            "could in principle correlate this bundle back to them. \"No content\" "
-            "does not mean \"fully anonymous.\""
+            "distinctive."
         ),
     }
