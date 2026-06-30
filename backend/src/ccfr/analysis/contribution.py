@@ -333,6 +333,7 @@ def bundle_manifest(bundle: ContributionBundle) -> dict:
         "session_count": len(sessions),
         "sequence_step_count": sum(len(s["sequence"]) for s in sessions),
         "included_fields": [
+            "Pseudonymous contributor ID and bundle metadata",
             "Model (bucketed)", "Token counts + cache breakdown",
             "Session timings (date-only) and per-step deltas",
             "Tool/event sequence (structural symbols only)",

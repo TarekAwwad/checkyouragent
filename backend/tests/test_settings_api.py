@@ -10,10 +10,10 @@ def test_settings_get_default_and_put_round_trip(monkeypatch, tmp_path):
 
     got = client.get("/api/settings")
     assert got.status_code == 200
-    assert got.json() == {"historical_pricing": True}
+    assert got.json() == {"historical_pricing": True, "privacy_mode": False}
 
     put = client.put("/api/settings", json={"historical_pricing": False})
     assert put.status_code == 200
-    assert put.json() == {"historical_pricing": False}
+    assert put.json() == {"historical_pricing": False, "privacy_mode": False}
 
-    assert client.get("/api/settings").json() == {"historical_pricing": False}
+    assert client.get("/api/settings").json() == {"historical_pricing": False, "privacy_mode": False}

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { ArrowRight, ArrowUpRight, Check, Download, FileJson, Lock, ScanSearch } from "lucide-react";
 import { exportContribution, getContributionPreview } from "../api/client";
+import { Blurred } from "../shell/Blurred";
 import { type ContributionSession, compactInt } from "./specimen";
 import SpecimenModal from "./SpecimenModal";
 
@@ -90,7 +91,7 @@ export default function ContributePage() {
             {exported ? (
               <div className="flow-result">
                 <FileJson size={14} aria-hidden="true" />
-                <code>{exportedPath}</code>
+                <code><Blurred>{exportedPath}</Blurred></code>
               </div>
             ) : null}
             {exporter.isError && <span className="flow-error">Export failed; nothing was written.</span>}
