@@ -7,6 +7,7 @@ import { counterfactualSeries } from "./streamGeometry";
 import { formatTokens, formatUsd } from "./ContextEconomics";
 import ContextStream from "./ContextStream";
 import BallastLanes from "./BallastLanes";
+import { Blurred } from "../../shell/Blurred";
 
 export default function SessionDrilldown({
   sessionId,
@@ -49,7 +50,7 @@ export default function SessionDrilldown({
       <>
         {finding && (
           <p className="drilldown-inspecting">
-            <span className="drilldown-inspecting-label" title={finding.label}>{finding.label}</span>
+            <span className="drilldown-inspecting-label" title={finding.label}><Blurred>{finding.label}</Blurred></span>
             <strong>
               saves {costAvailable ? formatUsd(finding.savings_usd) : formatTokens(finding.savings_tokens)}
             </strong>
@@ -77,7 +78,7 @@ export default function SessionDrilldown({
   return (
     <section className="session-drilldown">
       <header className="session-drilldown-header">
-        <h3 className="session-drilldown-title">{sessionTitle}</h3>
+        <h3 className="session-drilldown-title"><Blurred>{sessionTitle}</Blurred></h3>
         <div className="session-drilldown-actions">
           <button
             type="button"

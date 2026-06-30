@@ -16,6 +16,7 @@ from ccfr.config import data_dir
 @dataclass
 class Settings:
     historical_pricing: bool = True
+    privacy_mode: bool = False
     contributor_salt: str | None = None
     contributor_id: str | None = None
 
@@ -36,6 +37,7 @@ def read_settings() -> Settings:
         return Settings()
     return Settings(
         historical_pricing=bool(raw.get("historical_pricing", True)),
+        privacy_mode=bool(raw.get("privacy_mode", False)),
         contributor_salt=raw.get("contributor_salt"),
         contributor_id=raw.get("contributor_id"),
     )

@@ -4,6 +4,7 @@ import { ExternalLink, Target, TrendingUp } from "lucide-react";
 import { getDiscoveryAnalytics } from "../api/client";
 import InsightStat from "../components/InsightStat";
 import type { DiscoveryDriver, DiscoveryExample, DiscoverySection, Project } from "../api/types";
+import { Blurred } from "../shell/Blurred";
 
 interface Props {
   projects: Project[];
@@ -72,8 +73,8 @@ function ExampleList({
         return (
         <li key={`${example.kind}-${example.id ?? index}-${example.session_id ?? index}`}>
           <div>
-            <strong>{exampleTitle(example)}</strong>
-            {meta && <span>{meta}</span>}
+            <strong><Blurred>{exampleTitle(example)}</Blurred></strong>
+            {meta && <span><Blurred>{meta}</Blurred></span>}
           </div>
           {example.id !== null && (
             <button type="button" onClick={() => onOpenSession(example.id as number)}>

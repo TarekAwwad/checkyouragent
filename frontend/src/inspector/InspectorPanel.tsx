@@ -3,6 +3,7 @@ import { AlertTriangle, Braces, Link2, Loader2, Repeat } from "lucide-react";
 import type { EventDetail, RiskFinding, SessionCard, Subagent } from "../api/types";
 import type { LoopContext } from "../trace/loopContext";
 import { loopExplanation } from "../trace/loopContext";
+import { Blurred } from "../shell/Blurred";
 
 interface Props {
   session: SessionCard;
@@ -35,6 +36,7 @@ function InspectorPanel({ event, loopContext, subagents, findings = [], loading,
         {loading && <Loader2 size={15} className="spin" />}
       </div>
 
+      <Blurred as="div">
       {tab === "event" && (
         <section className="inspect-section">
           {!event && <p className="muted">Select a timeline item or trace span.</p>}
@@ -144,6 +146,7 @@ function InspectorPanel({ event, loopContext, subagents, findings = [], loading,
           )}
         </section>
       )}
+      </Blurred>
     </aside>
   );
 }

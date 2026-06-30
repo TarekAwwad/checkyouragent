@@ -103,6 +103,7 @@ def get_settings() -> SettingsResponse:
 def update_settings(payload: SettingsResponse) -> SettingsResponse:
     current = read_settings()
     current.historical_pricing = payload.historical_pricing
+    current.privacy_mode = payload.privacy_mode
     saved = write_settings(current)
     return SettingsResponse(**asdict(saved))
 

@@ -2,6 +2,7 @@ import React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeftRight, Search } from "lucide-react";
 import { getEvent, getSession, getSessionFindings, getSubagents, getTimeline, getTrace, search } from "../api/client";
+import { Blurred } from "../shell/Blurred";
 import type { SessionCard } from "../api/types";
 import TimelinePanel from "../timeline/TimelinePanel";
 import InspectorPanel from "../inspector/InspectorPanel";
@@ -137,8 +138,8 @@ function SessionWorkspace({ session, initialEventId = null }: Props) {
               <div className="search-popover">
                 {searchResults.data.slice(0, 8).map((result) => (
                   <button key={`${result.kind}-${result.ref_id}`} onClick={() => result.kind === "message" && setSelectedEventId(result.ref_id)}>
-                    <strong>{result.title || result.kind}</strong>
-                    <span>{result.preview}</span>
+                    <strong><Blurred>{result.title || result.kind}</Blurred></strong>
+                    <span><Blurred>{result.preview}</Blurred></span>
                   </button>
                 ))}
               </div>
@@ -164,11 +165,10 @@ function SessionWorkspace({ session, initialEventId = null }: Props) {
               <div className="session-tile-heading">
                 <div className="session-title">
                   <p className="crumb">
-                    {card.project_name}
-                    {card.git_branch ? ` / ${card.git_branch}` : ""}
+                    <Blurred>{card.project_name}{card.git_branch ? ` / ${card.git_branch}` : ""}</Blurred>
                   </p>
-                  <h2>{card.title || card.session_id}</h2>
-                  <p className="session-meta">{metaParts.length ? metaParts.join(" · ") : card.session_id}</p>
+                  <h2><Blurred>{card.title || card.session_id}</Blurred></h2>
+                  <p className="session-meta"><Blurred>{metaParts.length ? metaParts.join(" · ") : card.session_id}</Blurred></p>
                 </div>
                 <span className="hint"><ArrowLeftRight size={13} /> spacing · lanes · loops</span>
               </div>

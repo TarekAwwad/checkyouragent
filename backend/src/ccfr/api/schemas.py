@@ -18,6 +18,7 @@ class RuntimeConfigResponse(BaseModel):
 
 class SettingsResponse(BaseModel):
     historical_pricing: bool = True
+    privacy_mode: bool = False
 
 
 class CacheStatsResponse(BaseModel):

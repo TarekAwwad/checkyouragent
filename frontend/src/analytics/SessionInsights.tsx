@@ -12,6 +12,7 @@ import {
   turnDistributionSummary,
   turnDistributionSessions,
 } from "./chartGeometry";
+import { Blurred } from "../shell/Blurred";
 
 interface Props {
   payload: CostAnalyticsResponse;
@@ -366,8 +367,8 @@ function TurnOutlierInspector({
       <div className="turn-detail-header">
         <div>
           <span>Investigate outlier turns</span>
-          <strong>{session.title || session.session_id}</strong>
-          <small>{session.project_name}</small>
+          <strong><Blurred>{session.title || session.session_id}</Blurred></strong>
+          <small><Blurred>{session.project_name}</Blurred></small>
         </div>
         <button type="button" className="turn-detail-link" onClick={() => onOpenSession(session.id)}>
           Open session page
@@ -383,8 +384,8 @@ function TurnOutlierInspector({
       ) : (
         <>
           <p className="turn-detail-preview">
-            <strong>{focusTurn.title}</strong>
-            {focusTurn.preview ? ` · ${focusTurn.preview}` : " · No user prompt preview captured."}
+            <strong><Blurred>{focusTurn.title}</Blurred></strong>
+            {focusTurn.preview ? <Blurred>{` · ${focusTurn.preview}`}</Blurred> : " · No user prompt preview captured."}
           </p>
           <div className="turn-detail-body">
             <div className="turn-detail-plot" ref={plotHostRef}>
@@ -547,8 +548,8 @@ export default function SessionInsights({ payload, onOpenSession, available }: P
             <li key={session.id}>
               <button type="button" onClick={() => onOpenSession(session.id)}>
                 <span className="sil-main">
-                  <span className="sil-title">{session.title || session.session_id}</span>
-                  <span className="sil-meta">{metaLabel(session, mode)}</span>
+                  <span className="sil-title"><Blurred>{session.title || session.session_id}</Blurred></span>
+                  <span className="sil-meta"><Blurred>{metaLabel(session, mode)}</Blurred></span>
                   {badges(session).length > 0 && (
                     <span className="sil-badges">
                       {badges(session).map((badge) => <i key={badge}>{badge}</i>)}

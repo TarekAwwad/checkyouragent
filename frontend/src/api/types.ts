@@ -646,6 +646,7 @@ export interface UsageCharacteristicsResponse {
 
 export interface Settings {
   historical_pricing: boolean;
+  privacy_mode: boolean;
 }
 
 export interface ContributionManifest {

@@ -3,6 +3,7 @@ import { AlertTriangle, Network, Search } from "lucide-react";
 import type { Project, SessionCard } from "../api/types";
 import { riskScore } from "./riskScore";
 import RiskCell from "./RiskCell";
+import { Blurred } from "../shell/Blurred";
 
 interface Props {
   projects: Project[];
@@ -101,7 +102,7 @@ function TriageBoard({ projects, sessions, loading, onOpenSession }: Props) {
 
       <section className="card triage-card">
         <div className="triage-project-summary" aria-label="Project cost summary">
-          <span className="tps-project">{projectLabel}</span>
+          <span className="tps-project"><Blurred>{projectLabel}</Blurred></span>
           <span className="tps-sessions">{rows.length.toLocaleString()} sessions</span>
           <span className="tps-cost">
             {costAvailable ? <>Total cost <b>{formatUsd(totalCost)}</b></> : "Cost unavailable"}
@@ -142,13 +143,13 @@ function TriageBoard({ projects, sessions, loading, onOpenSession }: Props) {
                         <RiskCell session={session} />
                       </td>
                       <td>
-                        <div className="tr-name">{session.title || session.session_id.slice(0, 8)}</div>
-                        <div className="tr-sub">{session.project_name}{session.title ? ` · ${session.session_id.slice(0, 8)}` : ""}</div>
+                        <div className="tr-name"><Blurred>{session.title || session.session_id.slice(0, 8)}</Blurred></div>
+                        <div className="tr-sub"><Blurred>{session.project_name}{session.title ? ` · ${session.session_id.slice(0, 8)}` : ""}</Blurred></div>
                       </td>
                       <td className={session.finding_count ? "cell-findings" : "cell-muted"}>
                         {session.finding_count ? (
                           <span className="finding-cell">
-                            {session.top_finding_title || formatCategory(session.top_finding_category)}
+                            <Blurred>{session.top_finding_title || formatCategory(session.top_finding_category)}</Blurred>
                           </span>
                         ) : "none"}
                       </td>

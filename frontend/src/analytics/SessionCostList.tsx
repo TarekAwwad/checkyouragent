@@ -1,6 +1,7 @@
 // frontend/src/analytics/SessionCostList.tsx
 import type { CostAnalyticsResponse } from "../api/types";
 import { formatUsd } from "./chartGeometry";
+import { Blurred } from "../shell/Blurred";
 
 interface Props {
   payload: CostAnalyticsResponse;
@@ -20,8 +21,8 @@ export default function SessionCostList({ payload, onOpenSession, available }: P
       {payload.sessions.slice(0, 12).map((s) => (
         <li key={s.id}>
           <button onClick={() => onOpenSession(s.id)}>
-            <span className="scl-title">{s.title || s.session_id}</span>
-            <span className="scl-project">{s.project_name}</span>
+            <span className="scl-title"><Blurred>{s.title || s.session_id}</Blurred></span>
+            <span className="scl-project"><Blurred>{s.project_name}</Blurred></span>
             <b>{formatUsd(s.usd)}</b>
           </button>
         </li>
