@@ -22,9 +22,10 @@ By default, local runs use:
 ```text
 CCFR_IMPORT_ROOT=../Data
 CCFR_DB_PATH=../.ccfr-data/ccfr.sqlite3
+CCFR_TEAM_BUNDLE_ROOT=../.ccfr-data/team-bundles
 ```
 
-The app reads raw exports from the import root and stores rebuildable index data in SQLite. Deleting the SQLite file removes the cache, but it does not delete the original export.
+The app reads raw exports from the import root and stores rebuildable index data in SQLite. Team bundle exports are written under the configured team bundle root. Deleting the SQLite file removes the cache, but it does not delete the original export or exported team bundles.
 
 ## Network Behavior
 
@@ -38,6 +39,7 @@ Never commit sensitive or generated local data:
 
 ```text
 Data/
+TeamBundles/
 .ccfr-data/
 *.sqlite3
 *.sqlite3-*

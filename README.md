@@ -72,7 +72,7 @@ Frontend: http://localhost:5173
 Backend API docs: http://localhost:8000/docs
 ```
 
-By default `docker-compose.yml` mounts the local `Data/` folder as `/imports` for the backend service. Both containers bind to host loopback only; the backend serves API routes and the frontend is served by a separate container.
+By default `docker-compose.yml` mounts the local `Data/` folder as `/imports` for the backend service and `TeamBundles/` as `/team-bundles` for team bundle exports and optional server-path imports. Team managers can also import a team bundle by choosing the JSON file in the browser, which does not require the file path to exist inside the container. Both containers bind to host loopback only; the backend serves API routes and the frontend is served by a separate container.
 
 ## Local Backend
 
@@ -87,6 +87,7 @@ When run outside Docker, the backend defaults to:
 ```text
 CCFR_IMPORT_ROOT=../Data
 CCFR_DB_PATH=../.ccfr-data/ccfr.sqlite3
+CCFR_TEAM_BUNDLE_ROOT=../.ccfr-data/team-bundles
 ```
 
 Set those environment variables before starting `uvicorn` if you want to index a different export root or store the rebuildable SQLite cache elsewhere.

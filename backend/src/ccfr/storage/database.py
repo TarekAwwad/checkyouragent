@@ -276,6 +276,47 @@ CREATE INDEX IF NOT EXISTS idx_risk_findings_session ON risk_findings(session_id
 CREATE INDEX IF NOT EXISTS idx_risk_findings_category ON risk_findings(category);
 CREATE INDEX IF NOT EXISTS idx_risk_findings_score ON risk_findings(score);
 
+CREATE TABLE IF NOT EXISTS team_bundles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bundle_id TEXT NOT NULL UNIQUE,
+    profile TEXT NOT NULL,
+    schema_version INTEGER NOT NULL,
+    member_id TEXT NOT NULL,
+    generated_at TEXT NOT NULL,
+    app_version TEXT,
+    imported_at TEXT NOT NULL,
+    source_path TEXT NOT NULL,
+    session_count INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_team_bundles_member ON team_bundles(member_id);
+CREATE INDEX IF NOT EXISTS idx_team_bundles_imported_at ON team_bundles(imported_at);
+
+CREATE TABLE IF NOT EXISTS team_bundle_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    team_bundle_id INTEGER NOT NULL REFERENCES team_bundles(id) ON DELETE CASCADE,
+    member_id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    session_id TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    first_date TEXT,
+    last_date TEXT,
+    duration_s INTEGER NOT NULL DEFAULT 0,
+    models_json TEXT NOT NULL DEFAULT '[]',
+    tokens_json TEXT NOT NULL DEFAULT '{}',
+    tokens_by_model_json TEXT NOT NULL DEFAULT '{}',
+    stats_json TEXT NOT NULL DEFAULT '{}',
+    stop_reasons_json TEXT NOT NULL DEFAULT '{}',
+    risk_categories_json TEXT NOT NULL DEFAULT '[]',
+    subagents_json TEXT NOT NULL DEFAULT '[]',
+    sequence_json TEXT NOT NULL DEFAULT '[]',
+    UNIQUE(team_bundle_id, session_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_team_bundle_sessions_bundle ON team_bundle_sessions(team_bundle_id);
+CREATE INDEX IF NOT EXISTS idx_team_bundle_sessions_member ON team_bundle_sessions(member_id);
+CREATE INDEX IF NOT EXISTS idx_team_bundle_sessions_first_date ON team_bundle_sessions(first_date);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
     kind,
     ref_id UNINDEXED,
@@ -288,6 +329,8 @@ CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
 
 DROP_TABLES = [
     "search_index",
+    "team_bundle_sessions",
+    "team_bundles",
     "risk_findings",
     "pattern_hits",
     "event_features",
@@ -339,6 +382,14 @@ def migrate_db(conn: sqlite3.Connection) -> None:
           AND COALESCE(cache_read_tokens, 0) = 0
         """
     )
+
+    # Per-model token attribution for team bundles (sub-project B). Added to
+    # older databases whose team_bundle_sessions predates the column.
+    team_session_columns = _column_names(conn, "team_bundle_sessions")
+    if team_session_columns and "tokens_by_model_json" not in team_session_columns:
+        conn.execute(
+            "ALTER TABLE team_bundle_sessions ADD COLUMN tokens_by_model_json TEXT NOT NULL DEFAULT '{}'"
+        )
 
 
 def connect(path: Path) -> sqlite3.Connection:

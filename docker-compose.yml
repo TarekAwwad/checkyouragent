@@ -9,9 +9,11 @@ services:
       CCFR_DATA_DIR: /app/data
       CCFR_DB_PATH: /app/data/ccfr.sqlite3
       CCFR_IMPORT_ROOT: /imports
+      CCFR_TEAM_BUNDLE_ROOT: /team-bundles
     volumes:
       - ./Data:/imports:ro
       - ccfr-data:/app/data
+      - ./TeamBundles:/team-bundles
       # Mount pricing.csv read-only so edits take effect on the next request (no rebuild).
       - ./pricing.csv:/app/pricing.csv:ro
       # Mount the dated price-snapshot dir too, so historical pricing works in

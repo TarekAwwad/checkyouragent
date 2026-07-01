@@ -12,6 +12,7 @@ class ImportRequest(BaseModel):
 
 class RuntimeConfigResponse(BaseModel):
     import_root: str
+    team_bundle_root: str
     database_path: str
     is_docker: bool = False
 
@@ -678,3 +679,57 @@ class ContributionPreviewResponse(BaseModel):
 class ContributionExportResponse(BaseModel):
     path: str
     session_count: int
+
+
+class TeamExportPreviewResponse(BaseModel):
+    manifest: dict[str, Any]
+    bundle: dict[str, Any]
+
+
+class TeamExportResponse(BaseModel):
+    path: str
+    bundle_id: str
+    session_count: int
+
+
+class TeamImportRequest(BaseModel):
+    path: str = Field(description="Path to a team bundle JSON file under CCFR_TEAM_BUNDLE_ROOT.")
+
+
+class TeamBundleUploadRequest(BaseModel):
+    filename: str | None = Field(default=None, description="Original local filename selected in the browser.")
+    bundle: dict[str, Any] = Field(description="Parsed team bundle JSON payload.")
+
+
+class TeamImportResponse(BaseModel):
+    bundle_id: str
+    member_id: str
+    session_count: int
+    imported: bool
+
+
+class TeamImportEntry(BaseModel):
+    id: int
+    bundle_id: str
+    profile: str
+    schema_version: int
+    member_id: str
+    generated_at: str
+    app_version: str | None = None
+    imported_at: str
+    source_path: str
+    session_count: int
+
+
+class TeamDashboardResponse(BaseModel):
+    meta: dict[str, Any] = Field(default_factory=dict)
+    tokens: dict[str, Any] = Field(default_factory=dict)
+    stats: dict[str, Any] = Field(default_factory=dict)
+    providers: list[dict[str, Any]] = Field(default_factory=list)
+    models: list[dict[str, Any]] = Field(default_factory=list)
+    stop_reasons: list[dict[str, Any]] = Field(default_factory=list)
+    risk_categories: list[dict[str, Any]] = Field(default_factory=list)
+    subagents: list[dict[str, Any]] = Field(default_factory=list)
+    sequence: list[dict[str, Any]] = Field(default_factory=list)
+    members: list[dict[str, Any]] = Field(default_factory=list)
+    over_time: list[dict[str, Any]] = Field(default_factory=list)

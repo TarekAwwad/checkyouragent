@@ -20,6 +20,15 @@ from ccfr.analysis.context_economics import (
     session_context_economics,
 )
 from ccfr.analysis.discovery import discovery_analytics
+from ccfr.analysis.team_bundles import (
+    build_team_bundle,
+    import_team_bundle,
+    list_team_imports,
+    reset_team_bundles,
+    team_bundle_manifest,
+    team_dashboard,
+)
+from ccfr.analysis.team_cost import team_cost_analytics
 from ccfr.analysis.usage_map import usage_map_analytics, usage_map_evidence
 from ccfr.analysis.usage_characteristics import usage_characteristics_analytics
 from ccfr.api.schemas import (
@@ -42,6 +51,13 @@ from ccfr.api.schemas import (
     SessionContextEconomicsResponse,
     SettingsResponse,
     SubagentResponse,
+    TeamDashboardResponse,
+    TeamBundleUploadRequest,
+    TeamExportPreviewResponse,
+    TeamExportResponse,
+    TeamImportEntry,
+    TeamImportRequest,
+    TeamImportResponse,
     TimelineItem,
     TurnCostBreakdown,
     TraceResponse,
@@ -54,6 +70,8 @@ from ccfr.config import (
     import_root,
     is_docker,
     resolve_within_import_root,
+    resolve_within_team_bundle_root,
+    team_bundle_root,
     validate_project_name,
 )
 from ccfr.ingest import ImportSummary, discover_projects, import_all_new, import_project
@@ -89,6 +107,7 @@ def _progress_callback(conn: Connection, source: Path, project: str | None):
 def get_config() -> RuntimeConfigResponse:
     return RuntimeConfigResponse(
         import_root=str(import_root()),
+        team_bundle_root=str(team_bundle_root()),
         database_path=str(database_path()),
         is_docker=is_docker(),
     )
@@ -119,6 +138,17 @@ def _current_bundle(conn: Connection):
     )
 
 
+def _current_team_bundle(conn: Connection):
+    salt, member_id = contributor_identity()
+    return build_team_bundle(
+        conn,
+        salt=salt,
+        member_id=member_id,
+        app_version=config.app_version(),
+        generated_on=date.today(),
+    )
+
+
 @router.get("/contribution/preview", response_model=ContributionPreviewResponse)
 def contribution_preview(conn: Connection = Depends(get_db)) -> ContributionPreviewResponse:
     bundle = _current_bundle(conn)
@@ -136,6 +166,89 @@ def contribution_export(conn: Connection = Depends(get_db)) -> ContributionExpor
     with path.open("x", encoding="utf-8") as fh:
         fh.write(json.dumps(bundle.to_dict(), indent=2))
     return ContributionExportResponse(path=str(path), session_count=len(bundle.sessions))
+
+
+@router.get("/team/export-preview", response_model=TeamExportPreviewResponse)
+def team_export_preview(conn: Connection = Depends(get_db)) -> TeamExportPreviewResponse:
+    bundle = _current_team_bundle(conn)
+    return TeamExportPreviewResponse(manifest=team_bundle_manifest(bundle), bundle=bundle.to_dict())
+
+
+@router.post("/team/export", response_model=TeamExportResponse)
+def team_export(conn: Connection = Depends(get_db)) -> TeamExportResponse:
+    bundle = _current_team_bundle(conn)
+    out_dir = team_bundle_root() / "exports"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S_%fZ")
+    path = out_dir / f"team-bundle-{stamp}-{secrets.token_hex(4)}.json"
+    data = bundle.to_dict()
+    with path.open("x", encoding="utf-8") as fh:
+        fh.write(json.dumps(data, indent=2))
+    return TeamExportResponse(path=str(path), bundle_id=data["bundle_id"], session_count=len(bundle.sessions))
+
+
+@router.post("/team/import", response_model=TeamImportResponse)
+def team_import(payload: TeamImportRequest, conn: Connection = Depends(get_db)) -> TeamImportResponse:
+    try:
+        path = resolve_within_team_bundle_root(payload.path, team_bundle_root())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not path.is_file():
+        raise HTTPException(status_code=400, detail=f"Team bundle not found: {path}")
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        result = import_team_bundle(conn, data, source_path=path)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail=f"Invalid JSON: {exc}") from exc
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return TeamImportResponse(**asdict(result))
+
+
+@router.post("/team/import-bundle", response_model=TeamImportResponse)
+def team_import_bundle(payload: TeamBundleUploadRequest, conn: Connection = Depends(get_db)) -> TeamImportResponse:
+    raw_filename = (payload.filename or "uploaded-team-bundle.json").replace("\\", "/")
+    filename = Path(raw_filename).name or "uploaded-team-bundle.json"
+    if filename in {".", ".."}:
+        filename = "uploaded-team-bundle.json"
+    source_path = team_bundle_root() / "browser-imports" / filename
+    try:
+        result = import_team_bundle(conn, payload.bundle, source_path=source_path)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return TeamImportResponse(**asdict(result))
+
+
+@router.get("/team/imports", response_model=list[TeamImportEntry])
+def team_imports(conn: Connection = Depends(get_db)) -> list[TeamImportEntry]:
+    return [TeamImportEntry(**row) for row in list_team_imports(conn)]
+
+
+@router.post("/team/reset", response_model=dict[str, bool])
+def team_reset(conn: Connection = Depends(get_db)) -> dict[str, bool]:
+    reset_team_bundles(conn)
+    return {"ok": True}
+
+
+@router.get("/team/dashboard", response_model=TeamDashboardResponse)
+def get_team_dashboard(conn: Connection = Depends(get_db)) -> TeamDashboardResponse:
+    return TeamDashboardResponse(**team_dashboard(conn))
+
+
+@router.get("/team/analytics/cost", response_model=CostAnalyticsResponse)
+def get_team_cost_analytics(
+    date_from: str | None = None,
+    date_to: str | None = None,
+    model: str | None = None,
+    conn: Connection = Depends(get_db),
+    historical: bool = Depends(get_historical_pricing),
+) -> CostAnalyticsResponse:
+    return CostAnalyticsResponse(
+        **team_cost_analytics(conn, date_from=date_from, date_to=date_to, model=model, historical=historical)
+    )
 
 
 @router.post("/imports", response_model=ImportSummaryResponse)
