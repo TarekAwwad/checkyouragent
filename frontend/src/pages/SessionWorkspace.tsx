@@ -1,6 +1,6 @@
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeftRight, Search } from "lucide-react";
+import { ArrowLeft, ArrowLeftRight, Search } from "lucide-react";
 import { getEvent, getSession, getSessionFindings, getSubagents, getTimeline, getTrace, search } from "../api/client";
 import { Blurred } from "../shell/Blurred";
 import type { SessionCard } from "../api/types";
@@ -17,9 +17,12 @@ interface Props {
   session: SessionCard;
   /** Event to select on entry (deep-link from analytics views); null = default. */
   initialEventId?: number | null;
+  /** Label for the origin-aware navigation control, for example "Back to Cost". */
+  backLabel?: string;
+  onBack?: () => void;
 }
 
-function SessionWorkspace({ session, initialEventId = null }: Props) {
+function SessionWorkspace({ session, initialEventId = null, backLabel, onBack }: Props) {
   const [selectedEventId, setSelectedEventId] = React.useState<number | null>(initialEventId);
   const [cursorIndex, setCursorIndex] = React.useState(0);
   const [playing, setPlaying] = React.useState(false);
@@ -129,6 +132,12 @@ function SessionWorkspace({ session, initialEventId = null }: Props) {
     <main className="cost-page session-page">
       <div className="cost-page-inner session-page-inner">
         <div className="cost-filterbar session-toolbar">
+          {backLabel && onBack && (
+            <button type="button" className="ghost-action" onClick={onBack} aria-label={backLabel}>
+              <ArrowLeft size={15} />
+              <span>{backLabel}</span>
+            </button>
+          )}
           <div className="session-search-wrap">
             <label className="session-search">
               <Search size={15} />

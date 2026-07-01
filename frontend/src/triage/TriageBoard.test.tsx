@@ -33,7 +33,7 @@ describe("TriageBoard", () => {
 
     render(<TriageBoard projects={projectOptions} sessions={sessions} loading={false} onOpenSession={() => {}} />);
 
-    expect(screen.getByRole("combobox")).toHaveValue("all");
+    expect(screen.getByRole("combobox", { name: "Project" })).toHaveValue("all");
     expect(screen.getByText(/herm0001/)).toBeInTheDocument();
     expect(screen.getByText(/dash0002/)).toBeInTheDocument();
   });
@@ -56,14 +56,14 @@ describe("TriageBoard", () => {
     expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: 7 }));
   });
 
-  it("re-sorts by a signal column header when clicked", () => {
+  it("re-sorts by a signal using the explicit sort control", () => {
     const sessions = [
       s({ id: 1, session_id: "loop9999", loop_count: 8, max_repeat: 12 }),
       s({ id: 2, session_id: "error222", error_count: 2 }),
     ];
     render(<TriageBoard projects={projects} sessions={sessions} loading={false} onOpenSession={() => {}} />);
 
-    fireEvent.click(screen.getByRole("columnheader", { name: "Errors" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Sort sessions" }), { target: { value: "error_count" } });
 
     const rows = screen.getAllByRole("row").slice(1);
     expect(within(rows[0]).getByText(/error222/)).toBeInTheDocument();
@@ -77,7 +77,7 @@ describe("TriageBoard", () => {
 
     render(<TriageBoard projects={projects} sessions={sessions} loading={false} onOpenSession={() => {}} />);
 
-    fireEvent.click(screen.getByRole("columnheader", { name: "Fanout" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Sort sessions" }), { target: { value: "subagent_count" } });
 
     const rows = screen.getAllByRole("row").slice(1);
     expect(within(rows[0]).getByText(/fan99999/)).toBeInTheDocument();
@@ -91,7 +91,7 @@ describe("TriageBoard", () => {
 
     render(<TriageBoard projects={projects} sessions={sessions} loading={false} onOpenSession={() => {}} />);
 
-    fireEvent.click(screen.getByRole("columnheader", { name: "Loops" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Sort sessions" }), { target: { value: "max_repeat" } });
 
     const rows = screen.getAllByRole("row").slice(1);
     expect(within(rows[0]).getByText(/loop9999/)).toBeInTheDocument();
@@ -113,7 +113,7 @@ describe("TriageBoard", () => {
 
     render(<TriageBoard projects={projects} sessions={sessions} loading={false} onOpenSession={() => {}} />);
 
-    fireEvent.click(screen.getByRole("columnheader", { name: "Findings" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Sort sessions" }), { target: { value: "patterns" } });
 
     const rows = screen.getAllByRole("row").slice(1);
     expect(within(rows[0]).getByText(/find9999/)).toBeInTheDocument();
@@ -154,7 +154,7 @@ describe("TriageBoard", () => {
     expect(within(summary).getByText("$1.75")).toBeInTheDocument();
   });
 
-  it("replaces the activity column and legend with self-explaining risk cells", () => {
+  it("replaces noisy signal columns with self-explaining risk and impact cells", () => {
     const sessions = [
       s({ id: 1, session_id: "noisy001", event_count: 500, error_count: 30, loop_count: 4, max_repeat: 12, subagent_count: 6 }),
     ];
@@ -162,6 +162,14 @@ describe("TriageBoard", () => {
 
     expect(screen.queryByLabelText("Activity trace legend")).toBeNull();
     expect(screen.queryByRole("columnheader", { name: "Activity" })).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "Errors" })).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "Loops" })).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "Fanout" })).toBeNull();
+    expect(screen.getByRole("columnheader", { name: "Impact" })).toBeInTheDocument();
+    expect(screen.getByText("30 errors")).toBeInTheDocument();
+    expect(screen.getByText("x12 loop")).toBeInTheDocument();
+    expect(screen.getByText("6 fanout")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Investigate" })).toBeInTheDocument();
     expect(container.querySelector('[data-testid="risk-bar"]')).not.toBeNull();
     expect(container.querySelectorAll('[data-testid="risk-seg"]').length).toBeGreaterThan(0);
   });

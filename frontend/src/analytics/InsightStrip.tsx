@@ -11,11 +11,14 @@ import {
 
 interface Props {
   payload: CostAnalyticsResponse;
+  selectedSpikeBucket?: string | null;
+  onSelectSpike?: (bucket: string) => void;
 }
 
-export default function InsightStrip({ payload }: Props) {
+export default function InsightStrip({ payload, selectedSpikeBucket = null, onSelectSpike }: Props) {
   const cache = payload.cache_economics;
   const spike = largestSpike(payload);
+  const spikeSelected = Boolean(spike && selectedSpikeBucket === spike.bucket);
   const turnSummary = turnDistributionSummary(payload.sessions);
   const topModel = [...chartModels(payload.by_model)].sort((a, b) => b.usd - a.usd)[0];
   const topShare = topModelSpendSharePct(payload);
@@ -40,11 +43,30 @@ export default function InsightStrip({ payload }: Props) {
               : "no cache reuse"}
         </small>
       </div>
-      <div className="cost-insight">
-        <span>Largest spike</span>
-        <b>{spike ? `${spike.bucket} ${formatSignedUsd(spike.delta_usd)}` : "None"}</b>
-        <small>{spike ? `${formatUsd(spike.total_usd)} total` : "no positive jump"}</small>
-      </div>
+      {spike && onSelectSpike ? (
+        <button
+          type="button"
+          className="cost-insight"
+          aria-pressed={spikeSelected}
+          aria-label={`${spikeSelected ? "Hide" : "Show"} largest spike sessions for ${spike.bucket}`}
+          style={{ textAlign: "left" }}
+          onClick={() => onSelectSpike(spike.bucket)}
+        >
+          <span>Largest spike</span>
+          <b>{`${spike.bucket} ${formatSignedUsd(spike.delta_usd)}`}</b>
+          <small>
+            {spikeSelected
+              ? `${spike.sessions.length} session${spike.sessions.length === 1 ? "" : "s"} shown`
+              : `${formatUsd(spike.total_usd)} total - inspect sessions`}
+          </small>
+        </button>
+      ) : (
+        <div className="cost-insight">
+          <span>Largest spike</span>
+          <b>{spike ? `${spike.bucket} ${formatSignedUsd(spike.delta_usd)}` : "None"}</b>
+          <small>{spike ? `${formatUsd(spike.total_usd)} total` : "no positive jump"}</small>
+        </div>
+      )}
       <div className="cost-insight">
         <span>Outside target</span>
         <b>{turnSummary.attentionCount}</b>

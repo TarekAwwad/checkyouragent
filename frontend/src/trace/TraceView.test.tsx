@@ -152,6 +152,17 @@ describe("TraceView", () => {
     expect(legend).toHaveTextContent("Selected event");
   });
 
+  it("keeps trace controls visible", () => {
+    render(<TraceView trace={chartTrace} selectedEventId={null} playheadTimestamp={null} onSelect={() => {}} />);
+
+    expect(screen.queryByText("View options")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Subagent" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Group dense" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Log scale" })).toBeChecked();
+    expect(screen.getByRole("combobox", { name: "Timeline spacing" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Token metric" })).toBeInTheDocument();
+  });
+
   it("filters visible spans when legend event types are toggled", () => {
     const { container } = render(<TraceView trace={trace} selectedEventId={null} playheadTimestamp={null} onSelect={() => {}} />);
 
@@ -293,8 +304,10 @@ describe("TraceView", () => {
     const scale = screen.getByRole("checkbox", { name: "Log scale" });
     expect(metric).toBeInTheDocument();
     expect(scale).toBeChecked();
+    expect(container.querySelector(".trace-view-options")).toBeNull();
     expect(container.querySelector(".trace-chart-footer .trace-chart-toggle")).not.toBeNull();
     expect(container.querySelector(".trace-chart-gutter .trace-chart-toggle")).toBeNull();
+    expect(container.querySelector(".trace-chart-gutter .trace-token-metric")).not.toBeNull();
     expect(container.querySelector(".trace-chart-gutter .trace-token-total")).not.toBeNull();
     expect(container.querySelector(".trace-chart-gutter .trace-chart-scale")).toBeNull();
     expect(screen.getByRole("option", { name: "Total" })).toBeInTheDocument();

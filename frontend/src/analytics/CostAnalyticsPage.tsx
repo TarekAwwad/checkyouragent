@@ -1,8 +1,8 @@
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getCostAnalytics } from "../api/client";
-import type { CostAnalyticsFilters } from "../api/types";
-import { buildModelColorMap } from "./chartGeometry";
+import type { CostAnalyticsFilters, SpendSpike } from "../api/types";
+import { buildModelColorMap, formatSignedUsd, formatTokens, formatUsd, largestSpike } from "./chartGeometry";
 import FilterBar from "./FilterBar";
 import CostByProject from "./CostByProject";
 import SpendOverTime from "./SpendOverTime";
@@ -10,6 +10,7 @@ import TokenCategories from "./TokenCategories";
 import CostByModel from "./CostByModel";
 import InsightStrip from "./InsightStrip";
 import SessionInsights, { TurnDistributionSection } from "./SessionInsights";
+import { Blurred } from "../shell/Blurred";
 
 interface Props {
   onOpenSession: (sessionId: number) => void;
@@ -23,8 +24,50 @@ function defaultFrom(): string {
   return d.toISOString();
 }
 
+function SpikeSessionsPanel({
+  spike,
+  onOpenSession,
+}: {
+  spike: SpendSpike;
+  onOpenSession: (sessionId: number) => void;
+}) {
+  const rows = React.useMemo(
+    () => [...spike.sessions].sort((a, b) => b.usd - a.usd),
+    [spike.sessions],
+  );
+
+  return (
+    <section className="tile tile-full" aria-label={`Largest spike sessions for ${spike.bucket}`}>
+      <h2>Largest spike sessions</h2>
+      <p className="tile-note">
+        {spike.bucket} - {formatSignedUsd(spike.delta_usd)} jump - {formatUsd(spike.total_usd)} total
+      </p>
+      {rows.length === 0 ? (
+        <div className="empty-state">No sessions returned for this spike.</div>
+      ) : (
+        <ul className="discover-examples">
+          {rows.map((session) => (
+            <li key={session.id}>
+              <div>
+                <strong><Blurred>{session.title || session.session_id}</Blurred></strong>
+                <span>
+                  <Blurred>{session.project_name}</Blurred> - {formatTokens(session.tokens)} tokens - {formatUsd(session.usd)}
+                </span>
+              </div>
+              <button type="button" onClick={() => onOpenSession(session.id)}>
+                Open session
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 export default function CostAnalyticsPage({ onOpenSession, historical = true }: Props) {
   const [filters, setFilters] = React.useState<CostAnalyticsFilters>({ dateFrom: defaultFrom() });
+  const [selectedSpikeBucket, setSelectedSpikeBucket] = React.useState<string | null>(null);
   const query = useQuery({
     // `historical` is part of the key so flipping the price mode is a distinct
     // query (and a distinct request URL), not a same-URL refetch that could be
@@ -39,6 +82,17 @@ export default function CostAnalyticsPage({ onOpenSession, historical = true }: 
     () => buildModelColorMap(payload?.meta.available_models ?? []),
     [payload?.meta.available_models],
   );
+  const currentLargestSpike = React.useMemo(
+    () => (payload ? largestSpike(payload) : null),
+    [payload],
+  );
+  const selectedSpike = selectedSpikeBucket === currentLargestSpike?.bucket ? currentLargestSpike : null;
+
+  React.useEffect(() => {
+    if (selectedSpikeBucket !== null && selectedSpikeBucket !== currentLargestSpike?.bucket) {
+      setSelectedSpikeBucket(null);
+    }
+  }, [currentLargestSpike?.bucket, selectedSpikeBucket]);
 
   return (
     <main className="cost-page">
@@ -58,8 +112,17 @@ export default function CostAnalyticsPage({ onOpenSession, historical = true }: 
           <div className="empty-state">Loading cost analytics...</div>
         ) : (
           <>
-            <InsightStrip payload={payload} />
+            <InsightStrip
+              payload={payload}
+              selectedSpikeBucket={selectedSpikeBucket}
+              onSelectSpike={(bucket) => setSelectedSpikeBucket((current) => (
+                current === bucket ? null : bucket
+              ))}
+            />
             <div className="cost-bento">
+              {selectedSpike && (
+                <SpikeSessionsPanel spike={selectedSpike} onOpenSession={onOpenSession} />
+              )}
               <section className="tile">
                 <h2>Cost by project</h2>
                 <CostByProject payload={payload} colors={colors} available={payload.meta.available} />

@@ -7,7 +7,6 @@ interface Props {
   view: View;
   discoverTechnique: string;
   collapsed: boolean;
-  sessionEnabled: boolean;
   theme: "dark" | "light";
   onSelectView: (view: View) => void;
   onSelectTechnique: (key: string) => void;
@@ -28,7 +27,6 @@ export default function Sidebar({
   view,
   discoverTechnique,
   collapsed,
-  sessionEnabled,
   theme,
   onSelectView,
   onSelectTechnique,
@@ -42,24 +40,27 @@ export default function Sidebar({
   privacyMode,
   onTogglePrivacyMode,
 }: Props) {
+  const readyTechniques = TECHNIQUES.filter((tech) => tech.status === "ready");
+
   return (
     <aside className={`app-sidebar ${collapsed ? "is-collapsed" : ""}`} aria-label="Primary">
       <div className="sb-brand">
-        <strong className="sb-wordmark">Claude Analytics</strong>
-        <strong className="sb-monogram" aria-hidden="true">CA</strong>
+        <div className="sb-brand-text">
+          <strong className="sb-wordmark">Session Analytics</strong>
+          <span className="sb-tagline">local, read-only session data</span>
+        </div>
+        <strong className="sb-monogram" aria-hidden="true">SA</strong>
       </div>
 
       <nav className="sb-nav">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const active = view === item.key;
-          const disabled = item.key === "session" && !sessionEnabled;
           return (
             <div key={item.key}>
               <button
                 className={`sb-item ${active ? "active" : ""}`}
                 onClick={() => onSelectView(item.key)}
-                disabled={disabled}
                 aria-label={item.label}
                 title={item.label}
               >
@@ -69,17 +70,15 @@ export default function Sidebar({
 
               {item.key === "discover" && view === "discover" && (
                 <div className="sb-subnav" role="group" aria-label="Discovery techniques">
-                  {TECHNIQUES.map((tech) => (
+                  {readyTechniques.map((tech) => (
                     <button
                       key={tech.key}
                       className={`sb-subitem ${discoverTechnique === tech.key ? "active" : ""}`}
-                      disabled={tech.status === "soon"}
                       onClick={() => onSelectTechnique(tech.key)}
                       title={tech.label}
                     >
                       <span className="sb-dot" aria-hidden="true" />
                       <span className="sb-label">{tech.label}</span>
-                      {tech.status === "soon" && <em className="sb-tag">SOON</em>}
                     </button>
                   ))}
                 </div>

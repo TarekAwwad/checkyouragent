@@ -14,6 +14,16 @@ interface Props {
 
 type SortKey = "risk" | "patterns" | "error_count" | "max_repeat" | "subagent_count" | "event_count" | "cost_usd";
 
+const SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
+  { key: "risk", label: "Highest risk" },
+  { key: "patterns", label: "Strongest finding" },
+  { key: "error_count", label: "Most errors" },
+  { key: "max_repeat", label: "Largest loop" },
+  { key: "subagent_count", label: "Most fanout" },
+  { key: "event_count", label: "Highest volume" },
+  { key: "cost_usd", label: "Highest cost" },
+];
+
 function sortValue(session: SessionCard, sortKey: SortKey): number {
   if (sortKey === "risk") return riskScore(session);
   if (sortKey === "patterns") return session.pattern_risk_score;
@@ -30,6 +40,34 @@ function formatCategory(value: string | null): string {
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function topIssue(session: SessionCard): { title: string; detail: string; tone: "finding" | "warn" | "calm" } {
+  if (session.finding_count > 0) {
+    return {
+      title: session.top_finding_title || formatCategory(session.top_finding_category),
+      detail: `${session.finding_count} finding${session.finding_count === 1 ? "" : "s"}`,
+      tone: "finding",
+    };
+  }
+  if (session.loop_count > 0) {
+    return { title: "Loop activity", detail: `max repeat x${session.max_repeat}`, tone: "warn" };
+  }
+  if (session.error_count > 0) {
+    return {
+      title: "Tool errors",
+      detail: `${session.error_count} flagged event${session.error_count === 1 ? "" : "s"}`,
+      tone: "warn",
+    };
+  }
+  if (session.subagent_count > 0) {
+    return {
+      title: "Delegated work",
+      detail: `${session.subagent_count} spawned thread${session.subagent_count === 1 ? "" : "s"}`,
+      tone: "calm",
+    };
+  }
+  return { title: "No immediate issue", detail: "open for details", tone: "calm" };
 }
 
 function TriageBoard({ projects, sessions, loading, onOpenSession }: Props) {
@@ -98,6 +136,15 @@ function TriageBoard({ projects, sessions, loading, onOpenSession }: Props) {
           <input type="checkbox" checked={onlyErrors} onChange={(e) => setOnlyErrors(e.target.checked)} />
           <span>Errors only</span>
         </label>
+        <select
+          aria-label="Sort sessions"
+          value={sortKey}
+          onChange={(e) => setSortKey(e.target.value as SortKey)}
+        >
+          {SORT_OPTIONS.map((option) => (
+            <option key={option.key} value={option.key}>{option.label}</option>
+          ))}
+        </select>
       </section>
 
       <section className="card triage-card">
@@ -119,16 +166,15 @@ function TriageBoard({ projects, sessions, loading, onOpenSession }: Props) {
                 <tr>
                   {header("risk", "Risk")}
                   <th>Session</th>
-                  {header("patterns", "Findings")}
-                  {header("error_count", "Errors")}
-                  {header("max_repeat", "Loops")}
-                  {header("subagent_count", "Fanout")}
-                  {header("event_count", "Volume")}
+                  {header("patterns", "Top issue")}
+                  <th>Impact</th>
                   {header("cost_usd", "Cost")}
+                  <th aria-label="Action" />
                 </tr>
               </thead>
               <tbody>
                 {rows.map((session) => {
+                  const issue = topIssue(session);
                   return (
                     <tr
                       key={session.id}
@@ -146,24 +192,35 @@ function TriageBoard({ projects, sessions, loading, onOpenSession }: Props) {
                         <div className="tr-name"><Blurred>{session.title || session.session_id.slice(0, 8)}</Blurred></div>
                         <div className="tr-sub"><Blurred>{session.project_name}{session.title ? ` · ${session.session_id.slice(0, 8)}` : ""}</Blurred></div>
                       </td>
-                      <td className={session.finding_count ? "cell-findings" : "cell-muted"}>
-                        {session.finding_count ? (
-                          <span className="finding-cell">
-                            <Blurred>{session.top_finding_title || formatCategory(session.top_finding_category)}</Blurred>
-                          </span>
-                        ) : "none"}
+                      <td className={`cell-issue issue-${issue.tone}`}>
+                        <span className="finding-cell">
+                          <Blurred>{issue.title}</Blurred>
+                        </span>
+                        <small>{issue.detail}</small>
                       </td>
-                      <td className={session.error_count ? "cell-err" : "cell-muted"}>{session.error_count}</td>
-                      <td className={session.loop_count ? "cell-loop" : "cell-muted"}>
-                        {session.loop_count ? `×${session.max_repeat}` : "—"}
-                      </td>
-                      <td className={session.subagent_count ? "cell-fan" : "cell-muted"}>{session.subagent_count}</td>
-                      <td className="cell-vol">
-                        <div><b>{session.event_count.toLocaleString()}</b> events</div>
+                      <td className="cell-impact">
+                        <div className="impact-stack" aria-label="Session impact">
+                          {session.error_count > 0 && <span className="impact-chip err">{session.error_count} errors</span>}
+                          {session.loop_count > 0 && <span className="impact-chip loop">x{session.max_repeat} loop</span>}
+                          {session.subagent_count > 0 && <span className="impact-chip fan">{session.subagent_count} fanout</span>}
+                          <span className="impact-chip neutral">{session.event_count.toLocaleString()} events</span>
+                        </div>
                         <div className="vol-dur">{Math.round(session.duration_seconds / 60)} min</div>
                       </td>
                       <td className={session.cost_available && session.cost_usd > 0 ? "cell-cost" : "cell-muted"}>
                         {session.cost_available ? formatUsd(session.cost_usd) : "—"}
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="triage-action"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onOpenSession(session);
+                          }}
+                        >
+                          Investigate
+                        </button>
                       </td>
                     </tr>
                   );

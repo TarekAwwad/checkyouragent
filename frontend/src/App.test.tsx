@@ -3,14 +3,15 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import * as client from "./api/client";
+import type { SessionCard } from "./api/types";
 
 vi.mock("./api/client", () => ({
   listImports: vi.fn(async () => []),
   listProjects: vi.fn(async () => []),
   listSessions: vi.fn(async () => []),
   discoverSourceProjects: vi.fn(async () => []),
-  getSettings: vi.fn(async () => ({ historical_pricing: true })),
-  updateSettings: vi.fn(async (s: { historical_pricing: boolean }) => s),
+  getSettings: vi.fn(async () => ({ historical_pricing: true, privacy_mode: false })),
+  updateSettings: vi.fn(async (s: { historical_pricing: boolean; privacy_mode: boolean }) => s),
   getRuntimeConfig: vi.fn(async () => ({ import_root: "/srv/Data", database_path: "/srv/ccfr.sqlite3", is_docker: false })),
   getCacheStats: vi.fn(async () => ({
     project_count: 0, session_count: 0, event_count: 0,
@@ -74,6 +75,95 @@ vi.mock("./api/client", () => ({
   })),
 }));
 
+vi.mock("./pages/SessionWorkspace", () => ({
+  default: ({
+    backLabel,
+    initialEventId,
+    onBack,
+  }: {
+    backLabel?: string;
+    initialEventId?: number | null;
+    onBack?: () => void;
+  }) => (
+    <main aria-label="Session workspace">
+      {backLabel && onBack && (
+        <button type="button" onClick={onBack}>
+          {backLabel}
+        </button>
+      )}
+      <span data-testid="session-initial-event">{initialEventId ?? "none"}</span>
+    </main>
+  ),
+}));
+
+vi.mock("./analytics/CostAnalyticsPage", () => ({
+  default: ({ onOpenSession }: { onOpenSession: (sessionId: number) => void }) => (
+    <main>
+      <button type="button" onClick={() => onOpenSession(7)}>
+        Open cost session
+      </button>
+    </main>
+  ),
+}));
+
+vi.mock("./discover/DiscoverPage", () => ({
+  default: ({
+    onOpenSession,
+  }: {
+    onOpenSession: (sessionId: number, eventId?: number | null) => void;
+  }) => (
+    <main>
+      <h1>What drives usage patterns</h1>
+      <button type="button" onClick={() => onOpenSession(7, 42)}>
+        Open explore event
+      </button>
+    </main>
+  ),
+}));
+
+function appSession(id: number): SessionCard {
+  return {
+    id,
+    project_id: 1,
+    project_name: "Claude Analytics",
+    session_id: "session-7",
+    title: "App test session",
+    first_ts: "2026-06-03T10:00:00Z",
+    last_ts: "2026-06-03T10:22:00Z",
+    cwd: "D:\\Code\\Claude-code-forensic",
+    version: "1.2.3",
+    entrypoint: "claude",
+    git_branch: "feat/session-origin",
+    event_count: 50,
+    turn_count: 4,
+    tool_call_count: 10,
+    subagent_count: 0,
+    error_count: 3,
+    system_count: 3,
+    persisted_output_count: 0,
+    input_tokens: 1000,
+    output_tokens: 500,
+    loop_count: 2,
+    max_repeat: 7,
+    duration_seconds: 1320,
+    max_agent_events: 100,
+    finding_count: 1,
+    pattern_risk_score: 42,
+    top_finding_category: null,
+    top_finding_severity: null,
+    top_finding_title: null,
+    cost_usd: 0.48,
+    cost_available: true,
+  };
+}
+
+function mockImportedSession() {
+  vi.mocked(client.listImports).mockResolvedValue([
+    { import_id: 1, source_path: "/srv/Data" },
+  ] as never);
+  vi.mocked(client.listSessions).mockResolvedValue([appSession(7)] as never);
+}
+
 function renderApp() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -83,14 +173,19 @@ function renderApp() {
   );
 }
 
-beforeEach(() => localStorage.clear());
+beforeEach(() => {
+  localStorage.clear();
+  vi.mocked(client.listImports).mockResolvedValue([] as never);
+  vi.mocked(client.listProjects).mockResolvedValue([] as never);
+  vi.mocked(client.listSessions).mockResolvedValue([] as never);
+});
 afterEach(() => vi.clearAllMocks());
 
 describe("App", () => {
   it("renders the import screen shell", async () => {
     renderApp();
 
-    expect(await screen.findByText("Claude Analytics")).toBeInTheDocument();
+    expect(await screen.findByText("Session Analytics")).toBeInTheDocument();
     expect(await screen.findByText("Mounted source")).toBeInTheDocument();
   });
 
@@ -101,8 +196,8 @@ describe("App", () => {
 
     renderApp();
 
-    // With imports present, the app auto-advances to Triage on first load.
-    await waitFor(() => expect(screen.getByRole("button", { name: "Triage" })).toHaveClass("active"));
+    // With imports present, the app auto-advances to Overview on first load.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Overview" })).toHaveClass("active"));
 
     fireEvent.click(screen.getByRole("button", { name: "Import" }));
 
@@ -116,9 +211,9 @@ describe("App", () => {
     expect(await screen.findByRole("button", { name: "Cost" })).toBeInTheDocument();
   });
 
-  it("shows the Discover nav item and switches to the discovery view", async () => {
+  it("shows the Explore nav item and switches to the discovery view", async () => {
     renderApp();
-    const tab = await screen.findByRole("button", { name: "Discover" });
+    const tab = await screen.findByRole("button", { name: "Explore" });
 
     fireEvent.click(tab);
 
@@ -126,6 +221,49 @@ describe("App", () => {
     // The technique subnav appears and the subgroup headline renders.
     expect(await screen.findByRole("button", { name: "Subgroups" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: /What drives/ })).toBeInTheDocument();
+  });
+
+  it("returns from a session to the originating Overview view", async () => {
+    mockImportedSession();
+    renderApp();
+
+    fireEvent.click(await screen.findByText("App test session"));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Back to Overview" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Overview" })).toHaveClass("active"));
+    expect(await screen.findByText("App test session")).toBeInTheDocument();
+  });
+
+  it("returns from a session to the originating Cost view", async () => {
+    mockImportedSession();
+    renderApp();
+    await screen.findByText("App test session");
+
+    fireEvent.click(screen.getByRole("button", { name: "Cost" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open cost session" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Back to Cost" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Cost" })).toHaveClass("active"));
+    expect(screen.getByRole("button", { name: "Open cost session" })).toBeInTheDocument();
+  });
+
+  it("returns from a deep-linked session to Explore and preserves the event focus", async () => {
+    mockImportedSession();
+    renderApp();
+    await screen.findByText("App test session");
+
+    fireEvent.click(screen.getByRole("button", { name: "Explore" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open explore event" }));
+
+    expect(await screen.findByRole("button", { name: "Back to Explore" })).toBeInTheDocument();
+    expect(screen.getByTestId("session-initial-event")).toHaveTextContent("42");
+
+    fireEvent.click(screen.getByRole("button", { name: "Back to Explore" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Explore" })).toHaveClass("active"));
+    expect(screen.getByRole("button", { name: "Open explore event" })).toBeInTheDocument();
   });
 
   it("opens the glossary modal from the sidebar help button", async () => {
