@@ -5,8 +5,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CostAnalyticsResponse, TurnCostBreakdown } from "../api/types";
 
 // vi.hoisted gives a mock handle usable inside the hoisted vi.mock factory.
-const { getCostAnalytics, getSessionTurnCosts } = vi.hoisted(() => ({ getCostAnalytics: vi.fn(), getSessionTurnCosts: vi.fn() }));
-vi.mock("../api/client", () => ({ getCostAnalytics, getSessionTurnCosts }));
+const { getCostAnalytics, getTeamCostAnalytics, getSessionTurnCosts } = vi.hoisted(() => ({
+  getCostAnalytics: vi.fn(),
+  getTeamCostAnalytics: vi.fn(),
+  getSessionTurnCosts: vi.fn(),
+}));
+vi.mock("../api/client", () => ({ getCostAnalytics, getTeamCostAnalytics, getSessionTurnCosts }));
 
 import CostAnalyticsPage from "./CostAnalyticsPage";
 
@@ -153,16 +157,18 @@ const turnBreakdown: TurnCostBreakdown = {
 
 beforeEach(() => {
   getCostAnalytics.mockReset();
+  getTeamCostAnalytics.mockReset();
   getSessionTurnCosts.mockReset();
   getCostAnalytics.mockResolvedValue(payload);
+  getTeamCostAnalytics.mockResolvedValue(payload);
   getSessionTurnCosts.mockResolvedValue(turnBreakdown);
 });
 
-function renderPage(onOpenSession = () => {}, historical?: boolean) {
+function renderPage(onOpenSession = () => {}, historical?: boolean, scope: "local" | "team" = "local") {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <CostAnalyticsPage onOpenSession={onOpenSession} historical={historical} />
+      <CostAnalyticsPage onOpenSession={onOpenSession} historical={historical} scope={scope} />
     </QueryClientProvider>,
   );
 }
@@ -177,6 +183,18 @@ describe("CostAnalyticsPage", () => {
     expect(await screen.findByText("Session insights")).toBeInTheDocument();
     expect(await screen.findAllByText("Turn distribution")).not.toHaveLength(0);
     expect(screen.queryByRole("button", { name: "Review" })).not.toBeInTheDocument();
+  });
+
+  it("in team scope uses the team cost endpoint and hides the session-level panels", async () => {
+    renderPage(() => {}, undefined, "team");
+
+    // Aggregate panels still render...
+    expect(await screen.findByText("Cost by model")).toBeInTheDocument();
+    expect(getTeamCostAnalytics).toHaveBeenCalled();
+    expect(getCostAnalytics).not.toHaveBeenCalled();
+    // ...but the session-level panels (no team equivalent) are gone.
+    expect(screen.queryByText("Session insights")).not.toBeInTheDocument();
+    expect(screen.queryByText("Turn distribution")).not.toBeInTheDocument();
   });
 
   it("applies custom start and end date filters", async () => {

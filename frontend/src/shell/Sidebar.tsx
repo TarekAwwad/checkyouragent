@@ -1,14 +1,22 @@
 // frontend/src/shell/Sidebar.tsx
 import { Eye, EyeOff, History, HelpCircle, Moon, PanelLeft, PanelLeftClose, Sun } from "lucide-react";
 import { NAV_ITEMS, type View } from "./navConfig";
+import type { DataScope } from "./useDataScope";
 import { TECHNIQUES } from "../discover/techniques";
+
+const SCOPE_OPTIONS: { key: DataScope; label: string }[] = [
+  { key: "local", label: "This machine" },
+  { key: "team", label: "Team" },
+];
 
 interface Props {
   view: View;
+  scope: DataScope;
   discoverTechnique: string;
   collapsed: boolean;
   theme: "dark" | "light";
   onSelectView: (view: View) => void;
+  onSelectScope: (scope: DataScope) => void;
   onSelectTechnique: (key: string) => void;
   onToggleCollapsed: () => void;
   onToggleTheme: () => void;
@@ -25,10 +33,12 @@ interface Props {
 
 export default function Sidebar({
   view,
+  scope,
   discoverTechnique,
   collapsed,
   theme,
   onSelectView,
+  onSelectScope,
   onSelectTechnique,
   onToggleCollapsed,
   onToggleTheme,
@@ -41,6 +51,7 @@ export default function Sidebar({
   onTogglePrivacyMode,
 }: Props) {
   const readyTechniques = TECHNIQUES.filter((tech) => tech.status === "ready");
+  const navItems = NAV_ITEMS.filter((item) => item.scopes.includes(scope));
 
   return (
     <aside className={`app-sidebar ${collapsed ? "is-collapsed" : ""}`} aria-label="Primary">
@@ -52,8 +63,23 @@ export default function Sidebar({
         <strong className="sb-monogram" aria-hidden="true">SA</strong>
       </div>
 
+      <div className="sb-scope segmented-control" role="group" aria-label="Data scope">
+        {SCOPE_OPTIONS.map((option) => (
+          <button
+            key={option.key}
+            type="button"
+            className={scope === option.key ? "active" : ""}
+            aria-pressed={scope === option.key}
+            onClick={() => onSelectScope(option.key)}
+            title={option.key === "team" ? "Aggregated team bundles" : "This machine's local sessions"}
+          >
+            <span className="sb-label">{option.label}</span>
+          </button>
+        ))}
+      </div>
+
       <nav className="sb-nav">
-        {NAV_ITEMS.map((item) => {
+        {navItems.map((item) => {
           const Icon = item.icon;
           const active = view === item.key;
           return (

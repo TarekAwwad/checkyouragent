@@ -1,16 +1,18 @@
 // frontend/src/shell/Sidebar.test.tsx
 import React from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import Sidebar from "./Sidebar";
 
 function setup(overrides: Partial<React.ComponentProps<typeof Sidebar>> = {}) {
   const props = {
     view: "discover" as const,
+    scope: "local" as const,
     discoverTechnique: "subgroup",
     collapsed: false,
     theme: "dark" as const,
     onSelectView: vi.fn(),
+    onSelectScope: vi.fn(),
     onSelectTechnique: vi.fn(),
     onToggleCollapsed: vi.fn(),
     onToggleTheme: vi.fn(),
@@ -27,15 +29,38 @@ function setup(overrides: Partial<React.ComponentProps<typeof Sidebar>> = {}) {
 }
 
 describe("Sidebar", () => {
-  it("renders the brand and primary nav", () => {
+  it("renders the brand and the local-scope nav", () => {
     setup();
     expect(screen.getByText("Session Analytics")).toBeInTheDocument();
     expect(screen.getByText("local, read-only session data")).toBeInTheDocument();
-    for (const name of ["Import", "Overview", "Cost", "Explore"]) {
+    for (const name of ["Import", "Export", "Overview", "Cost", "Explore"]) {
       expect(screen.getByRole("button", { name })).toBeInTheDocument();
     }
     expect(screen.queryByRole("button", { name: "Data" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Session" })).not.toBeInTheDocument();
+  });
+
+  it("shows only the aggregate views in team scope", () => {
+    setup({ scope: "team", view: "map" });
+    for (const name of ["Import", "Overview", "Cost"]) {
+      expect(screen.getByRole("button", { name })).toBeInTheDocument();
+    }
+    // Export (share a local bundle) and Explore (subgroup drilldown) have no
+    // team-bundle equivalent.
+    expect(screen.queryByRole("button", { name: "Export" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Explore" })).not.toBeInTheDocument();
+  });
+
+  it("renders the data-scope switch and routes scope changes", () => {
+    const props = setup({ scope: "local" });
+    const scopeGroup = screen.getByRole("group", { name: "Data scope" });
+    const thisMachine = within(scopeGroup).getByRole("button", { name: "This machine" });
+    const team = within(scopeGroup).getByRole("button", { name: "Team" });
+    expect(thisMachine).toHaveAttribute("aria-pressed", "true");
+    expect(team).toHaveAttribute("aria-pressed", "false");
+
+    fireEvent.click(team);
+    expect(props.onSelectScope).toHaveBeenCalledWith("team");
   });
 
   it("marks the active view and routes nav clicks", () => {
@@ -106,10 +131,12 @@ describe("Sidebar historical-pricing toggle", () => {
     render(
       <Sidebar
         view="map"
+        scope="local"
         discoverTechnique="subgroup"
         collapsed={false}
         theme="dark"
         onSelectView={vi.fn()}
+        onSelectScope={vi.fn()}
         onSelectTechnique={vi.fn()}
         onToggleCollapsed={vi.fn()}
         onToggleTheme={vi.fn()}
@@ -129,10 +156,12 @@ describe("Sidebar historical-pricing toggle", () => {
   it("reflects on/off state on the toggle button", () => {
     const base = {
       view: "map" as const,
+      scope: "local" as const,
       discoverTechnique: "subgroup",
       collapsed: false,
       theme: "dark" as const,
       onSelectView: vi.fn(),
+      onSelectScope: vi.fn(),
       onSelectTechnique: vi.fn(),
       onToggleCollapsed: vi.fn(),
       onToggleTheme: vi.fn(),

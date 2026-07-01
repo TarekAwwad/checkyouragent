@@ -12,7 +12,39 @@ vi.mock("./api/client", () => ({
   discoverSourceProjects: vi.fn(async () => []),
   getSettings: vi.fn(async () => ({ historical_pricing: true, privacy_mode: false })),
   updateSettings: vi.fn(async (s: { historical_pricing: boolean; privacy_mode: boolean }) => s),
-  getRuntimeConfig: vi.fn(async () => ({ import_root: "/srv/Data", database_path: "/srv/ccfr.sqlite3", is_docker: false })),
+  getTeamPreview: vi.fn(async () => ({
+    manifest: {
+      session_count: 0,
+      sequence_step_count: 0,
+      included_fields: [],
+      excluded: [],
+      fingerprint_caveat: "Local team bundles are structural fingerprints.",
+    },
+    bundle: { sessions: [] },
+  })),
+  exportTeamBundle: vi.fn(async () => ({ path: "/srv/team-bundles/team-bundle.json", bundle_id: "bundle", session_count: 0 })),
+  importTeamBundle: vi.fn(async () => ({ bundle_id: "bundle", member_id: "member", session_count: 0, imported: true })),
+  importTeamBundleFile: vi.fn(async () => ({ bundle_id: "bundle", member_id: "member", imported: true, session_count: 0 })),
+  listTeamImports: vi.fn(async () => []),
+  getTeamDashboard: vi.fn(async () => ({
+    meta: { bundle_count: 0, member_count: 0, project_count: 0, session_count: 0, date_from: null, date_to: null },
+    tokens: { input: 0, output: 0, base: 0, cache_5m: 0, cache_1h: 0, cache_read: 0, total: 0 },
+    stats: {},
+    providers: [],
+    models: [],
+    stop_reasons: [],
+    risk_categories: [],
+    subagents: [],
+    members: [],
+    over_time: [],
+    sequence: [],
+  })),
+  getRuntimeConfig: vi.fn(async () => ({
+    import_root: "/srv/Data",
+    team_bundle_root: "/srv/team-bundles",
+    database_path: "/srv/ccfr.sqlite3",
+    is_docker: false,
+  })),
   getCacheStats: vi.fn(async () => ({
     project_count: 0, session_count: 0, event_count: 0,
     subagent_count: 0, memory_count: 0, persisted_output_count: 0,
@@ -221,6 +253,38 @@ describe("App", () => {
     // The technique subnav appears and the subgroup headline renders.
     expect(await screen.findByRole("button", { name: "Subgroups" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: /What drives/ })).toBeInTheDocument();
+  });
+
+  it("switches to team scope and shows the team overview", async () => {
+    renderApp();
+    // Explore is a local-only view, present in the default (local) scope.
+    expect(await screen.findByRole("button", { name: "Explore" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Team" }));
+    fireEvent.click(screen.getByRole("button", { name: "Overview" }));
+
+    // Team scope hides the drilldown-only views (Cost stays, Explore goes)...
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Explore" })).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Cost" })).toBeInTheDocument();
+    // ...and Overview renders the team overview (empty in this mock).
+    expect(await screen.findByText(/No team bundles imported yet/i)).toBeInTheDocument();
+  });
+
+  it("exposes a local-only Export view and a team-only bundle Import", async () => {
+    renderApp();
+
+    // Local scope: Export shares this machine's bundle.
+    fireEvent.click(await screen.findByRole("button", { name: "Export" }));
+    expect(await screen.findByRole("heading", { name: /Export a team bundle/i })).toBeInTheDocument();
+
+    // Team scope drops Export (nothing local to share) and the Import view
+    // becomes the team-bundle importer, not the projects importer.
+    fireEvent.click(screen.getByRole("button", { name: "Team" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Export" })).not.toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: "Import" }));
+    expect(await screen.findByRole("heading", { name: /Import a team bundle/i })).toBeInTheDocument();
+    expect(screen.queryByText("Projects in source")).not.toBeInTheDocument();
   });
 
   it("returns from a session to the originating Overview view", async () => {

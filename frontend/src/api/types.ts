@@ -14,6 +14,7 @@ export interface ImportSummary {
 
 export interface RuntimeConfig {
   import_root: string;
+  team_bundle_root?: string;
   database_path: string;
   is_docker: boolean;
 }
@@ -665,4 +666,76 @@ export interface ContributionPreview {
 export interface ContributionExportResult {
   path: string;
   session_count: number;
+}
+
+// GET /api/team/export-preview -> TeamExportPreviewResponse { manifest, bundle }.
+export interface TeamPreview {
+  manifest: ContributionManifest;
+  bundle: { sessions?: unknown[] } & Record<string, unknown>;
+}
+
+// POST /api/team/export -> TeamExportResponse.
+export interface TeamExportResult {
+  path: string;
+  bundle_id: string;
+  session_count: number;
+}
+
+// POST /api/team/import and /api/team/import-bundle -> TeamImportResponse.
+export interface TeamImportResult {
+  bundle_id: string;
+  member_id: string;
+  session_count: number;
+  imported: boolean;
+}
+
+// GET /api/team/imports -> list[TeamImportEntry].
+export interface TeamImportRecord {
+  id: number;
+  bundle_id: string;
+  profile: string;
+  schema_version: number;
+  member_id: string;
+  generated_at: string;
+  app_version?: string | null;
+  imported_at: string;
+  source_path: string;
+  session_count: number;
+}
+
+// GET /api/team/dashboard -> TeamDashboardResponse (team_dashboard()).
+export interface TeamDashboard {
+  meta?: {
+    bundle_count?: number;
+    member_count?: number;
+    project_count?: number;
+    session_count?: number;
+    date_from?: string | null;
+    date_to?: string | null;
+  };
+  tokens?: {
+    input?: number;
+    output?: number;
+    base?: number;
+    cache_5m?: number;
+    cache_1h?: number;
+    cache_read?: number;
+    total?: number;
+  };
+  stats?: {
+    turns?: number;
+    tool_calls?: number;
+    subagents?: number;
+    errors?: number;
+    loops?: number;
+    [key: string]: number | undefined;
+  };
+  providers?: Array<{ provider: string; session_count: number }>;
+  models?: Array<{ model: string; session_count: number }>;
+  stop_reasons?: Array<{ reason: string; count: number }>;
+  risk_categories?: Array<{ category: string; session_count: number }>;
+  subagents?: Array<{ agent_type: string; event_count: number; session_count: number }>;
+  sequence?: Array<{ sym: string; count: number }>;
+  members?: Array<Record<string, unknown>>;
+  over_time?: Array<{ date: string; session_count: number; tokens: number }>;
 }

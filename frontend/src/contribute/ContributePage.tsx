@@ -1,10 +1,11 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { AlertTriangle, ArrowRight, ArrowUpRight, Check, Download, FileJson, Lock, ScanSearch } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Check, Download, FileJson } from "lucide-react";
 import { exportContribution, getContributionPreview } from "../api/client";
 import { Blurred } from "../shell/Blurred";
 import { type ContributionSession, compactInt } from "./specimen";
 import SpecimenModal from "./SpecimenModal";
+import PrivacyLedger from "./PrivacyLedger";
 
 // Contributions go to an open, public dataset repo. Step 2 deep-links to GitHub's
 // file-upload page for the contributions/ folder; for anyone without write access
@@ -117,56 +118,13 @@ export default function ContributePage() {
         </div>
       </section>
 
-      <section className="privacy-ledger" aria-labelledby="privacy-ledger-title">
-        <div className="privacy-ledger-head">
-          <h2 id="privacy-ledger-title">What stays vs. what travels</h2>
-          <p className="privacy-note privacy-warning" role="note">
-            <AlertTriangle size={14} aria-hidden="true" />
-            <span>{manifest.fingerprint_caveat}</span>
-          </p>
-        </div>
-
-        <div className="privacy-grid">
-          <section className="privacy-column stays" aria-labelledby="privacy-stays">
-            <h2 id="privacy-stays">
-              <Lock size={13} aria-hidden="true" /> Stays on this machine
-            </h2>
-            <ul>
-              {manifest.excluded.map((f) => (
-                <li key={f}>{f}</li>
-              ))}
-            </ul>
-          </section>
-
-          <section className="privacy-column travels" aria-labelledby="privacy-travels">
-            <h2 id="privacy-travels">
-              <ArrowUpRight size={13} aria-hidden="true" /> Travels in the bundle
-            </h2>
-            <ul>
-              {manifest.included_fields.map((f) => (
-                <li key={f}>{f}</li>
-              ))}
-            </ul>
-          </section>
-        </div>
-
-        <div className="ledger-foot">
-          {sample ? (
-            <>
-              <span>Inspect the exact first session that will be exported.</span>
-              <button
-                type="button"
-                className="specimen-trigger"
-                onClick={() => setSpecimenOpen(true)}
-              >
-                <ScanSearch size={14} aria-hidden="true" /> Inspect specimen
-              </button>
-            </>
-          ) : (
-            <span>No sessions are available for export yet.</span>
-          )}
-        </div>
-      </section>
+      <PrivacyLedger
+        caveat={manifest.fingerprint_caveat}
+        excluded={manifest.excluded}
+        included={manifest.included_fields}
+        hasSpecimen={Boolean(sample)}
+        onInspectSpecimen={() => setSpecimenOpen(true)}
+      />
 
       {sample ? (
         <SpecimenModal sample={sample} open={specimenOpen} onClose={() => setSpecimenOpen(false)} />

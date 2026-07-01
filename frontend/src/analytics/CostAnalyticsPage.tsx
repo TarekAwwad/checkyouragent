@@ -1,7 +1,8 @@
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getCostAnalytics } from "../api/client";
+import { getCostAnalytics, getTeamCostAnalytics } from "../api/client";
 import type { CostAnalyticsFilters, SpendSpike } from "../api/types";
+import type { DataScope } from "../shell/useDataScope";
 import { buildModelColorMap, formatSignedUsd, formatTokens, formatUsd, largestSpike } from "./chartGeometry";
 import FilterBar from "./FilterBar";
 import CostByProject from "./CostByProject";
@@ -16,6 +17,9 @@ interface Props {
   onOpenSession: (sessionId: number) => void;
   /** Whether historical (date-effective) pricing is active; drives the pricing-mode note. */
   historical?: boolean;
+  /** In team scope, Cost is computed from imported bundles and the session-level
+   * panels (which have no team equivalent) are hidden. Defaults to local. */
+  scope?: DataScope;
 }
 
 function defaultFrom(): string {
@@ -65,15 +69,16 @@ function SpikeSessionsPanel({
   );
 }
 
-export default function CostAnalyticsPage({ onOpenSession, historical = true }: Props) {
+export default function CostAnalyticsPage({ onOpenSession, historical = true, scope = "local" }: Props) {
+  const isTeam = scope === "team";
   const [filters, setFilters] = React.useState<CostAnalyticsFilters>({ dateFrom: defaultFrom() });
   const [selectedSpikeBucket, setSelectedSpikeBucket] = React.useState<string | null>(null);
   const query = useQuery({
-    // `historical` is part of the key so flipping the price mode is a distinct
-    // query (and a distinct request URL), not a same-URL refetch that could be
-    // served stale from cache.
-    queryKey: ["cost-analytics", filters, historical],
-    queryFn: () => getCostAnalytics(filters, historical),
+    // `historical` and `scope` are part of the key so flipping the price mode or
+    // the data scope is a distinct query (and request URL), not a same-URL
+    // refetch that could be served stale from cache.
+    queryKey: ["cost-analytics", scope, filters, historical],
+    queryFn: () => (isTeam ? getTeamCostAnalytics(filters, historical) : getCostAnalytics(filters, historical)),
   });
 
   const payload = query.data;
@@ -120,7 +125,7 @@ export default function CostAnalyticsPage({ onOpenSession, historical = true }: 
               ))}
             />
             <div className="cost-bento">
-              {selectedSpike && (
+              {!isTeam && selectedSpike && (
                 <SpikeSessionsPanel spike={selectedSpike} onOpenSession={onOpenSession} />
               )}
               <section className="tile">
@@ -139,18 +144,22 @@ export default function CostAnalyticsPage({ onOpenSession, historical = true }: 
                 <h2>Cost by model</h2>
                 <CostByModel payload={payload} colors={colors} available={payload.meta.available} />
               </section>
-              <section className="tile tile-full">
-                <h2>Turn distribution</h2>
-                <TurnDistributionSection
-                  sessions={payload.sessions}
-                  onOpenSession={onOpenSession}
-                  available={payload.meta.available}
-                />
-              </section>
-              <section className="tile tile-full">
-                <h2>Session insights</h2>
-                <SessionInsights payload={payload} onOpenSession={onOpenSession} available={payload.meta.available} />
-              </section>
+              {!isTeam && (
+                <>
+                  <section className="tile tile-full">
+                    <h2>Turn distribution</h2>
+                    <TurnDistributionSection
+                      sessions={payload.sessions}
+                      onOpenSession={onOpenSession}
+                      available={payload.meta.available}
+                    />
+                  </section>
+                  <section className="tile tile-full">
+                    <h2>Session insights</h2>
+                    <SessionInsights payload={payload} onOpenSession={onOpenSession} available={payload.meta.available} />
+                  </section>
+                </>
+              )}
             </div>
           </>
         )}

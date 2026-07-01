@@ -1,5 +1,6 @@
 import { type MouseEvent, useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
+import { Blurred } from "../shell/Blurred";
 import {
   type ContributionSession,
   compactInt,
@@ -14,12 +15,22 @@ interface Props {
   sample: ContributionSession;
   open: boolean;
   onClose: () => void;
+  title?: string;
+  description?: string;
+  blurRaw?: boolean;
 }
 
 // The literal first session that would be sent, shown in a modal: an annotated
 // reading by default and the raw JSON it is derived from on demand. Uses the
 // native <dialog> element (focus trap, Esc-to-close, backdrop) like the glossary.
-export default function SpecimenModal({ sample, open, onClose }: Props) {
+export default function SpecimenModal({
+  sample,
+  open,
+  onClose,
+  title = "First exported session",
+  description = "The exact first session in the bundle, shown as structured fields or raw JSON.",
+  blurRaw = false,
+}: Props) {
   const ref = useRef<HTMLDialogElement>(null);
   const [raw, setRaw] = useState(false);
 
@@ -80,8 +91,8 @@ export default function SpecimenModal({ sample, open, onClose }: Props) {
       <div className="specimen-panel">
         <div className="specimen-modal-head">
           <div className="specimen-title">
-            <h2 id="specimen-title">First exported session</h2>
-            <p>The exact first session in the bundle, shown as structured fields or raw JSON.</p>
+            <h2 id="specimen-title">{title}</h2>
+            <p>{description}</p>
           </div>
           <div className="specimen-modal-tools">
             <div className="seg" role="group" aria-label="Specimen view">
@@ -116,7 +127,7 @@ export default function SpecimenModal({ sample, open, onClose }: Props) {
         <div className="specimen-modal-body">
           {raw ? (
             <pre className="specimen-raw" aria-label="Raw specimen JSON">
-              {JSON.stringify(sample, null, 2)}
+              {blurRaw ? <Blurred>{JSON.stringify(sample, null, 2)}</Blurred> : JSON.stringify(sample, null, 2)}
             </pre>
           ) : (
             <>
