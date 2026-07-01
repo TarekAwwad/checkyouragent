@@ -9,7 +9,6 @@ function setup(overrides: Partial<React.ComponentProps<typeof Sidebar>> = {}) {
     view: "discover" as const,
     discoverTechnique: "subgroup",
     collapsed: false,
-    sessionEnabled: false,
     theme: "dark" as const,
     onSelectView: vi.fn(),
     onSelectTechnique: vi.fn(),
@@ -17,6 +16,10 @@ function setup(overrides: Partial<React.ComponentProps<typeof Sidebar>> = {}) {
     onToggleTheme: vi.fn(),
     onOpenGlossary: vi.fn(),
     onDismissGlossaryHint: vi.fn(),
+    historicalPricing: true,
+    onToggleHistoricalPricing: vi.fn(),
+    privacyMode: false,
+    onTogglePrivacyMode: vi.fn(),
     ...overrides,
   };
   render(<Sidebar {...props} />);
@@ -26,35 +29,32 @@ function setup(overrides: Partial<React.ComponentProps<typeof Sidebar>> = {}) {
 describe("Sidebar", () => {
   it("renders the brand and primary nav", () => {
     setup();
-    expect(screen.getByText("Claude Analytics")).toBeInTheDocument();
-    for (const name of ["Import", "Triage", "Cost", "Discover", "Session"]) {
+    expect(screen.getByText("Session Analytics")).toBeInTheDocument();
+    expect(screen.getByText("local, read-only session data")).toBeInTheDocument();
+    for (const name of ["Import", "Overview", "Cost", "Explore"]) {
       expect(screen.getByRole("button", { name })).toBeInTheDocument();
     }
+    expect(screen.queryByRole("button", { name: "Data" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Session" })).not.toBeInTheDocument();
   });
 
   it("marks the active view and routes nav clicks", () => {
     const props = setup({ view: "cost" });
     expect(screen.getByRole("button", { name: "Cost" })).toHaveClass("active");
-    fireEvent.click(screen.getByRole("button", { name: "Triage" }));
+    fireEvent.click(screen.getByRole("button", { name: "Overview" }));
     expect(props.onSelectView).toHaveBeenCalledWith("map");
   });
 
-  it("disables Session until one is selected", () => {
-    setup({ sessionEnabled: false });
-    expect(screen.getByRole("button", { name: "Session" })).toBeDisabled();
-  });
-
-  it("shows the technique subnav when Discover is active", () => {
+  it("shows the ready technique subnav when Explore is active", () => {
     const props = setup({ view: "discover" });
     const ready = screen.getByRole("button", { name: "Subgroups" });
     expect(ready).toHaveClass("active");
     fireEvent.click(ready);
     expect(props.onSelectTechnique).toHaveBeenCalledWith("subgroup");
-    // "soon" techniques are present but disabled
-    expect(screen.getByRole("button", { name: /Sequence mining/ })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /Sequence mining/ })).not.toBeInTheDocument();
   });
 
-  it("hides the technique subnav when Discover is not active", () => {
+  it("hides the technique subnav when Explore is not active", () => {
     setup({ view: "cost" });
     expect(screen.queryByRole("button", { name: "Subgroups" })).not.toBeInTheDocument();
   });
@@ -62,9 +62,13 @@ describe("Sidebar", () => {
   it("fires footer actions", () => {
     const props = setup();
     fireEvent.click(screen.getByRole("button", { name: "Open glossary" }));
+    fireEvent.click(screen.getByRole("button", { name: "Privacy mode" }));
+    fireEvent.click(screen.getByRole("button", { name: "Historical pricing" }));
     fireEvent.click(screen.getByRole("button", { name: "Switch to light theme" }));
     fireEvent.click(screen.getByRole("button", { name: /collapse sidebar/i }));
     expect(props.onOpenGlossary).toHaveBeenCalled();
+    expect(props.onTogglePrivacyMode).toHaveBeenCalled();
+    expect(props.onToggleHistoricalPricing).toHaveBeenCalled();
     expect(props.onToggleTheme).toHaveBeenCalled();
     expect(props.onToggleCollapsed).toHaveBeenCalled();
   });
@@ -104,7 +108,6 @@ describe("Sidebar historical-pricing toggle", () => {
         view="map"
         discoverTechnique="subgroup"
         collapsed={false}
-        sessionEnabled={false}
         theme="dark"
         onSelectView={vi.fn()}
         onSelectTechnique={vi.fn()}
@@ -113,6 +116,8 @@ describe("Sidebar historical-pricing toggle", () => {
         onOpenGlossary={vi.fn()}
         historicalPricing={true}
         onToggleHistoricalPricing={onToggle}
+        privacyMode={false}
+        onTogglePrivacyMode={vi.fn()}
       />,
     );
     const btn = screen.getByRole("button", { name: /historical pricing/i });
@@ -126,7 +131,6 @@ describe("Sidebar historical-pricing toggle", () => {
       view: "map" as const,
       discoverTechnique: "subgroup",
       collapsed: false,
-      sessionEnabled: false,
       theme: "dark" as const,
       onSelectView: vi.fn(),
       onSelectTechnique: vi.fn(),
@@ -134,6 +138,8 @@ describe("Sidebar historical-pricing toggle", () => {
       onToggleTheme: vi.fn(),
       onOpenGlossary: vi.fn(),
       onToggleHistoricalPricing: vi.fn(),
+      privacyMode: false,
+      onTogglePrivacyMode: vi.fn(),
     };
     const { rerender } = render(<Sidebar {...base} historicalPricing={true} />);
     let btn = screen.getByRole("button", { name: /historical pricing/i });

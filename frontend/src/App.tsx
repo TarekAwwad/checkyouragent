@@ -6,7 +6,6 @@ import ImportPage from "./pages/ImportPage";
 import TriageBoard from "./triage/TriageBoard";
 import SessionWorkspace from "./pages/SessionWorkspace";
 import CostAnalyticsPage from "./analytics/CostAnalyticsPage";
-import ContributePage from "./contribute/ContributePage";
 import DiscoverPage from "./discover/DiscoverPage";
 import GlossaryDialog from "./glossary/GlossaryDialog";
 import Sidebar from "./shell/Sidebar";
@@ -18,6 +17,14 @@ import { useSettings } from "./shell/useSettings";
 import { PrivacyModeProvider } from "./shell/PrivacyModeContext";
 import { useTheme } from "./theme/useTheme";
 
+type SessionOrigin = Extract<View, "map" | "cost" | "discover">;
+
+const SESSION_ORIGIN_LABELS: Record<SessionOrigin, string> = {
+  map: "Overview",
+  cost: "Cost",
+  discover: "Explore",
+};
+
 function App() {
   const imports = useQuery({ queryKey: ["imports"], queryFn: listImports });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
@@ -25,6 +32,7 @@ function App() {
   const [view, setView] = React.useState<View>("import");
   const [discoverTechnique, setDiscoverTechnique] = React.useState<string>(DEFAULT_TECHNIQUE);
   const [selectedSession, setSelectedSession] = React.useState<SessionCard | null>(null);
+  const [sessionOrigin, setSessionOrigin] = React.useState<SessionOrigin | null>(null);
   // Event to land on when a view deep-links into the session workspace.
   const [focusEventId, setFocusEventId] = React.useState<number | null>(null);
   const { theme, toggle } = useTheme();
@@ -43,18 +51,26 @@ function App() {
     }
   }, [imports.data?.length]);
 
-  const openSession = (session: SessionCard) => {
+  const openSession = (session: SessionCard, origin: SessionOrigin) => {
     setFocusEventId(null);
+    setSessionOrigin(origin);
     setSelectedSession(session);
     setView("session");
   };
 
-  const openSessionById = (sessionId: number, eventId?: number | null) => {
+  const openSessionById = (sessionId: number, eventId: number | null, origin: SessionOrigin) => {
     const card = sessions.data?.find((s) => s.id === sessionId);
     if (!card) return;
     setFocusEventId(eventId ?? null);
+    setSessionOrigin(origin);
     setSelectedSession(card);
     setView("session");
+  };
+
+  const backToSessionOrigin = () => {
+    if (sessionOrigin) {
+      setView(sessionOrigin);
+    }
   };
 
   const selectTechnique = (key: string) => {
@@ -76,7 +92,6 @@ function App() {
         view={view}
         discoverTechnique={discoverTechnique}
         collapsed={collapsed}
-        sessionEnabled={!!selectedSession}
         theme={theme}
         onSelectView={setView}
         onSelectTechnique={selectTechnique}
@@ -100,22 +115,29 @@ function App() {
             projects={projects.data ?? []}
             sessions={sessions.data ?? []}
             loading={projects.isLoading || sessions.isLoading}
-            onOpenSession={openSession}
+            onOpenSession={(session) => openSession(session, "map")}
           />
         )}
         {view === "cost" && (
-          <CostAnalyticsPage onOpenSession={openSessionById} historical={historicalPricing} />
+          <CostAnalyticsPage
+            onOpenSession={(sessionId) => openSessionById(sessionId, null, "cost")}
+            historical={historicalPricing}
+          />
         )}
-        {view === "contribute" && <ContributePage />}
         {view === "discover" && (
           <DiscoverPage
             projects={projects.data ?? []}
-            onOpenSession={openSessionById}
+            onOpenSession={(sessionId, eventId = null) => openSessionById(sessionId, eventId, "discover")}
             technique={discoverTechnique}
           />
         )}
         {view === "session" && selectedSession && (
-          <SessionWorkspace session={selectedSession} initialEventId={focusEventId} />
+          <SessionWorkspace
+            session={selectedSession}
+            initialEventId={focusEventId}
+            backLabel={sessionOrigin ? `Back to ${SESSION_ORIGIN_LABELS[sessionOrigin]}` : undefined}
+            onBack={sessionOrigin ? backToSessionOrigin : undefined}
+          />
         )}
       </main>
     </div>

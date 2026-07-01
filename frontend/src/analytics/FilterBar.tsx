@@ -1,5 +1,5 @@
 // frontend/src/analytics/FilterBar.tsx
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { CostAnalyticsFilters, CostAnalyticsMeta } from "../api/types";
 import { displayModelName, formatTokens, formatUsd } from "./chartGeometry";
 
@@ -9,11 +9,12 @@ interface Props {
   onChange: (next: CostAnalyticsFilters) => void;
 }
 
-const RANGES: { label: string; days: number | null }[] = [
-  { label: "Last 7 days", days: 7 },
-  { label: "Last 30 days", days: 30 },
-  { label: "Last 90 days", days: 90 },
-  { label: "All time", days: null },
+const RANGE_OPTIONS: { key: string; label: string; days: number | null }[] = [
+  { key: "7", label: "Last 7 days", days: 7 },
+  { key: "30", label: "Last 30 days", days: 30 },
+  { key: "90", label: "Last 90 days", days: 90 },
+  { key: "all", label: "All time", days: null },
+  { key: "custom", label: "Custom range", days: null },
 ];
 
 function isoDaysAgo(days: number): string {
@@ -22,24 +23,68 @@ function isoDaysAgo(days: number): string {
   return d.toISOString();
 }
 
+function toDateInputValue(value: string | null | undefined): string {
+  if (!value) return "";
+  const directMatch = value.match(/^\d{4}-\d{2}-\d{2}/);
+  if (directMatch) return directMatch[0];
+
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
+}
+
+function dateBoundaryIso(value: string, boundary: "start" | "end"): string | null {
+  if (!value) return null;
+  return boundary === "start" ? `${value}T00:00:00.000Z` : `${value}T23:59:59.999Z`;
+}
+
 export default function FilterBar({ filters, meta, onChange }: Props) {
   const [rangeKey, setRangeKey] = useState("30");
+  const dateFromValue = useMemo(() => toDateInputValue(filters.dateFrom), [filters.dateFrom]);
+  const dateToValue = useMemo(() => toDateInputValue(filters.dateTo), [filters.dateTo]);
+
   return (
     <div className="cost-filterbar">
       <select
+        aria-label="Date range"
         value={rangeKey}
         onChange={(e) => {
           setRangeKey(e.target.value);
-          const range = RANGES.find((r) => String(r.days) === e.target.value);
-          onChange({ ...filters, dateFrom: range?.days ? isoDaysAgo(range.days) : null });
+          const range = RANGE_OPTIONS.find((r) => r.key === e.target.value);
+          if (!range || range.key === "custom") return;
+          onChange({
+            ...filters,
+            dateFrom: range.days ? isoDaysAgo(range.days) : null,
+            dateTo: null,
+          });
         }}
       >
-        {RANGES.map((r) => (
-          <option key={r.label} value={String(r.days)}>{r.label}</option>
+        {RANGE_OPTIONS.map((r) => (
+          <option key={r.key} value={r.key}>{r.label}</option>
         ))}
       </select>
 
+      <input
+        aria-label="Start date"
+        type="date"
+        value={dateFromValue}
+        onChange={(e) => {
+          setRangeKey("custom");
+          onChange({ ...filters, dateFrom: dateBoundaryIso(e.target.value, "start") });
+        }}
+      />
+
+      <input
+        aria-label="End date"
+        type="date"
+        value={dateToValue}
+        onChange={(e) => {
+          setRangeKey("custom");
+          onChange({ ...filters, dateTo: dateBoundaryIso(e.target.value, "end") });
+        }}
+      />
+
       <select
+        aria-label="Project"
         value={filters.projectId ?? ""}
         onChange={(e) => onChange({ ...filters, projectId: e.target.value ? Number(e.target.value) : null })}
       >
@@ -50,6 +95,7 @@ export default function FilterBar({ filters, meta, onChange }: Props) {
       </select>
 
       <select
+        aria-label="Model"
         value={filters.model ?? ""}
         onChange={(e) => onChange({ ...filters, model: e.target.value || null })}
       >

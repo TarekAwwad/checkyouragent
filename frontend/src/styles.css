@@ -64,11 +64,18 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .app-sidebar.is-collapsed { flex-basis: 64px; width: 64px; align-items: stretch; }
 
 .sb-brand { display: flex; align-items: center; padding: 4px 6px 12px; }
+.sb-brand-text { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
 /* Subtle, logoless wordmark — slab serif, medium weight, neutral text color. */
 .sb-wordmark {
   font-family: 'Roboto Slab', Georgia, serif;
   font-size: 14px; font-weight: 500; letter-spacing: .02em;
   color: var(--text); white-space: nowrap;
+}
+.sb-tagline {
+  color: var(--faint);
+  font-size: 10.5px;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 /* Compact monogram shown only when the sidebar is collapsed. */
 .sb-monogram {
@@ -127,6 +134,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .app-sidebar.is-collapsed .sb-label,
 .app-sidebar.is-collapsed .sb-tag,
 .app-sidebar.is-collapsed .sb-wordmark,
+.app-sidebar.is-collapsed .sb-tagline,
 .app-sidebar.is-collapsed .sb-subnav { display: none; }
 .app-sidebar.is-collapsed .sb-brand { justify-content: center; }
 .app-sidebar.is-collapsed .sb-monogram { display: block; }
@@ -767,6 +775,25 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
 .cell-vol b { font-weight: 700; } .vol-dur { color: var(--muted); font-size: 11px; margin-top: 2px; }
 .cell-cost { font-weight: 700; font-variant-numeric: tabular-nums; }
 .finding-cell { display: block; color: var(--text); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 150px; }
+.cell-issue small { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
+.issue-finding .finding-cell { color: var(--text); }
+.issue-warn .finding-cell { color: var(--warning); }
+.issue-calm .finding-cell { color: var(--muted); }
+.impact-stack { display: flex; flex-wrap: wrap; gap: 5px; max-width: 260px; }
+.impact-chip {
+  display: inline-flex; align-items: center; min-height: 20px; padding: 2px 7px;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--bg);
+  color: var(--muted); font-size: 11px; font-weight: 700; white-space: nowrap;
+}
+.impact-chip.err { color: var(--err); border-color: color-mix(in srgb, var(--err) 35%, var(--border)); }
+.impact-chip.loop { color: var(--loop); border-color: color-mix(in srgb, var(--loop) 35%, var(--border)); }
+.impact-chip.fan { color: var(--fan); border-color: color-mix(in srgb, var(--fan) 35%, var(--border)); }
+.impact-chip.neutral { color: var(--muted); }
+.triage-action {
+  border: 1px solid var(--border); border-radius: 8px; background: var(--bg);
+  color: var(--text); font-weight: 700; font-size: 11.5px; padding: 6px 10px;
+}
+.triage-action:hover { border-color: var(--accent); color: var(--accent); }
 
 .map-footer { display: flex; gap: 20px; padding: 4px; color: var(--muted); font-size: 11.5px; }
 .trace-view { display: flex; flex-direction: column; height: 100%; gap: 8px; padding: 8px; overflow: hidden; }
@@ -1444,8 +1471,10 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
   .app-sidebar { flex-basis: 64px; width: 64px; }
   .app-sidebar .sb-label,
   .app-sidebar .sb-tag,
-  .app-sidebar .sb-brand strong,
+  .app-sidebar .sb-brand-text,
   .app-sidebar .sb-subnav { display: none; }
+  .app-sidebar .sb-brand { justify-content: center; }
+  .app-sidebar .sb-monogram { display: block; }
   .app-sidebar .sb-item { justify-content: center; padding: 9px 0; }
   .app-sidebar .sb-foot { flex-direction: column; align-items: center; }
   .app-sidebar .sb-collapse { margin-left: 0; }

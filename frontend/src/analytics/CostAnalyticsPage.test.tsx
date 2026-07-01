@@ -1,5 +1,5 @@
 // frontend/src/analytics/CostAnalyticsPage.test.tsx
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CostAnalyticsResponse, TurnCostBreakdown } from "../api/types";
@@ -177,6 +177,49 @@ describe("CostAnalyticsPage", () => {
     expect(await screen.findByText("Session insights")).toBeInTheDocument();
     expect(await screen.findAllByText("Turn distribution")).not.toHaveLength(0);
     expect(screen.queryByRole("button", { name: "Review" })).not.toBeInTheDocument();
+  });
+
+  it("applies custom start and end date filters", async () => {
+    renderPage();
+    await screen.findAllByText("alpha");
+
+    fireEvent.change(screen.getByLabelText("Start date"), { target: { value: "2026-05-01" } });
+
+    expect((screen.getByLabelText("Date range") as HTMLSelectElement).value).toBe("custom");
+    await vi.waitFor(() =>
+      expect(getCostAnalytics.mock.calls.some(([nextFilters]) => (
+        nextFilters.dateFrom === "2026-05-01T00:00:00.000Z"
+      ))).toBe(true),
+    );
+
+    fireEvent.change(screen.getByLabelText("End date"), { target: { value: "2026-05-02" } });
+
+    await vi.waitFor(() =>
+      expect(getCostAnalytics.mock.calls.some(([nextFilters]) => (
+        nextFilters.dateFrom === "2026-05-01T00:00:00.000Z"
+        && nextFilters.dateTo === "2026-05-02T23:59:59.999Z"
+      ))).toBe(true),
+    );
+  });
+
+  it("surfaces largest spike sessions with an open session action", async () => {
+    const onOpenSession = vi.fn();
+    renderPage(onOpenSession);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Show largest spike sessions for 2026-05-02" }));
+
+    const spikePanel = await screen.findByLabelText("Largest spike sessions for 2026-05-02");
+    expect(within(spikePanel).getByRole("heading", { name: "Largest spike sessions" })).toBeInTheDocument();
+    expect(within(spikePanel).getByText("2026-05-02 - +$30.00 jump - $48.00 total")).toBeInTheDocument();
+    expect(within(spikePanel).getByText("Session One")).toBeInTheDocument();
+
+    fireEvent.click(within(spikePanel).getByRole("button", { name: "Open session" }));
+
+    expect(onOpenSession).toHaveBeenCalledWith(7);
+
+    fireEvent.click(screen.getByRole("button", { name: "Hide largest spike sessions for 2026-05-02" }));
+
+    expect(screen.queryByLabelText("Largest spike sessions for 2026-05-02")).not.toBeInTheDocument();
   });
 
   it("passes the pricing mode to the request and refetches when it flips", async () => {

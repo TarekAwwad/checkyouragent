@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { SessionCard } from "../api/types";
 import SessionWorkspace from "./SessionWorkspace";
@@ -35,7 +35,9 @@ vi.mock("../inspector/InspectorPanel", () => ({
 }));
 
 vi.mock("../trace/TraceView", () => ({
-  default: () => <div data-testid="trace-view">Trace</div>,
+  default: ({ selectedEventId }: { selectedEventId: number | null }) => (
+    <div data-testid="trace-view" data-selected-event-id={selectedEventId ?? ""}>Trace</div>
+  ),
 }));
 
 function baseSession(id: number): SessionCard {
@@ -74,11 +76,11 @@ function baseSession(id: number): SessionCard {
   };
 }
 
-function renderWorkspace() {
+function renderWorkspace(options: { initialEventId?: number | null; backLabel?: string; onBack?: () => void } = {}) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <SessionWorkspace session={baseSession(1)} />
+      <SessionWorkspace session={baseSession(1)} {...options} />
     </QueryClientProvider>,
   );
 }
@@ -108,5 +110,20 @@ describe("SessionWorkspace", () => {
     expect(await screen.findByTestId("trace-view")).toBeInTheDocument();
     expect(screen.getByTestId("timeline-panel")).toBeInTheDocument();
     expect(screen.getByTestId("inspector-panel")).toBeInTheDocument();
+  });
+
+  it("shows an origin-aware back control when provided", async () => {
+    const onBack = vi.fn();
+    renderWorkspace({ backLabel: "Back to Cost", onBack });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Back to Cost" }));
+
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a deep-linked event selected on entry", async () => {
+    renderWorkspace({ initialEventId: 42 });
+
+    expect(await screen.findByTestId("trace-view")).toHaveAttribute("data-selected-event-id", "42");
   });
 });
