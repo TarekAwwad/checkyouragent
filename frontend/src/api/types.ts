@@ -646,4 +646,23 @@ export interface UsageCharacteristicsResponse {
 
 export interface Settings {
   historical_pricing: boolean;
+  privacy_mode: boolean;
+}
+
+export interface ContributionManifest {
+  session_count: number;
+  sequence_step_count: number;
+  included_fields: string[];
+  excluded: string[];
+  fingerprint_caveat: string;
+}
+
+export interface ContributionPreview {
+  manifest: ContributionManifest;
+  bundle: { sessions?: unknown[] } & Record<string, unknown>;
+}
+
+export interface ContributionExportResult {
+  path: string;
+  session_count: number;
 }

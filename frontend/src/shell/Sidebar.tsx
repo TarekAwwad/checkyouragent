@@ -1,5 +1,5 @@
 // frontend/src/shell/Sidebar.tsx
-import { History, HelpCircle, Moon, PanelLeft, PanelLeftClose, Sun } from "lucide-react";
+import { Eye, EyeOff, History, HelpCircle, Moon, PanelLeft, PanelLeftClose, Sun } from "lucide-react";
 import { NAV_ITEMS, type View } from "./navConfig";
 import { TECHNIQUES } from "../discover/techniques";
 
@@ -16,6 +16,8 @@ interface Props {
   onOpenGlossary: () => void;
   historicalPricing: boolean;
   onToggleHistoricalPricing: () => void;
+  privacyMode: boolean;
+  onTogglePrivacyMode: () => void;
   // First-run hint that surfaces the glossary. When true, the help button
   // pulses and a dismissable coachmark is shown.
   glossaryHint?: boolean;
@@ -37,6 +39,8 @@ export default function Sidebar({
   onDismissGlossaryHint,
   historicalPricing,
   onToggleHistoricalPricing,
+  privacyMode,
+  onTogglePrivacyMode,
 }: Props) {
   return (
     <aside className={`app-sidebar ${collapsed ? "is-collapsed" : ""}`} aria-label="Primary">
@@ -86,6 +90,15 @@ export default function Sidebar({
       </nav>
 
       <div className="sb-foot">
+        <button
+          className={`sb-action ${privacyMode ? "is-active" : ""}`}
+          onClick={onTogglePrivacyMode}
+          aria-pressed={privacyMode}
+          aria-label="Privacy mode"
+          title={privacyMode ? "Privacy mode on — sensitive data is blurred" : "Privacy mode off — click to blur sensitive data"}
+        >
+          {privacyMode ? <EyeOff size={16} /> : <Eye size={16} />}
+        </button>
         <button
           className={`sb-action ${historicalPricing ? "is-active" : ""}`}
           onClick={onToggleHistoricalPricing}

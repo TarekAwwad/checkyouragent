@@ -6,6 +6,7 @@ import ImportPage from "./pages/ImportPage";
 import TriageBoard from "./triage/TriageBoard";
 import SessionWorkspace from "./pages/SessionWorkspace";
 import CostAnalyticsPage from "./analytics/CostAnalyticsPage";
+import ContributePage from "./contribute/ContributePage";
 import DiscoverPage from "./discover/DiscoverPage";
 import GlossaryDialog from "./glossary/GlossaryDialog";
 import Sidebar from "./shell/Sidebar";
@@ -14,6 +15,7 @@ import { DEFAULT_TECHNIQUE } from "./discover/techniques";
 import { useCollapsed } from "./shell/useCollapsed";
 import { useGlossaryHint } from "./shell/useGlossaryHint";
 import { useSettings } from "./shell/useSettings";
+import { PrivacyModeProvider } from "./shell/PrivacyModeContext";
 import { useTheme } from "./theme/useTheme";
 
 function App() {
@@ -27,7 +29,7 @@ function App() {
   const [focusEventId, setFocusEventId] = React.useState<number | null>(null);
   const { theme, toggle } = useTheme();
   const { collapsed, toggle: toggleCollapsed } = useCollapsed();
-  const { historicalPricing, setHistoricalPricing } = useSettings();
+  const { historicalPricing, setHistoricalPricing, privacyMode, setPrivacyMode } = useSettings();
   const { seen: glossaryHintSeen, dismiss: dismissGlossaryHint } = useGlossaryHint();
   const [glossaryOpen, setGlossaryOpen] = React.useState(false);
   const autoRouted = React.useRef(false);
@@ -68,6 +70,7 @@ function App() {
   };
 
   return (
+    <PrivacyModeProvider value={privacyMode}>
     <div className="app-shell">
       <Sidebar
         view={view}
@@ -82,6 +85,8 @@ function App() {
         onOpenGlossary={openGlossary}
         historicalPricing={historicalPricing}
         onToggleHistoricalPricing={() => setHistoricalPricing(!historicalPricing)}
+        privacyMode={privacyMode}
+        onTogglePrivacyMode={() => setPrivacyMode(!privacyMode)}
         glossaryHint={!glossaryHintSeen}
         onDismissGlossaryHint={dismissGlossaryHint}
       />
@@ -101,6 +106,7 @@ function App() {
         {view === "cost" && (
           <CostAnalyticsPage onOpenSession={openSessionById} historical={historicalPricing} />
         )}
+        {view === "contribute" && <ContributePage />}
         {view === "discover" && (
           <DiscoverPage
             projects={projects.data ?? []}
@@ -113,6 +119,7 @@ function App() {
         )}
       </main>
     </div>
+    </PrivacyModeProvider>
   );
 }
 

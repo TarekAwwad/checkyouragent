@@ -2506,3 +2506,783 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
 .mindmap-compare-toggle { display: inline-flex; align-items: center; gap: 6px;
   font-size: 12px; color: var(--muted); white-space: nowrap; }
 .mindmap-compare-toggle input { accent-color: var(--accent); }
+
+/* --- Contribute page refresh ---------------------------------------------- */
+.contribute-state {
+  min-height: 280px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--raised);
+}
+
+/* ============================================================
+   Contribution page — flat surfaces, fits the viewport; the
+   specimen lives in a modal so the page itself never scrolls.
+   ============================================================ */
+.contribute-page {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow: hidden;
+}
+
+/* One shared card recipe for every section (mirrors .card). */
+.contribute-titleblock,
+.contribute-metrics,
+.flow-step,
+.privacy-ledger {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+/* ---- Header ---- */
+.contribute-header {
+  flex: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(260px, .8fr);
+  gap: 14px;
+}
+
+.contribute-titleblock {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 18px 20px;
+}
+
+.contribute-titleblock h1 {
+  margin: 0 0 8px;
+  font-size: 23px;
+  line-height: 1.14;
+  letter-spacing: -.01em;
+  font-weight: 700;
+  color: var(--text-strong);
+}
+
+.contribute-titleblock p {
+  max-width: 600px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.contribute-metrics {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+.contribute-metric {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 16px 20px;
+}
+
+.contribute-metric + .contribute-metric {
+  border-top: 1px solid var(--border);
+}
+
+.contribute-metric strong {
+  min-width: 0;
+  color: var(--text-strong);
+  font-family: var(--font-mono);
+  font-size: 25px;
+  font-weight: 700;
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.contribute-metric span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* ---- Flow ---- */
+.contribute-flow {
+  flex: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 14px;
+  align-items: stretch;
+}
+
+.flow-step {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 12px;
+  padding: 16px;
+}
+
+/* Active / complete use the app's own active pattern: flat tint + inset ring. */
+.flow-step.is-current {
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 26%, transparent);
+}
+
+.flow-step.is-complete {
+  background: color-mix(in srgb, var(--success) 6%, var(--surface));
+  border-color: color-mix(in srgb, var(--success) 36%, var(--border));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--success) 26%, transparent);
+}
+
+.flow-step.is-waiting .flow-content > * {
+  opacity: .66;
+}
+
+.flow-content {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+}
+
+.flow-content h2 {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 15.5px;
+}
+
+.flow-content p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.48;
+}
+
+.flow-index {
+  width: 27px;
+  height: 27px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border-2);
+  border-radius: 999px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 800;
+}
+
+.flow-step.is-current .flow-index {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.flow-step.is-complete .flow-index {
+  color: #fff;
+  background: var(--success);
+  border-color: var(--success);
+}
+
+.flow-arrow {
+  align-self: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--faint);
+}
+
+.flow-arrow::before {
+  content: "";
+  width: 14px;
+  border-top: 2px dotted color-mix(in srgb, var(--faint) 60%, transparent);
+  margin-right: -2px;
+}
+
+.contribute-primary-button,
+.contribute-secondary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 36px;
+  max-width: 100%;
+  padding: 0 15px;
+  border-radius: 9px;
+  font-size: 12.5px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: filter .12s ease, border-color .12s ease, color .12s ease, transform .1s ease;
+}
+
+.contribute-primary-button {
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.contribute-primary-button:hover:not(:disabled) {
+  filter: brightness(1.07);
+}
+
+.contribute-primary-button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.contribute-secondary-button {
+  border: 1px solid var(--border-2);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.contribute-secondary-button:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border-2));
+  color: var(--accent);
+}
+
+.flow-result {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 11px;
+  border: 1px solid color-mix(in srgb, var(--success) 34%, var(--border));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--success) 9%, var(--surface));
+  color: var(--success);
+}
+
+.flow-result code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.flow-error {
+  color: var(--danger);
+  font-size: 11.5px;
+}
+
+/* ---- Privacy ledger (fills the remaining page height) ---- */
+.privacy-ledger {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.privacy-ledger-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.privacy-ledger-head h2 {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 15.5px;
+}
+
+.privacy-note {
+  max-width: 520px;
+  margin: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 11px;
+  border-radius: 9px;
+  color: var(--text-strong);
+  font-size: 11.5px;
+  line-height: 1.45;
+  text-align: left;
+}
+
+.privacy-warning {
+  border: 1px solid color-mix(in srgb, var(--warning) 50%, var(--border));
+  background: color-mix(in srgb, var(--warning) 13%, var(--surface));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warning) 16%, transparent);
+}
+
+.privacy-warning svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--warning);
+}
+
+.privacy-warning span {
+  min-width: 0;
+}
+
+.privacy-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.privacy-column {
+  min-width: 0;
+  padding: 14px 16px;
+}
+
+.privacy-column.stays {
+  border-right: 1px solid var(--border);
+}
+
+.privacy-column h2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 12px;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+.privacy-column.stays h2 {
+  color: var(--muted);
+}
+
+.privacy-column.travels h2 {
+  color: var(--accent);
+}
+
+.privacy-column ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 9px;
+}
+
+.privacy-column li {
+  position: relative;
+  padding-left: 18px;
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.privacy-column.stays li {
+  color: var(--muted);
+}
+
+.privacy-column.travels li {
+  color: var(--text-strong);
+}
+
+.privacy-column li::before {
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-family: var(--font-mono);
+  font-weight: 700;
+}
+
+.privacy-column.stays li::before {
+  content: "\2212";
+  color: var(--danger);
+}
+
+.privacy-column.travels li::before {
+  content: "+";
+  color: var(--accent);
+}
+
+/* Quiet trigger row at the foot of the ledger — opens the specimen modal. */
+.ledger-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  margin-top: auto;
+  padding: 11px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.ledger-foot span {
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.specimen-trigger {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: border-color .12s ease, color .12s ease, background .12s ease;
+}
+
+.specimen-trigger:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border-2));
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 7%, var(--bg));
+}
+
+/* ---- Specimen modal (mirrors the .glossary-dialog frame) ---- */
+.specimen-dialog {
+  width: min(880px, calc(100vw - 32px));
+  height: min(80vh, 640px);
+  padding: 0;
+  border: 1px solid var(--border-2);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 24px 60px var(--shadow);
+  overflow: hidden;
+}
+
+.specimen-dialog::backdrop {
+  background: rgba(4, 8, 14, .55);
+  backdrop-filter: blur(2px);
+}
+
+html:has(.specimen-dialog[open]) {
+  overflow: hidden;
+}
+
+.specimen-panel {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.specimen-modal-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 20px 13px;
+  border-bottom: 1px solid var(--border);
+}
+
+.specimen-modal-head .specimen-title {
+  min-width: 0;
+}
+
+.specimen-modal-head h2 {
+  margin: 0 0 3px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -.01em;
+  color: var(--text-strong);
+}
+
+.specimen-modal-head p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.specimen-modal-tools {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.specimen-close {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--muted);
+  border-radius: 8px;
+}
+
+.specimen-close:hover {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border-2));
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg));
+}
+
+.specimen-modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 20px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Segmented Annotated / Raw toggle. */
+.specimen-dialog .seg {
+  display: inline-flex;
+  flex: 0 0 auto;
+  padding: 3px;
+  border: 1px solid var(--border-2);
+  border-radius: 9px;
+  background: var(--bg);
+}
+
+.specimen-dialog .seg button {
+  min-height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  padding: 0 12px;
+  font-size: 11.5px;
+  font-weight: 700;
+  transition: color .12s ease, background .12s ease;
+}
+
+.specimen-dialog .seg button:hover {
+  color: var(--text);
+}
+
+.specimen-dialog .seg button.is-on {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Facts table. */
+.specimen-facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  align-content: start;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.specimen-facts > div {
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  gap: 12px;
+  align-items: baseline;
+  padding: 10px 13px;
+  border-top: 1px solid var(--border);
+}
+
+.specimen-facts > div:first-child {
+  border-top: 0;
+}
+
+.specimen-facts dt {
+  color: var(--faint);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+.specimen-facts dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--text-strong);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.specimen-dialog .chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.specimen-dialog .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 3px 8px;
+  border: 1px solid var(--border-2);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.specimen-dialog .chip em {
+  color: var(--text-strong);
+  font-style: normal;
+}
+
+.specimen-dialog .chip.is-risk {
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 45%, var(--border-2));
+}
+
+/* Tool / event sequence strand. */
+.seq {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  padding: 12px;
+}
+
+.seq-label {
+  color: var(--faint);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  margin-bottom: 11px;
+}
+
+.seq-label em {
+  margin-left: 7px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-style: normal;
+}
+
+.seq-strand {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.seq-chip {
+  max-width: 100%;
+  border: 1px solid var(--border-2);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.4;
+  overflow: hidden;
+  padding: 3px 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.seq-chip.k-inspect { color: var(--info); border-color: color-mix(in srgb, var(--info) 35%, var(--border-2)); }
+.seq-chip.k-write { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, var(--border-2)); }
+.seq-chip.k-shell { color: var(--warning); border-color: color-mix(in srgb, var(--warning) 35%, var(--border-2)); }
+.seq-chip.k-agent { color: var(--subagent); border-color: color-mix(in srgb, var(--subagent) 40%, var(--border-2)); }
+.seq-chip.k-ok { color: var(--success); border-color: color-mix(in srgb, var(--success) 30%, var(--border-2)); }
+.seq-chip.k-err { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--border-2)); }
+
+.seq-more {
+  align-self: center;
+  padding: 3px 5px;
+  color: var(--faint);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+
+.specimen-raw {
+  margin: 0;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 13px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.55;
+  white-space: pre;
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 960px) {
+  .contribute-header,
+  .contribute-flow {
+    grid-template-columns: 1fr;
+  }
+
+  .contribute-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .contribute-metric + .contribute-metric {
+    border-top: 0;
+    border-left: 1px solid var(--border);
+  }
+
+  .flow-arrow {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .contribute-titleblock h1 {
+    font-size: 21px;
+  }
+
+  .contribute-metrics,
+  .privacy-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .contribute-metric + .contribute-metric {
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .privacy-ledger-head {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .privacy-note {
+    text-align: left;
+  }
+
+  .privacy-column.stays {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .ledger-foot {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+}
+
+@media (max-width: 560px) {
+  .specimen-modal-head {
+    flex-direction: column;
+  }
+
+  .specimen-modal-tools {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .specimen-facts > div {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+}

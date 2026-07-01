@@ -1,7 +1,7 @@
 import type { LucideIcon } from "lucide-react";
-import { DollarSign, FileText, LayoutGrid, Sparkles, Upload } from "lucide-react";
+import { DollarSign, FileText, HeartHandshake, LayoutGrid, Sparkles, Upload } from "lucide-react";
 
-export type View = "import" | "map" | "session" | "cost" | "discover";
+export type View = "import" | "map" | "session" | "cost" | "discover" | "contribute";
 
 export interface NavItem {
   key: View;
@@ -15,5 +15,6 @@ export const NAV_ITEMS: NavItem[] = [
   { key: "map", label: "Triage", icon: LayoutGrid },
   { key: "cost", label: "Cost", icon: DollarSign },
   { key: "discover", label: "Discover", icon: Sparkles },
+  { key: "contribute", label: "Contribute", icon: HeartHandshake },
   { key: "session", label: "Session", icon: FileText },
 ];

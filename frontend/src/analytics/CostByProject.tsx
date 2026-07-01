@@ -1,6 +1,7 @@
 // frontend/src/analytics/CostByProject.tsx
 import type { CostAnalyticsResponse } from "../api/types";
 import { displayModelName, formatUsd, orderedModels, stackedSegments, topProjectsWithRollup, FALLBACK_COLOR } from "./chartGeometry";
+import { Blurred } from "../shell/Blurred";
 
 interface Props {
   payload: CostAnalyticsResponse;
@@ -20,7 +21,7 @@ export default function CostByProject({ payload, colors, available }: Props) {
         const segments = stackedSegments(project.children, order, project.usd);
         return (
           <div className="cbp-row" key={project.project_id}>
-            <div className="cbp-label" title={project.project_name}>{project.project_name}</div>
+            <div className="cbp-label" title={project.project_name}><Blurred>{project.project_name}</Blurred></div>
             <div className="cbp-track">
               {segments.map((s) => (
                 <i key={s.model} style={{ width: `${s.pct}%`, background: colors[s.model] ?? FALLBACK_COLOR }}

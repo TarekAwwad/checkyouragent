@@ -1,16 +1,20 @@
 from __future__ import annotations
 
+import json
+import secrets
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlite3 import Connection
 
+from ccfr import config
 from ccfr.api import analytics, repository
 from ccfr.api.deps import get_db, get_historical_pricing
 from ccfr.api.import_progress import import_progress_store
-from ccfr.settings import Settings, read_settings, write_settings
+from ccfr.settings import Settings, contributor_identity, read_settings, write_settings
+from ccfr.analysis.contribution import build_contribution, bundle_manifest
 from ccfr.analysis.context_economics import (
     context_economics_analytics,
     session_context_economics,
@@ -20,6 +24,8 @@ from ccfr.analysis.usage_map import usage_map_analytics, usage_map_evidence
 from ccfr.analysis.usage_characteristics import usage_characteristics_analytics
 from ccfr.api.schemas import (
     CacheStatsResponse,
+    ContributionExportResponse,
+    ContributionPreviewResponse,
     ContextEconomicsResponse,
     CostAnalyticsResponse,
     DiscoveryResponse,
@@ -95,8 +101,41 @@ def get_settings() -> SettingsResponse:
 
 @router.put("/settings", response_model=SettingsResponse)
 def update_settings(payload: SettingsResponse) -> SettingsResponse:
-    saved = write_settings(Settings(historical_pricing=payload.historical_pricing))
+    current = read_settings()
+    current.historical_pricing = payload.historical_pricing
+    current.privacy_mode = payload.privacy_mode
+    saved = write_settings(current)
     return SettingsResponse(**asdict(saved))
+
+
+def _current_bundle(conn: Connection):
+    salt, contributor_id = contributor_identity()
+    return build_contribution(
+        conn,
+        salt=salt,
+        contributor_id=contributor_id,
+        app_version=config.app_version(),
+        generated_on=date.today(),
+    )
+
+
+@router.get("/contribution/preview", response_model=ContributionPreviewResponse)
+def contribution_preview(conn: Connection = Depends(get_db)) -> ContributionPreviewResponse:
+    bundle = _current_bundle(conn)
+    return ContributionPreviewResponse(manifest=bundle_manifest(bundle), bundle=bundle.to_dict())
+
+
+@router.post("/contribution/export", response_model=ContributionExportResponse)
+def contribution_export(conn: Connection = Depends(get_db)) -> ContributionExportResponse:
+    bundle = _current_bundle(conn)
+    out_dir = config.data_dir() / "contributions"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S_%fZ")
+    path = out_dir / f"contribution-{stamp}-{secrets.token_hex(4)}.json"
+    # Exclusive create: never silently overwrite a prior export.
+    with path.open("x", encoding="utf-8") as fh:
+        fh.write(json.dumps(bundle.to_dict(), indent=2))
+    return ContributionExportResponse(path=str(path), session_count=len(bundle.sessions))
 
 
 @router.post("/imports", response_model=ImportSummaryResponse)

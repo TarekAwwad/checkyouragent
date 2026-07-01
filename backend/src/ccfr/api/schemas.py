@@ -18,6 +18,7 @@ class RuntimeConfigResponse(BaseModel):
 
 class SettingsResponse(BaseModel):
     historical_pricing: bool = True
+    privacy_mode: bool = False
 
 
 class CacheStatsResponse(BaseModel):
@@ -667,3 +668,13 @@ class UsageCharacteristicsMeta(BaseModel):
 class UsageCharacteristicsResponse(BaseModel):
     meta: UsageCharacteristicsMeta = Field(default_factory=UsageCharacteristicsMeta)
     characteristics: list[UsageCharacteristic] = Field(default_factory=list)
+
+
+class ContributionPreviewResponse(BaseModel):
+    manifest: dict[str, Any]
+    bundle: dict[str, Any]
+
+
+class ContributionExportResponse(BaseModel):
+    path: str
+    session_count: int

@@ -1,6 +1,7 @@
 import React from "react";
 import type { ContextArchetype, ContextFinding } from "../../api/types";
 import { findingKey, formatTokens, formatUsd } from "./ContextEconomics";
+import { Blurred } from "../../shell/Blurred";
 
 const PATH_OR_URL_TOKEN =
   /(?:https?:\/\/|file:\/\/|[A-Za-z]:[\\/]|\/|\.{1,2}[\\/])\S+|(?:[\w.@-]+[\\/])+[\w.@-]+\.[\w.@-]+/g;
@@ -69,10 +70,10 @@ export default function FindingsPanel({
               aria-pressed={isActive}
             >
               <span className="driver-card-topline">
-                <span title={finding.label}>{label}</span>
+                <span title={finding.label}><Blurred>{label}</Blurred></span>
                 <b>{savings}</b>
               </span>
-              <strong>{finding.session_title ?? "Untitled session"}</strong>
+              <strong><Blurred>{finding.session_title ?? "Untitled session"}</Blurred></strong>
               <span className="driver-card-note">
                 turn {finding.entry_turn} · carried {finding.carried_turns} turn{finding.carried_turns === 1 ? "" : "s"}
               </span>

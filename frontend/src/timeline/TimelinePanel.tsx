@@ -6,6 +6,7 @@ import type { Turn } from "../trace/useTurns";
 import type { LoopContext } from "../trace/loopContext";
 import { loopExplanation } from "../trace/loopContext";
 import { isErrorItem } from "../session/sessionAnalytics";
+import { Blurred } from "../shell/Blurred";
 
 interface Props {
   items: TimelineItem[];
@@ -113,7 +114,7 @@ function TurnGroup({
 
   return (
     <details open className="turn-group">
-      <summary>{turn.title}</summary>
+      <summary><Blurred>{turn.title}</Blurred></summary>
       <ol>
         {visible.map((item) => (
           <TimelineRow
@@ -157,14 +158,14 @@ function TimelineRow({
       >
         {iconForItem(item)}
         <span>
-          <strong>{item.title}</strong>
+          <strong><Blurred>{item.title}</Blurred></strong>
           {loopContext && (
             <span className="timeline-loop-badge" title={loopExplanation(loopContext)}>
               <Repeat size={11} /> Loop {loopContext.position}/{loopContext.count}
             </span>
           )}
           <small>{item.timestamp ? new Date(item.timestamp).toLocaleString() : item.event_type}</small>
-          {item.preview && <em>{item.preview}</em>}
+          {item.preview && <em><Blurred>{item.preview}</Blurred></em>}
         </span>
       </button>
     </li>
