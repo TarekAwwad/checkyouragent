@@ -62,7 +62,7 @@ describe("ContributePage", () => {
     // Kept-vs-never ledger + honest caveat.
     expect(screen.getByText(/Prompts and your messages/i)).toBeInTheDocument();
     expect(screen.getByText(/File contents/i)).toBeInTheDocument();
-    expect(screen.getByText(/structural fingerprint/i)).toBeInTheDocument();
+    expect(screen.getByText(/structural fingerprint/i).closest(".privacy-note")).toHaveClass("privacy-warning");
   });
 
   it("opens the specimen modal, shows it annotated, then toggles to raw JSON and back", async () => {

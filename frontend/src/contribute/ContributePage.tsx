@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ArrowRight, ArrowUpRight, Check, Download, FileJson, Lock, ScanSearch } from "lucide-react";
+import { AlertTriangle, ArrowRight, ArrowUpRight, Check, Download, FileJson, Lock, ScanSearch } from "lucide-react";
 import { exportContribution, getContributionPreview } from "../api/client";
 import { Blurred } from "../shell/Blurred";
 import { type ContributionSession, compactInt } from "./specimen";
@@ -104,7 +104,7 @@ export default function ContributePage() {
           <span className="flow-index">2</span>
           <div className="flow-content">
             <h2>Add to the dataset</h2>
-            <p>Drag the file into the public dataset. GitHub opens a pull request you can review — open and auditable, nothing hidden.</p>
+            <p>Drag the file into the public dataset. GitHub opens a pull request you can review.</p>
             <a
               className={exported ? "contribute-primary-button" : "contribute-secondary-button"}
               href={CONTRIBUTION_UPLOAD_URL}
@@ -120,7 +120,10 @@ export default function ContributePage() {
       <section className="privacy-ledger" aria-labelledby="privacy-ledger-title">
         <div className="privacy-ledger-head">
           <h2 id="privacy-ledger-title">What stays vs. what travels</h2>
-          <p className="privacy-note" role="note">{manifest.fingerprint_caveat}</p>
+          <p className="privacy-note privacy-warning" role="note">
+            <AlertTriangle size={14} aria-hidden="true" />
+            <span>{manifest.fingerprint_caveat}</span>
+          </p>
         </div>
 
         <div className="privacy-grid">
@@ -150,7 +153,7 @@ export default function ContributePage() {
         <div className="ledger-foot">
           {sample ? (
             <>
-              <span>Full transparency — inspect the exact first session that will be exported.</span>
+              <span>Inspect the exact first session that will be exported.</span>
               <button
                 type="button"
                 className="specimen-trigger"

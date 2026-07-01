@@ -2797,12 +2797,33 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
 }
 
 .privacy-note {
-  max-width: 480px;
+  max-width: 520px;
   margin: 0;
-  color: var(--faint);
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 11px;
+  border-radius: 9px;
+  color: var(--text-strong);
   font-size: 11.5px;
-  line-height: 1.5;
-  text-align: right;
+  line-height: 1.45;
+  text-align: left;
+}
+
+.privacy-warning {
+  border: 1px solid color-mix(in srgb, var(--warning) 50%, var(--border));
+  background: color-mix(in srgb, var(--warning) 13%, var(--surface));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--warning) 16%, transparent);
+}
+
+.privacy-warning svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--warning);
+}
+
+.privacy-warning span {
+  min-width: 0;
 }
 
 .privacy-grid {
