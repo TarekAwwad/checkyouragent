@@ -535,3 +535,58 @@ def test_invalid_utf8_subagent_meta_is_recorded_not_fatal(tmp_path: Path) -> Non
     assert summary.error_count == 1
     assert summary.project_count == 1
     assert conn.execute("SELECT COUNT(*) FROM subagents").fetchone()[0] == 0
+
+
+def test_import_keeps_a_rollback_journal(tmp_path: Path) -> None:
+    _write_project(tmp_path, "d--Alpha", "11111111-1111-1111-1111-111111111111")
+    conn = memory_conn()
+    import_export(conn, tmp_path)
+    assert conn.execute("PRAGMA journal_mode").fetchone()[0].lower() != "off"
+
+
+def test_failed_project_rolls_back_and_others_survive(tmp_path: Path, monkeypatch) -> None:
+    import ccfr.ingest.importer as importer_mod
+    from ccfr.ingest import import_all_new
+
+    _write_project(tmp_path, "d--Alpha", "11111111-1111-1111-1111-111111111111")
+    _write_project(tmp_path, "d--Beta", "22222222-2222-2222-2222-222222222222")
+
+    original = importer_mod._parse_jsonl
+
+    def boom(conn, summary, root, path, *args, **kwargs):
+        if "d--Beta" in str(path):
+            raise RuntimeError("disk exploded")
+        return original(conn, summary, root, path, *args, **kwargs)
+
+    monkeypatch.setattr(importer_mod, "_parse_jsonl", boom)
+    conn = memory_conn()
+    summary = import_all_new(conn, tmp_path, include_existing=True)
+
+    names = [r[0] for r in conn.execute("SELECT export_name FROM projects ORDER BY export_name")]
+    assert names == ["d--Alpha"]
+    assert summary.error_count == 1
+    assert conn.execute("SELECT status FROM imports ORDER BY id DESC LIMIT 1").fetchone()[0] == "completed_with_errors"
+
+
+def test_failed_reimport_preserves_previous_project_data(tmp_path: Path, monkeypatch) -> None:
+    import ccfr.ingest.importer as importer_mod
+    from ccfr.ingest import import_all_new
+
+    _write_project(tmp_path, "d--Beta", "22222222-2222-2222-2222-222222222222")
+    conn = memory_conn()
+    import_all_new(conn, tmp_path, include_existing=True)
+    assert conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 1
+
+    original = importer_mod._parse_jsonl
+
+    def boom(conn_, summary, root, path, *args, **kwargs):
+        if "d--Beta" in str(path):
+            raise RuntimeError("disk exploded")
+        return original(conn_, summary, root, path, *args, **kwargs)
+
+    monkeypatch.setattr(importer_mod, "_parse_jsonl", boom)
+    import_all_new(conn, tmp_path, include_existing=True)
+
+    # The failed re-import must roll back its delete: old Beta data intact.
+    assert conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 1
+    assert conn.execute("SELECT COUNT(*) FROM events").fetchone()[0] == 2

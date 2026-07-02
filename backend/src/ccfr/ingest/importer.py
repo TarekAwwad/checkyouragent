@@ -67,6 +67,7 @@ def import_all_new(
     _prepare_conn(conn)
     file_count = sum(1 for p in source_root.rglob("*") if p.is_file())
     import_id, summary = _create_import_row(conn, source_root, file_count)
+    conn.commit()  # the imports row must survive a later project rollback
     _notify_progress(progress_callback, summary, "running")
 
     session_ids: list[int] = []
@@ -74,10 +75,18 @@ def import_all_new(
     for project_dir in sorted(p for p in source_root.iterdir() if p.is_dir()):
         if not include_existing and _project_exists(conn, project_dir.name):
             continue
-        pid, sids = _import_one_project(
-            conn, import_id, source_root, project_dir, summary,
-            progress_callback=progress_callback,
-        )
+        try:
+            pid, sids = _import_one_project(
+                conn, import_id, source_root, project_dir, summary,
+                progress_callback=progress_callback,
+            )
+            conn.commit()  # project is all-or-nothing: delete+rebuild in one txn
+        except Exception as exc:  # a broken project must not poison the rest
+            conn.rollback()
+            summary.project_count = max(0, summary.project_count - 1)
+            _record_error(conn, summary, project_dir.name, None, f"Project import failed: {exc}")
+            conn.commit()
+            continue
         project_ids.append(pid)
         session_ids.extend(sids)
         _notify_progress(progress_callback, summary, "importing")
@@ -102,15 +111,26 @@ def import_project(
     _prepare_conn(conn)
     file_count = sum(1 for p in project_dir.rglob("*") if p.is_file())
     import_id, summary = _create_import_row(conn, source_root, file_count)
+    conn.commit()
     _notify_progress(progress_callback, summary, "running")
 
-    pid, sids = _import_one_project(
-        conn, import_id, source_root, project_dir, summary,
-        progress_callback=progress_callback,
-    )
+    project_ids: list[int] = []
+    sids: list[int] = []
+    try:
+        pid, sids = _import_one_project(
+            conn, import_id, source_root, project_dir, summary,
+            progress_callback=progress_callback,
+        )
+        conn.commit()
+        project_ids = [pid]
+    except Exception as exc:
+        conn.rollback()
+        summary.project_count = max(0, summary.project_count - 1)
+        _record_error(conn, summary, project_dir.name, None, f"Project import failed: {exc}")
+        conn.commit()
     _notify_progress(progress_callback, summary, "rebuilding")
-    _rebuild_derived(conn, sids, [pid])
-    _finalize_import(conn, summary, import_id, sids, [pid], progress_callback=progress_callback)
+    _rebuild_derived(conn, sids, project_ids)
+    _finalize_import(conn, summary, import_id, sids, project_ids, progress_callback=progress_callback)
     return summary
 
 
@@ -151,8 +171,10 @@ def _validate_root(source_root: Path) -> Path:
 
 
 def _prepare_conn(conn: sqlite3.Connection) -> None:
-    conn.execute("PRAGMA journal_mode = OFF")
-    conn.execute("PRAGMA synchronous = OFF")
+    # storage.connect() sets WAL. NORMAL keeps bulk inserts fast while a crash
+    # mid-import can still roll back to the last per-project commit; the old
+    # journal_mode=OFF setting could corrupt the whole DB on a failed import.
+    conn.execute("PRAGMA synchronous = NORMAL")
     conn.execute("PRAGMA temp_store = MEMORY")
     init_db(conn)
 
