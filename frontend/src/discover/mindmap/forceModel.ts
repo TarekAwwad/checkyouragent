@@ -151,6 +151,10 @@ export function buildForceModel(
   opts: { totalUsd: number; costAvailable: boolean; leafMode?: LeafMode },
 ): ForceModel {
   const leafMode = opts.leafMode ?? "habits";
+  // Share-of-spend grouping only makes sense on a dollar basis. In token
+  // fallback the caller's total is a token count while leaf.cost_usd is 0,
+  // which would mark every leaf "too small" — keep everything within the cap.
+  const shareTotal = opts.costAvailable ? opts.totalUsd : 0;
   const active = phases.filter((p) =>
     p.share > 0 || (leafMode === "habits" ? p.habits.length > 0 : p.tools.length > 0));
   const nodes: MapNode[] = [{
@@ -191,11 +195,11 @@ export function buildForceModel(
     };
 
     if (leafMode === "habits") {
-      const { visible, grouped } = groupSmallLeaves(phase.habits, opts.totalUsd);
+      const { visible, grouped } = groupSmallLeaves(phase.habits, shareTotal);
       const leaves: (UsageHabit | null)[] =
         grouped.length > 0 ? [...visible, null] : visible;
       leaves.forEach((leaf, j) => {
-        const share = leaf && opts.totalUsd > 0 ? leaf.cost_usd / opts.totalUsd : 0;
+        const share = leaf && shareTotal > 0 ? leaf.cost_usd / shareTotal : 0;
         const r = leaf ? habitRadius(share) : 10;
         const habitNode: MapNode = leaf
           ? {
@@ -214,11 +218,11 @@ export function buildForceModel(
         pushLeaf(habitNode, leaf?.polarity ?? "structure");
       });
     } else {
-      const { visible, grouped } = groupSmallLeaves(phase.tools, opts.totalUsd);
+      const { visible, grouped } = groupSmallLeaves(phase.tools, shareTotal);
       const leaves: (UsageTool | null)[] =
         grouped.length > 0 ? [...visible, null] : visible;
       leaves.forEach((leaf, j) => {
-        const share = leaf && opts.totalUsd > 0 ? leaf.cost_usd / opts.totalUsd : 0;
+        const share = leaf && shareTotal > 0 ? leaf.cost_usd / shareTotal : 0;
         const r = leaf ? habitRadius(share) : 10;
         const toolNode: MapNode = leaf
           ? {

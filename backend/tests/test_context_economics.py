@@ -745,6 +745,62 @@ def test_detect_stale_continuation_skips_small_resumed_context() -> None:
     assert findings == []
 
 
+def _flat_priced_thread(calls: list[CallRec]) -> ThreadRec:
+    # Named distinctly from _priced_thread (line 459 above), which already has
+    # a different signature (calls, items) and derives prices via accrue_tax.
+    # A same-named redefinition here would silently replace that binding for
+    # every earlier test in this module (Python module-level defs are resolved
+    # at call time), breaking the many `_priced_thread(calls, items)` callers.
+    thread = ThreadRec(
+        session_db_id=1, session_title="t", project_name="p", agent_id=None,
+        calls=calls, epochs=split_epochs([c.context_tokens for c in calls]),
+        contributors=[],
+    )
+    thread.read_prices = [1e-6] * len(calls)      # $1/MTok read
+    thread.write_prices = [1.25e-6] * len(calls)  # $1.25/MTok write
+    return thread
+
+
+def test_late_compaction_savings_tokens_is_a_footprint_not_token_turns() -> None:
+    # 10 calls pinned at 120k context: eligible at call 0, tail of 9 calls.
+    calls = [_call(i + 1, 120_000, ts=f"2026-01-01T00:{i:02d}:00Z") for i in range(10)]
+    thread = _flat_priced_thread(calls)
+    claims = Claims.for_threads([thread])
+
+    findings, _ = detect_late_compaction([thread], claims)
+
+    assert len(findings) == 1
+    f = findings[0]
+    dropped = int(120_000 * (1 - 0.3))            # 84_000 ballast tokens
+    assert f.savings_tokens == dropped            # once — NOT dropped * 9 tail calls
+    assert f.carried_tokens == dropped
+    assert f.carried_turns == 9
+    # USD is per-call carry and stays cumulative: 9 * 84k * $1/MTok - rewrite cost.
+    assert f.savings_usd == pytest.approx(9 * 84_000 * 1e-6 - 36_000 * 1.25e-6)
+
+
+def test_stale_continuation_savings_tokens_is_a_footprint() -> None:
+    # 8 calls: minute-spaced ramp to 90k, then a 2h gap before two tail calls.
+    contexts = [10_000, 30_000, 50_000, 70_000, 80_000, 90_000, 90_000, 90_000]
+    times = ["00:00", "00:01", "00:02", "00:03", "00:04", "00:05", "02:05", "02:06"]
+    calls = [
+        _call(i + 1, ctx, ts=f"2026-01-01T{t}:00Z")
+        for i, (ctx, t) in enumerate(zip(contexts, times))
+    ]
+    thread = _flat_priced_thread(calls)
+    claims = Claims.for_threads([thread])
+
+    findings, _ = detect_stale_continuation([thread], claims)
+
+    assert len(findings) == 1
+    f = findings[0]
+    avoidable = 90_000 - 10_000                   # pre-gap context minus baseline
+    assert f.savings_tokens == avoidable          # once — NOT avoidable * 2 tail calls
+    assert f.carried_tokens == avoidable
+    assert f.carried_turns == 2
+    assert f.savings_usd == pytest.approx(2 * avoidable * 1e-6)
+
+
 # ---------------------------------------------------------------------------
 # Corpus aggregation: context_economics_analytics
 # ---------------------------------------------------------------------------
