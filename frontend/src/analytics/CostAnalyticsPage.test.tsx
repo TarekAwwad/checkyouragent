@@ -197,6 +197,46 @@ describe("CostAnalyticsPage", () => {
     expect(screen.queryByText("Turn distribution")).not.toBeInTheDocument();
   });
 
+  it("clears the project/model filters but preserves dates when scope changes", async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const view = render(
+      <QueryClientProvider client={qc}>
+        <CostAnalyticsPage onOpenSession={() => {}} scope="local" />
+      </QueryClientProvider>,
+    );
+    await screen.findAllByText("alpha");
+
+    fireEvent.change(screen.getByLabelText("Project"), { target: { value: "1" } });
+    await vi.waitFor(() =>
+      expect(getCostAnalytics.mock.calls.some(([f]) => f.projectId === 1)).toBe(true),
+    );
+    // Let the refetch resolve (repopulating meta.available_models) before the
+    // Model select's options exist to pick from.
+    await screen.findAllByText("alpha");
+
+    fireEvent.change(screen.getByLabelText("Model"), { target: { value: "claude-opus-4-8" } });
+    await vi.waitFor(() =>
+      expect(getCostAnalytics.mock.calls.some(([f]) => f.projectId === 1 && f.model === "claude-opus-4-8")).toBe(true),
+    );
+    const localDateFrom = getCostAnalytics.mock.calls[getCostAnalytics.mock.calls.length - 1][0].dateFrom;
+
+    view.rerender(
+      <QueryClientProvider client={qc}>
+        <CostAnalyticsPage onOpenSession={() => {}} scope="team" />
+      </QueryClientProvider>,
+    );
+
+    // The team endpoint must never see the local scope's projectId/model (different
+    // namespaces), but the scope-agnostic date filters must survive the switch.
+    await vi.waitFor(() =>
+      expect(getTeamCostAnalytics.mock.calls.some(([f]) => f.projectId == null && f.model == null)).toBe(true),
+    );
+    const teamCall = getTeamCostAnalytics.mock.calls[getTeamCostAnalytics.mock.calls.length - 1][0];
+    expect(teamCall.projectId).toBeFalsy();
+    expect(teamCall.model).toBeFalsy();
+    expect(teamCall.dateFrom).toBe(localDateFrom);
+  });
+
   it("applies custom start and end date filters", async () => {
     renderPage();
     await screen.findAllByText("alpha");

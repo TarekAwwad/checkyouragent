@@ -73,6 +73,13 @@ export default function CostAnalyticsPage({ onOpenSession, historical = true, sc
   const isTeam = scope === "team";
   const [filters, setFilters] = React.useState<CostAnalyticsFilters>({ dateFrom: defaultFrom() });
   const [selectedSpikeBucket, setSelectedSpikeBucket] = React.useState<string | null>(null);
+
+  // projectId/model are scope-namespaced (local ids vs team synthetic ids /
+  // bucketed families); carrying them across a scope switch mis-filters the
+  // other scope's data. Dates are scope-agnostic and survive the switch.
+  React.useEffect(() => {
+    setFilters((f) => (f.projectId || f.model ? { ...f, projectId: null, model: null } : f));
+  }, [scope]);
   const query = useQuery({
     // `historical` and `scope` are part of the key so flipping the price mode or
     // the data scope is a distinct query (and request URL), not a same-URL
