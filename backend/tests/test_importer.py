@@ -590,3 +590,62 @@ def test_failed_reimport_preserves_previous_project_data(tmp_path: Path, monkeyp
     # The failed re-import must roll back its delete: old Beta data intact.
     assert conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 1
     assert conn.execute("SELECT COUNT(*) FROM events").fetchone()[0] == 2
+
+
+def test_failure_before_project_insert_keeps_counts_truthful(tmp_path: Path, monkeypatch) -> None:
+    import ccfr.ingest.importer as importer_mod
+    from ccfr.ingest import import_all_new
+
+    _write_project(tmp_path, "d--Alpha", "11111111-1111-1111-1111-111111111111")
+    _write_project(tmp_path, "d--Beta", "22222222-2222-2222-2222-222222222222")
+
+    original = importer_mod._insert_project
+
+    def boom(conn, import_id, export_name):
+        if export_name == "d--Beta":
+            raise RuntimeError("insert failed")
+        return original(conn, import_id, export_name)
+
+    monkeypatch.setattr(importer_mod, "_insert_project", boom)
+    conn = memory_conn()
+    summary = import_all_new(conn, tmp_path, include_existing=True)
+
+    # Alpha imported and still counted; Beta failed BEFORE its count bump.
+    assert summary.project_count == 1
+    assert summary.error_count == 1
+    assert conn.execute("SELECT COUNT(*) FROM projects").fetchone()[0] == 1
+
+
+def test_rolled_back_recoverable_errors_do_not_linger_in_summary(tmp_path: Path, monkeypatch) -> None:
+    import ccfr.ingest.importer as importer_mod
+    from ccfr.ingest import import_all_new
+
+    # Beta has a recoverable bad line (recorded mid-transaction) and a memory
+    # file whose insert we make fatal — the rollback must also purge the
+    # recoverable entry from the in-memory summary.
+    project = tmp_path / "d--Beta"
+    project.mkdir()
+    (project / "22222222-2222-2222-2222-222222222222.jsonl").write_text(
+        "\n".join(
+            [
+                '{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","message":{"role":"user","content":"hi"}}',
+                "{bad json",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    memory_dir = project / "memory"
+    memory_dir.mkdir()
+    (memory_dir / "note.md").write_text("note", encoding="utf-8")
+
+    def boom(conn, summary, root, memory_file, project_id):
+        raise RuntimeError("memory insert failed")
+
+    monkeypatch.setattr(importer_mod, "_insert_memory", boom)
+    conn = memory_conn()
+    summary = import_all_new(conn, tmp_path, include_existing=True)
+
+    # Only the project-failure entry remains, matching the persisted rows.
+    assert summary.error_count == 1
+    assert summary.errors[0]["message"].startswith("Project import failed")
+    assert conn.execute("SELECT COUNT(*) FROM import_errors").fetchone()[0] == 1

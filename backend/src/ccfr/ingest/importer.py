@@ -75,6 +75,8 @@ def import_all_new(
     for project_dir in sorted(p for p in source_root.iterdir() if p.is_dir()):
         if not include_existing and _project_exists(conn, project_dir.name):
             continue
+        project_count_before = summary.project_count
+        errors_before = len(summary.errors)
         try:
             pid, sids = _import_one_project(
                 conn, import_id, source_root, project_dir, summary,
@@ -83,7 +85,10 @@ def import_all_new(
             conn.commit()  # project is all-or-nothing: delete+rebuild in one txn
         except Exception as exc:  # a broken project must not poison the rest
             conn.rollback()
-            summary.project_count = max(0, summary.project_count - 1)
+            # Restore pre-project truth: the rollback erased this project's rows,
+            # including any import_errors it recorded along the way.
+            summary.project_count = project_count_before
+            del summary.errors[errors_before:]
             _record_error(conn, summary, project_dir.name, None, f"Project import failed: {exc}")
             conn.commit()
             continue
@@ -116,6 +121,8 @@ def import_project(
 
     project_ids: list[int] = []
     sids: list[int] = []
+    project_count_before = summary.project_count
+    errors_before = len(summary.errors)
     try:
         pid, sids = _import_one_project(
             conn, import_id, source_root, project_dir, summary,
@@ -125,7 +132,10 @@ def import_project(
         project_ids = [pid]
     except Exception as exc:
         conn.rollback()
-        summary.project_count = max(0, summary.project_count - 1)
+        # Restore pre-project truth: the rollback erased this project's rows,
+        # including any import_errors it recorded along the way.
+        summary.project_count = project_count_before
+        del summary.errors[errors_before:]
         _record_error(conn, summary, project_dir.name, None, f"Project import failed: {exc}")
         conn.commit()
     _notify_progress(progress_callback, summary, "rebuilding")
