@@ -87,3 +87,38 @@ def test_team_cost_unavailable_without_price_table(tmp_path: Path, monkeypatch: 
     assert payload["meta"]["total_usd"] == 0
     assert set(payload["meta"]["unpriced_models"]) == {"claude-opus-4-8", "claude-sonnet-4-6"}
     conn.close()
+
+
+def test_team_cost_filters_by_project_id(seeded: sqlite3.Connection) -> None:
+    baseline = team_cost.team_cost_analytics(seeded)
+    pid_by_name = {p["name"]: p["id"] for p in baseline["meta"]["available_projects"]}
+    assert set(pid_by_name) == {"projectA", "projectB"}
+
+    filtered = team_cost.team_cost_analytics(seeded, project_id=pid_by_name["projectA"])
+
+    # Only projectA's opus spend ($30) should remain; projectB's sonnet spend is excluded.
+    assert round(filtered["meta"]["total_usd"], 2) == 30.0
+    assert len(filtered["treemap"]) == 1
+    assert filtered["treemap"][0]["project_id"] == pid_by_name["projectA"]
+    # The selector still offers both projects even while one is filtered.
+    assert {p["name"] for p in filtered["meta"]["available_projects"]} == {"projectA", "projectB"}
+
+
+def test_team_cost_unknown_project_id_returns_zero(seeded: sqlite3.Connection) -> None:
+    filtered = team_cost.team_cost_analytics(seeded, project_id=9999)
+
+    assert filtered["meta"]["total_usd"] == 0
+    assert filtered["treemap"] == []
+    # An unknown id must not silently fall back to unfiltered totals.
+    assert filtered["meta"]["total_usd"] != team_cost.team_cost_analytics(seeded)["meta"]["total_usd"]
+
+
+def test_team_cost_project_ids_stable_across_date_filter(seeded: sqlite3.Connection) -> None:
+    baseline = team_cost.team_cost_analytics(seeded)
+    pid_by_name_baseline = {p["name"]: p["id"] for p in baseline["meta"]["available_projects"]}
+
+    # Restrict the date window to exclude projectB's session (2026-05-02).
+    filtered = team_cost.team_cost_analytics(seeded, date_from="2026-05-01", date_to="2026-05-01")
+    pid_by_name_filtered = {p["name"]: p["id"] for p in filtered["meta"]["available_projects"]}
+
+    assert pid_by_name_filtered == pid_by_name_baseline

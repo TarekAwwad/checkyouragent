@@ -226,6 +226,26 @@ def test_team_cost_endpoint_returns_cost_shape(client):
     assert "meta" in body and "by_model" in body and "categories" in body
 
 
+def test_team_cost_endpoint_filters_by_project_id(client):
+    c, _conn, _bundle_root = client
+    export = c.post("/api/team/export").json()
+    assert c.post("/api/team/import", json={"path": export["path"]}).status_code == 200
+
+    baseline = c.get("/api/team/analytics/cost").json()
+    projects = baseline["meta"]["available_projects"]
+    assert len(projects) == 2
+    target_id = projects[0]["id"]
+
+    resp = c.get("/api/team/analytics/cost", params={"project_id": target_id})
+
+    assert resp.status_code == 200
+    body = resp.json()
+    # Filtering by one project's id must not drop it from the selector, and
+    # must not leak the other project's spend into the treemap.
+    assert len(body["meta"]["available_projects"]) == 2
+    assert all(entry["project_id"] == target_id for entry in body["treemap"])
+
+
 @pytest.fixture()
 def imported_bundle(client):
     c, _conn, _bundle_root = client

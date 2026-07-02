@@ -278,11 +278,14 @@ def get_team_cost_analytics(
     date_from: str | None = None,
     date_to: str | None = None,
     model: str | None = None,
+    project_id: int | None = None,
     conn: Connection = Depends(get_db),
     historical: bool = Depends(get_historical_pricing),
 ) -> CostAnalyticsResponse:
     return CostAnalyticsResponse(
-        **team_cost_analytics(conn, date_from=date_from, date_to=date_to, model=model, historical=historical)
+        **team_cost_analytics(
+            conn, date_from=date_from, date_to=date_to, model=model, project_id=project_id, historical=historical
+        )
     )
 
 

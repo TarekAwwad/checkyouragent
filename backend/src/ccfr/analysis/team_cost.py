@@ -95,10 +95,19 @@ def team_cost_analytics(
     date_from: str | None = None,
     date_to: str | None = None,
     model: str | None = None,
+    project_id: int | None = None,
     historical: bool = True,
 ) -> dict[str, Any]:
     timeline = load_price_timeline(pricing_path(), pricing_dir())
     price_available = timeline.has_prices
+
+    # Stable across filter changes: ids depend only on the imported bundle
+    # set, not on the date/project filters applied below.
+    all_pids = [
+        str(r["project_id"])
+        for r in conn.execute("SELECT DISTINCT project_id FROM team_bundle_sessions ORDER BY project_id")
+    ]
+    pid_id = {pid: index for index, pid in enumerate(all_pids, start=1)}
 
     where: list[str] = []
     params: list[Any] = []
@@ -108,6 +117,10 @@ def team_cost_analytics(
     if date_to:
         where.append("first_date <= ?")
         params.append(date_to[:10])
+    if project_id is not None:
+        id_pid = {index: pid for pid, index in pid_id.items()}
+        where.append("project_id = ?")
+        params.append(id_pid.get(project_id, ""))  # unknown/stale id matches nothing
     clause = (" WHERE " + " AND ".join(where)) if where else ""
     rows = conn.execute(
         f"SELECT project_id, first_date, tokens_by_model_json FROM team_bundle_sessions{clause} ORDER BY first_date, id",
@@ -119,8 +132,6 @@ def team_cost_analytics(
     def matches(family: str) -> bool:
         return target is None or normalize_model_key(family) == target
 
-    distinct_pids = sorted({str(row["project_id"]) for row in rows})
-    pid_id = {pid: index for index, pid in enumerate(distinct_pids, start=1)}
     first_dates = [row["first_date"] for row in rows if row["first_date"]]
     bucket = _bucket_for_range(date_from or (min(first_dates) if first_dates else None), date_to or (max(first_dates) if first_dates else None))
 
@@ -292,7 +303,7 @@ def team_cost_analytics(
     spikes_out = sorted(spikes, key=lambda item: item["delta_usd"], reverse=True)[:5]
 
     available_projects = sorted(
-        ({"id": pid_id[pid], "name": pid[:8]} for pid in distinct_pids), key=lambda item: item["name"]
+        ({"id": pid_id[pid], "name": pid[:8]} for pid in all_pids), key=lambda item: item["name"]
     )
 
     return {
