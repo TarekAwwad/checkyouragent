@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 import secrets
+import time
 from dataclasses import asdict
 from datetime import date, datetime, timezone
 from pathlib import Path
+from typing import Callable
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlite3 import Connection
@@ -82,8 +84,31 @@ from ccfr.storage import reset_db
 router = APIRouter(prefix="/api")
 
 
-def _progress_callback(conn: Connection, source: Path, project: str | None):
+_TERMINAL_IMPORT_STATUSES = {"completed", "completed_with_errors", "failed"}
+
+
+def _progress_callback(
+    conn: Connection,
+    source: Path,
+    project: str | None,
+    *,
+    min_interval_s: float = 0.5,
+    clock: Callable[[], float] = time.monotonic,
+):
+    last = {"at": float("-inf"), "status": None}
+
     def update(summary: ImportSummary, status: str) -> None:
+        # The importer notifies per file; recomputing whole-DB COUNTs each time
+        # makes big imports O(files x rows). Publish on status changes and
+        # terminal statuses, otherwise at most every min_interval_s.
+        now = clock()
+        if (
+            status == last["status"]
+            and status not in _TERMINAL_IMPORT_STATUSES
+            and now - last["at"] < min_interval_s
+        ):
+            return
+        last["at"], last["status"] = now, status
         import_counts = repository.import_summary_stats(conn, summary.import_id)
         import_progress_store.update(
             {
