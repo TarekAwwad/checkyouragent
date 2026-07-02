@@ -158,7 +158,11 @@ export default function TeamBundleImport() {
                     className="team-remove-member"
                     aria-label={`Remove ${record.member_id ?? "member"}`}
                     disabled={removeMember.isPending}
-                    onClick={() => record.member_id && removeMember.mutate(record.member_id)}
+                    onClick={() => {
+                      if (record.member_id && window.confirm(`Remove all imported bundles from ${record.member_id}?`)) {
+                        removeMember.mutate(record.member_id);
+                      }
+                    }}
                   >
                     Remove
                   </button>
@@ -167,6 +171,9 @@ export default function TeamBundleImport() {
             </ul>
           ) : (
             <p>No team bundles have been imported yet.</p>
+          )}
+          {removeMember.isError && (
+            <span className="flow-error">Remove failed: {errorMessage(removeMember.error)}. The team dashboard was not changed.</span>
           )}
         </section>
       </section>
