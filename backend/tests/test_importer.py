@@ -4,6 +4,8 @@ import json
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 from ccfr.api import repository
 from ccfr.ingest import import_export
 from ccfr.storage import init_db
@@ -687,3 +689,26 @@ def test_discover_projects_flags_stale(tmp_path: Path) -> None:
 
     _write_project(tmp_path, "d--Alpha", "33333333-3333-3333-3333-333333333333")
     assert discover_projects(conn, tmp_path)[0].stale is True
+
+
+def test_failed_rebuild_marks_import_failed_and_next_run_retries(tmp_path: Path, monkeypatch) -> None:
+    import ccfr.ingest.importer as importer_mod
+    from ccfr.ingest import import_all_new
+
+    _write_project(tmp_path, "d--Alpha", "11111111-1111-1111-1111-111111111111")
+    conn = memory_conn()
+
+    def boom(conn_, session_ids, project_ids):
+        raise RuntimeError("rebuild exploded")
+
+    monkeypatch.setattr(importer_mod, "_rebuild_derived", boom)
+    with pytest.raises(RuntimeError):
+        import_all_new(conn, tmp_path, include_existing=True)
+
+    assert conn.execute("SELECT status FROM imports ORDER BY id DESC LIMIT 1").fetchone()[0] == "failed"
+    assert conn.execute("SELECT source_signature FROM projects").fetchone()[0] is None
+
+    monkeypatch.undo()
+    import_all_new(conn, tmp_path)  # incremental run must NOT skip the stranded project
+    assert conn.execute("SELECT status FROM imports ORDER BY id DESC LIMIT 1").fetchone()[0] == "completed"
+    assert conn.execute("SELECT COUNT(*) FROM session_stats").fetchone()[0] > 0

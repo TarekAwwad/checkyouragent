@@ -98,9 +98,9 @@ def import_all_new(
         session_ids.extend(sids)
         _notify_progress(progress_callback, summary, "importing")
 
-    _notify_progress(progress_callback, summary, "rebuilding")
-    _rebuild_derived(conn, session_ids, project_ids)
-    _finalize_import(conn, summary, import_id, session_ids, project_ids, progress_callback=progress_callback)
+    _finish_import_or_strand(
+        conn, summary, import_id, session_ids, project_ids, progress_callback=progress_callback
+    )
     return summary
 
 
@@ -140,9 +140,9 @@ def import_project(
         del summary.errors[errors_before:]
         _record_error(conn, summary, project_dir.name, None, f"Project import failed: {exc}")
         conn.commit()
-    _notify_progress(progress_callback, summary, "rebuilding")
-    _rebuild_derived(conn, sids, project_ids)
-    _finalize_import(conn, summary, import_id, sids, project_ids, progress_callback=progress_callback)
+    _finish_import_or_strand(
+        conn, summary, import_id, sids, project_ids, progress_callback=progress_callback
+    )
     return summary
 
 
@@ -204,10 +204,6 @@ def _create_import_row(conn: sqlite3.Connection, source_path: Path, file_count: 
     import_id = int(cur.lastrowid)
     summary = ImportSummary(import_id=import_id, source_path=str(source_path), file_count=file_count)
     return import_id, summary
-
-
-def _project_exists(conn: sqlite3.Connection, export_name: str) -> bool:
-    return conn.execute("SELECT 1 FROM projects WHERE export_name = ?", (export_name,)).fetchone() is not None
 
 
 def _project_source_signature(project_dir: Path) -> str:
@@ -361,6 +357,44 @@ def _finalize_import(
     )
     conn.commit()
     _notify_progress(progress_callback, summary, status)
+
+
+def _finish_import_or_strand(
+    conn: sqlite3.Connection,
+    summary: ImportSummary,
+    import_id: int,
+    session_ids: list[int],
+    project_ids: list[int],
+    *,
+    progress_callback: ProgressCallback | None = None,
+) -> None:
+    """Run the rebuild/finalize tail, guarding against stranding projects.
+
+    Each project above is committed WITH its fresh source_signature before we get
+    here. If _rebuild_derived/_finalize_import then raises, those signatures
+    already match what's on disk, so the next import_all_new() run's skip check
+    (_project_needs_import) would treat these projects as unchanged and never
+    retry them — even though their derived tables (event_edges, session_stats,
+    search_index, risk_findings/patterns) never got rebuilt. Roll back any
+    partial derived writes, null the signatures so the projects are re-imported
+    on the next run, and mark the import failed before re-raising so callers
+    (e.g. the API route) see the failure instead of a silently-stuck "running" row.
+    """
+    try:
+        _notify_progress(progress_callback, summary, "rebuilding")
+        _rebuild_derived(conn, session_ids, project_ids)
+        _finalize_import(conn, summary, import_id, session_ids, project_ids, progress_callback=progress_callback)
+    except Exception:
+        conn.rollback()
+        if project_ids:
+            sp = ",".join("?" * len(project_ids))
+            conn.execute(f"UPDATE projects SET source_signature = NULL WHERE id IN ({sp})", project_ids)
+        conn.execute(
+            "UPDATE imports SET status = 'failed', error_count = ? WHERE id = ?",
+            (len(summary.errors), import_id),
+        )
+        conn.commit()
+        raise
 
 
 def _notify_progress(
