@@ -226,6 +226,25 @@ def test_team_cost_endpoint_returns_cost_shape(client):
     assert "meta" in body and "by_model" in body and "categories" in body
 
 
+@pytest.fixture()
+def imported_bundle(client):
+    c, _conn, _bundle_root = client
+    export = c.post("/api/team/export").json()
+    assert c.post("/api/team/import", json={"path": export["path"]}).status_code == 200
+    return c.get("/api/team/imports").json()[0]
+
+
+def test_delete_member_endpoint(client, imported_bundle):
+    c, _conn, _bundle_root = client
+    member_id = imported_bundle["member_id"]
+
+    response = c.delete(f"/api/team/members/{member_id}")
+
+    assert response.status_code == 200
+    assert response.json() == {"member_id": member_id, "bundles_removed": 1}
+    assert c.delete(f"/api/team/members/{member_id}").status_code == 404
+
+
 def test_team_reset_clears_only_team_tables(client):
     c, conn, _bundle_root = client
     export = c.post("/api/team/export").json()

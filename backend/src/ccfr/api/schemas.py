@@ -722,6 +722,11 @@ class TeamImportEntry(BaseModel):
     session_count: int
 
 
+class TeamMemberDeleteResponse(BaseModel):
+    member_id: str
+    bundles_removed: int
+
+
 class TeamDashboardResponse(BaseModel):
     meta: dict[str, Any] = Field(default_factory=dict)
     tokens: dict[str, Any] = Field(default_factory=dict)

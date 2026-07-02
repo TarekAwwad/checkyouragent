@@ -410,6 +410,17 @@ def list_team_imports(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
+def delete_team_member(conn: sqlite3.Connection, member_id: str) -> int:
+    """Remove every imported bundle (and its sessions) for one member."""
+    with conn:
+        removed = int(conn.execute(
+            "SELECT COUNT(*) FROM team_bundles WHERE member_id = ?", (member_id,)
+        ).fetchone()[0])
+        conn.execute("DELETE FROM team_bundle_sessions WHERE member_id = ?", (member_id,))
+        conn.execute("DELETE FROM team_bundles WHERE member_id = ?", (member_id,))
+    return removed
+
+
 def reset_team_bundles(conn: sqlite3.Connection) -> None:
     with conn:
         conn.execute("DELETE FROM team_bundle_sessions")

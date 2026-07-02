@@ -690,6 +690,12 @@ export interface TeamImportResult {
   status: "imported" | "replaced" | "duplicate" | "stale";
 }
 
+// DELETE /api/team/members/{member_id} -> TeamMemberDeleteResponse.
+export interface TeamMemberDeleteResult {
+  member_id: string;
+  bundles_removed: number;
+}
+
 // GET /api/team/imports -> list[TeamImportEntry].
 export interface TeamImportRecord {
   id: number;

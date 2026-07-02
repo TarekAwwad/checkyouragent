@@ -23,6 +23,7 @@ import type {
   TeamExportResult,
   TeamImportRecord,
   TeamImportResult,
+  TeamMemberDeleteResult,
   TeamPreview,
   TimelineItem,
   TurnCostBreakdown,
@@ -285,6 +286,12 @@ export function importTeamBundleFile(filename: string, bundle: unknown) {
 
 export function listTeamImports() {
   return request<TeamImportRecord[]>("/team/imports");
+}
+
+export function deleteTeamMember(memberId: string) {
+  return request<TeamMemberDeleteResult>(`/team/members/${encodeURIComponent(memberId)}`, {
+    method: "DELETE",
+  });
 }
 
 export function getTeamDashboard() {

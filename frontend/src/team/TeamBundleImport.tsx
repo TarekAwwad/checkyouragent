@@ -1,7 +1,13 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileJson, FolderInput } from "lucide-react";
-import { getRuntimeConfig, importTeamBundle, importTeamBundleFile, listTeamImports } from "../api/client";
+import {
+  deleteTeamMember,
+  getRuntimeConfig,
+  importTeamBundle,
+  importTeamBundleFile,
+  listTeamImports,
+} from "../api/client";
 import type { TeamImportRecord } from "../api/types";
 import { Blurred } from "../shell/Blurred";
 import { compactInt } from "../contribute/specimen";
@@ -42,6 +48,14 @@ export default function TeamBundleImport() {
       }
       return importTeamBundle(importPath.trim() || null);
     },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["team-import-list"] });
+      queryClient.invalidateQueries({ queryKey: ["team-dashboard"] });
+    },
+  });
+
+  const removeMember = useMutation({
+    mutationFn: (memberId: string) => deleteTeamMember(memberId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["team-import-list"] });
       queryClient.invalidateQueries({ queryKey: ["team-dashboard"] });
@@ -139,6 +153,15 @@ export default function TeamBundleImport() {
                       <Blurred>{record.source_path}</Blurred>
                     </code>
                   ) : null}
+                  <button
+                    type="button"
+                    className="team-remove-member"
+                    aria-label={`Remove ${record.member_id ?? "member"}`}
+                    disabled={removeMember.isPending}
+                    onClick={() => record.member_id && removeMember.mutate(record.member_id)}
+                  >
+                    Remove
+                  </button>
                 </li>
               ))}
             </ul>

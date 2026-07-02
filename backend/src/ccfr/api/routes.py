@@ -22,6 +22,7 @@ from ccfr.analysis.context_economics import (
 from ccfr.analysis.discovery import discovery_analytics
 from ccfr.analysis.team_bundles import (
     build_team_bundle,
+    delete_team_member,
     import_team_bundle,
     list_team_imports,
     reset_team_bundles,
@@ -58,6 +59,7 @@ from ccfr.api.schemas import (
     TeamImportEntry,
     TeamImportRequest,
     TeamImportResponse,
+    TeamMemberDeleteResponse,
     TimelineItem,
     TurnCostBreakdown,
     TraceResponse,
@@ -231,6 +233,14 @@ def team_imports(conn: Connection = Depends(get_db)) -> list[TeamImportEntry]:
 def team_reset(conn: Connection = Depends(get_db)) -> dict[str, bool]:
     reset_team_bundles(conn)
     return {"ok": True}
+
+
+@router.delete("/team/members/{member_id}", response_model=TeamMemberDeleteResponse)
+def team_delete_member(member_id: str, conn: Connection = Depends(get_db)) -> TeamMemberDeleteResponse:
+    removed = delete_team_member(conn, member_id)
+    if removed == 0:
+        raise HTTPException(status_code=404, detail=f"No imported bundles for member: {member_id}")
+    return TeamMemberDeleteResponse(member_id=member_id, bundles_removed=removed)
 
 
 @router.get("/team/dashboard", response_model=TeamDashboardResponse)

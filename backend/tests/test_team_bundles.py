@@ -309,3 +309,25 @@ def test_reimport_identical_bundle_stays_duplicate(tmp_path):
     result = team_bundles.import_team_bundle(conn, bundle, source_path=Path("a.json"))
     assert not result.imported and result.status == "duplicate"
     assert conn.execute("SELECT COUNT(*) FROM team_bundle_sessions").fetchone()[0] == len(bundle["sessions"])
+
+
+def test_delete_team_member_removes_only_that_member(tmp_path):
+    bundle = _bundle_from_sanitized(tmp_path).to_dict()
+    other = copy.deepcopy(bundle)
+    other.pop("bundle_id", None)
+    other["member_id"] = "33333333-3333-3333-3333-333333333333"
+    other["bundle_id"] = team_bundles.bundle_content_id(other)
+    conn = _team_conn()
+    team_bundles.import_team_bundle(conn, bundle, source_path=Path("a.json"))
+    team_bundles.import_team_bundle(conn, other, source_path=Path("b.json"))
+
+    removed = team_bundles.delete_team_member(conn, bundle["member_id"])
+
+    assert removed == 1
+    members = [r[0] for r in conn.execute("SELECT DISTINCT member_id FROM team_bundles")]
+    assert members == [other["member_id"]]
+    assert (
+        conn.execute("SELECT COUNT(*) FROM team_bundle_sessions").fetchone()[0]
+        == len(other["sessions"])
+    )
+    assert team_bundles.delete_team_member(conn, bundle["member_id"]) == 0
