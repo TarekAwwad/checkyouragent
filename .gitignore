@@ -23,6 +23,7 @@ frontend/vite.config.d.ts
 *.log
 /Data
 /TeamBundles
+/.ccfr-data/
 .claude/*
 AGENT.md
 CLAUDE.md
