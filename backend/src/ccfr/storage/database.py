@@ -20,7 +20,8 @@ CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     import_id INTEGER NOT NULL REFERENCES imports(id) ON DELETE CASCADE,
     export_name TEXT NOT NULL,
-    inferred_cwd TEXT
+    inferred_cwd TEXT,
+    source_signature TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_projects_export_name ON projects(export_name);
@@ -390,6 +391,11 @@ def migrate_db(conn: sqlite3.Connection) -> None:
         conn.execute(
             "ALTER TABLE team_bundle_sessions ADD COLUMN tokens_by_model_json TEXT NOT NULL DEFAULT '{}'"
         )
+
+    # On-disk change detection for already-imported projects (sub-project A).
+    project_columns = _column_names(conn, "projects")
+    if project_columns and "source_signature" not in project_columns:
+        conn.execute("ALTER TABLE projects ADD COLUMN source_signature TEXT")
 
 
 def connect(path: Path) -> sqlite3.Connection:

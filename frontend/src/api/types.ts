@@ -61,6 +61,7 @@ export interface DiscoveredProject {
   imported: boolean;
   session_count: number;
   last_imported_at: string | null;
+  stale?: boolean;
 }
 
 export interface SessionCard {

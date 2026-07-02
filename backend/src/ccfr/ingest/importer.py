@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import sqlite3
@@ -38,6 +39,7 @@ class DiscoveredProject:
     imported: bool
     session_count: int
     last_imported_at: str | None
+    stale: bool = False
 
 
 @dataclass
@@ -73,7 +75,7 @@ def import_all_new(
     session_ids: list[int] = []
     project_ids: list[int] = []
     for project_dir in sorted(p for p in source_root.iterdir() if p.is_dir()):
-        if not include_existing and _project_exists(conn, project_dir.name):
+        if not include_existing and not _project_needs_import(conn, project_dir):
             continue
         project_count_before = summary.project_count
         errors_before = len(summary.errors)
@@ -151,7 +153,8 @@ def discover_projects(conn: sqlite3.Connection, source_root: Path) -> list[Disco
     for project_dir in sorted(p for p in source_root.iterdir() if p.is_dir()):
         row = conn.execute(
             """
-            SELECT COUNT(DISTINCT s.id) AS session_count, MAX(i.imported_at) AS last_imported_at
+            SELECT COUNT(DISTINCT s.id) AS session_count, MAX(i.imported_at) AS last_imported_at,
+                   MAX(p.source_signature) AS source_signature
             FROM projects p
             LEFT JOIN sessions s ON s.project_id = p.id
             LEFT JOIN imports i ON i.id = p.import_id
@@ -160,12 +163,15 @@ def discover_projects(conn: sqlite3.Connection, source_root: Path) -> list[Disco
             (project_dir.name,),
         ).fetchone()
         last_imported_at = row["last_imported_at"]
+        imported = last_imported_at is not None
+        stale = imported and row["source_signature"] != _project_source_signature(project_dir)
         result.append(
             DiscoveredProject(
                 name=project_dir.name,
-                imported=last_imported_at is not None,
+                imported=imported,
                 session_count=int(row["session_count"] or 0),
                 last_imported_at=last_imported_at,
+                stale=stale,
             )
         )
     return result
@@ -204,6 +210,30 @@ def _project_exists(conn: sqlite3.Connection, export_name: str) -> bool:
     return conn.execute("SELECT 1 FROM projects WHERE export_name = ?", (export_name,)).fetchone() is not None
 
 
+def _project_source_signature(project_dir: Path) -> str:
+    """Fingerprint of the project's on-disk file set (relpath, size, mtime)."""
+    digest = hashlib.sha256()
+    for path in sorted(project_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        stat = path.stat()
+        digest.update(
+            f"{path.relative_to(project_dir).as_posix()}\0{stat.st_size}\0{stat.st_mtime_ns}\0".encode()
+        )
+    return digest.hexdigest()
+
+
+def _project_needs_import(conn: sqlite3.Connection, project_dir: Path) -> bool:
+    row = conn.execute(
+        "SELECT source_signature FROM projects WHERE export_name = ? ORDER BY id DESC LIMIT 1",
+        (project_dir.name,),
+    ).fetchone()
+    if row is None:
+        return True
+    # NULL signature (pre-migration DB) counts as changed: re-import once, self-heals.
+    return row["source_signature"] != _project_source_signature(project_dir)
+
+
 def _import_one_project(
     conn: sqlite3.Connection,
     import_id: int,
@@ -215,6 +245,10 @@ def _import_one_project(
 ) -> tuple[int, list[int]]:
     _delete_project_by_name(conn, project_dir.name)
     project_id = _insert_project(conn, import_id, project_dir.name)
+    conn.execute(
+        "UPDATE projects SET source_signature = ? WHERE id = ?",
+        (_project_source_signature(project_dir), project_id),
+    )
     summary.project_count += 1
     _notify_progress(progress_callback, summary, "importing")
 

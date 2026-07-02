@@ -72,6 +72,7 @@ class DiscoveredProjectResponse(BaseModel):
     imported: bool
     session_count: int
     last_imported_at: str | None
+    stale: bool = False
 
 
 class ProjectResponse(BaseModel):

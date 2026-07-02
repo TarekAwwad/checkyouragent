@@ -649,3 +649,41 @@ def test_rolled_back_recoverable_errors_do_not_linger_in_summary(tmp_path: Path,
     assert summary.error_count == 1
     assert summary.errors[0]["message"].startswith("Project import failed")
     assert conn.execute("SELECT COUNT(*) FROM import_errors").fetchone()[0] == 1
+
+
+def test_import_all_new_reimports_project_changed_on_disk(tmp_path: Path) -> None:
+    from ccfr.ingest import import_all_new
+
+    _write_project(tmp_path, "d--Alpha", "11111111-1111-1111-1111-111111111111")
+    conn = memory_conn()
+    import_all_new(conn, tmp_path)
+    assert conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 1
+
+    # A new session lands in the SAME project directory.
+    _write_project(tmp_path, "d--Alpha", "33333333-3333-3333-3333-333333333333")
+    import_all_new(conn, tmp_path)
+    assert conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 2
+
+
+def test_import_all_new_skips_unchanged_project(tmp_path: Path) -> None:
+    from ccfr.ingest import import_all_new
+
+    _write_project(tmp_path, "d--Alpha", "11111111-1111-1111-1111-111111111111")
+    conn = memory_conn()
+    import_all_new(conn, tmp_path)
+    first_ids = [r[0] for r in conn.execute("SELECT id FROM sessions ORDER BY id")]
+    import_all_new(conn, tmp_path)
+    # Unchanged on disk: skipped entirely, session rows not rebuilt.
+    assert [r[0] for r in conn.execute("SELECT id FROM sessions ORDER BY id")] == first_ids
+
+
+def test_discover_projects_flags_stale(tmp_path: Path) -> None:
+    from ccfr.ingest import discover_projects, import_all_new
+
+    _write_project(tmp_path, "d--Alpha", "11111111-1111-1111-1111-111111111111")
+    conn = memory_conn()
+    import_all_new(conn, tmp_path)
+    assert discover_projects(conn, tmp_path)[0].stale is False
+
+    _write_project(tmp_path, "d--Alpha", "33333333-3333-3333-3333-333333333333")
+    assert discover_projects(conn, tmp_path)[0].stale is True
