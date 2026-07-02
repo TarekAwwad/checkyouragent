@@ -489,11 +489,14 @@ def team_dashboard(conn: sqlite3.Connection) -> dict[str, Any]:
             stop_reason_counts[str(reason)] += _nonnegative_int(count)
         for category in risks:
             risk_counts[str(category)] += 1
+        seen_types: set[str] = set()
         for subagent in subagents:
             if not isinstance(subagent, dict):
                 continue
             agent_type = str(subagent.get("agent_type") or "custom")
             subagent_events[agent_type] += _nonnegative_int(subagent.get("event_count"))
+            seen_types.add(agent_type)
+        for agent_type in seen_types:
             subagent_sessions[agent_type] += 1
         for step in sequence:
             if isinstance(step, dict) and step.get("sym"):

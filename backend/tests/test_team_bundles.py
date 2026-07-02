@@ -264,6 +264,24 @@ def _redated(bundle_dict: dict, generated_at: str) -> dict:
     return newer
 
 
+def test_team_dashboard_counts_subagent_sessions_once_per_session(tmp_path):
+    bundle = _bundle_from_sanitized(tmp_path).to_dict()
+    bundle.pop("bundle_id", None)
+    bundle["sessions"][0]["subagents"] = [
+        {"agent_type": "custom", "event_count": 3},
+        {"agent_type": "custom", "event_count": 2},
+    ]
+    bundle["bundle_id"] = team_bundles.bundle_content_id(bundle)
+    conn = _team_conn()
+
+    team_bundles.import_team_bundle(conn, bundle, source_path=Path("a.json"))
+    dashboard = team_bundles.team_dashboard(conn)
+
+    custom = next(item for item in dashboard["subagents"] if item["agent_type"] == "custom")
+    assert custom["session_count"] == 1
+    assert custom["event_count"] == 5
+
+
 def test_reimport_newer_bundle_replaces_members_previous_sessions(tmp_path):
     bundle = _bundle_from_sanitized(tmp_path).to_dict()
     newer = _redated(bundle, "2026-06-19")
