@@ -42,7 +42,8 @@ describe("TeamBundleImport", () => {
       member_id: "m",
       session_count: 2,
       imported: true,
-    } as never);
+      status: "imported",
+    });
     vi.mocked(deleteTeamMember).mockResolvedValue({
       member_id: "alice",
       bundles_removed: 1,
@@ -73,6 +74,25 @@ describe("TeamBundleImport", () => {
 
     await waitFor(() => expect(importTeamBundle).toHaveBeenCalledWith("D:\\TeamBundles\\shared.json"));
     expect(await screen.findByText(/shared\.json/)).toBeInTheDocument();
+  });
+
+  it("shows the replaced-bundle message when the import supersedes a previous one", async () => {
+    vi.mocked(importTeamBundle).mockResolvedValue({
+      bundle_id: "b",
+      member_id: "m",
+      session_count: 2,
+      imported: true,
+      status: "replaced",
+    });
+    renderImport();
+
+    const pathInput = await screen.findByLabelText("Optional server-visible team bundle path");
+    fireEvent.change(pathInput, { target: { value: "D:\\TeamBundles\\shared.json" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Import bundle" }));
+
+    await waitFor(() => expect(importTeamBundle).toHaveBeenCalledWith("D:\\TeamBundles\\shared.json"));
+    expect(await screen.findByText("Replaced this member's previous bundle.")).toBeInTheDocument();
   });
 
   it("lists imported team bundles", async () => {
@@ -140,6 +160,7 @@ describe("TeamBundleImport", () => {
     const button = await screen.findByRole("button", { name: /remove alice/i });
     fireEvent.click(button);
 
+    await Promise.resolve();
     expect(deleteTeamMember).not.toHaveBeenCalled();
   });
 });
