@@ -264,6 +264,15 @@ def _redated(bundle_dict: dict, generated_at: str) -> dict:
     return newer
 
 
+def _reseq(bundle_dict: dict, generated_at: str, generated_seq: int) -> dict:
+    updated = copy.deepcopy(bundle_dict)
+    updated.pop("bundle_id", None)
+    updated["generated_at"] = generated_at
+    updated["generated_seq"] = generated_seq
+    updated["bundle_id"] = team_bundles.bundle_content_id(updated)
+    return updated
+
+
 def test_team_dashboard_counts_subagent_sessions_once_per_session(tmp_path):
     bundle = _bundle_from_sanitized(tmp_path).to_dict()
     bundle.pop("bundle_id", None)
@@ -327,6 +336,116 @@ def test_reimport_identical_bundle_stays_duplicate(tmp_path):
     result = team_bundles.import_team_bundle(conn, bundle, source_path=Path("a.json"))
     assert not result.imported and result.status == "duplicate"
     assert conn.execute("SELECT COUNT(*) FROM team_bundle_sessions").fetchone()[0] == len(bundle["sessions"])
+
+
+def _with_fewer_sessions(bundle_dict: dict) -> dict:
+    """A distinct-content variant (drops one session) so its bundle_id differs.
+
+    generated_seq is deliberately excluded from bundle_content_id's key tuple
+    (two identical-content same-day bundles legitimately share an id, and the
+    duplicate check handles that case) -- so tests that exercise the
+    (generated_at, generated_seq) ordering must vary content, not just seq, to
+    avoid tripping the duplicate check instead of the ordering logic.
+    """
+    thinned = copy.deepcopy(bundle_dict)
+    thinned.pop("bundle_id", None)
+    thinned["sessions"] = thinned["sessions"][:-1]
+    thinned["bundle_id"] = team_bundles.bundle_content_id(thinned)
+    return thinned
+
+
+def test_same_day_out_of_order_import_marks_earlier_seq_as_stale(tmp_path):
+    bundle = _bundle_from_sanitized(tmp_path).to_dict()
+    assert len(bundle["sessions"]) > 1
+    seq_two = _reseq(bundle, "2026-06-18", 2)
+    seq_one = _reseq(_with_fewer_sessions(bundle), "2026-06-18", 1)
+    conn = _team_conn()
+
+    first = team_bundles.import_team_bundle(conn, seq_two, source_path=Path("a.json"))
+    second = team_bundles.import_team_bundle(conn, seq_one, source_path=Path("b.json"))
+
+    assert first.imported and first.status == "imported"
+    assert not second.imported and second.status == "stale"
+    # The first (higher-seq) bundle's row and sessions must be untouched.
+    assert conn.execute("SELECT COUNT(*) FROM team_bundles").fetchone()[0] == 1
+    assert conn.execute("SELECT generated_seq FROM team_bundles").fetchone()[0] == 2
+    assert (
+        conn.execute("SELECT COUNT(*) FROM team_bundle_sessions").fetchone()[0]
+        == len(bundle["sessions"])
+    )
+
+
+def test_same_day_in_order_import_replaces(tmp_path):
+    bundle = _bundle_from_sanitized(tmp_path).to_dict()
+    assert len(bundle["sessions"]) > 1
+    seq_one = _reseq(_with_fewer_sessions(bundle), "2026-06-18", 1)
+    seq_two = _reseq(bundle, "2026-06-18", 2)
+    conn = _team_conn()
+
+    first = team_bundles.import_team_bundle(conn, seq_one, source_path=Path("a.json"))
+    second = team_bundles.import_team_bundle(conn, seq_two, source_path=Path("b.json"))
+
+    assert first.imported and first.status == "imported"
+    assert second.imported and second.status == "replaced"
+    assert conn.execute("SELECT COUNT(*) FROM team_bundles").fetchone()[0] == 1
+    assert conn.execute("SELECT generated_seq FROM team_bundles").fetchone()[0] == 2
+    assert (
+        conn.execute("SELECT COUNT(*) FROM team_bundle_sessions").fetchone()[0]
+        == len(bundle["sessions"])
+    )
+
+
+def test_legacy_bundle_without_generated_seq_validates_and_imports_as_zero(tmp_path):
+    bundle = _bundle_from_sanitized(tmp_path).to_dict()
+    assert len(bundle["sessions"]) > 1
+    legacy = _with_fewer_sessions(bundle)
+    legacy.pop("generated_seq", None)
+    legacy.pop("bundle_id", None)
+    legacy["bundle_id"] = team_bundles.bundle_content_id(legacy)
+
+    canonical = team_bundles.validate_team_bundle(legacy)
+    assert canonical["generated_seq"] == 0
+
+    conn = _team_conn()
+    result = team_bundles.import_team_bundle(conn, legacy, source_path=Path("a.json"))
+    assert result.imported and result.status == "imported"
+    assert conn.execute("SELECT generated_seq FROM team_bundles").fetchone()[0] == 0
+
+    # A same-day bundle with seq 1 must beat the legacy (implicit seq 0) bundle.
+    beats_legacy = _reseq(bundle, str(legacy["generated_at"]), 1)
+    second = team_bundles.import_team_bundle(conn, beats_legacy, source_path=Path("b.json"))
+    assert second.imported and second.status == "replaced"
+
+
+def test_legacy_bundle_on_a_later_date_beats_an_earlier_high_seq_bundle(tmp_path):
+    bundle = _bundle_from_sanitized(tmp_path).to_dict()
+    earlier_high_seq = _reseq(bundle, "2026-06-18", 5)
+    conn = _team_conn()
+    first = team_bundles.import_team_bundle(conn, earlier_high_seq, source_path=Path("a.json"))
+    assert first.imported and first.status == "imported"
+
+    legacy_later = copy.deepcopy(bundle)
+    legacy_later.pop("generated_seq", None)
+    legacy_later.pop("bundle_id", None)
+    legacy_later["generated_at"] = "2026-06-19"
+    legacy_later["bundle_id"] = team_bundles.bundle_content_id(legacy_later)
+
+    second = team_bundles.import_team_bundle(conn, legacy_later, source_path=Path("b.json"))
+    assert second.imported and second.status == "replaced"
+
+
+def test_validate_team_bundle_rejects_negative_generated_seq(tmp_path):
+    data = _bundle_from_sanitized(tmp_path).to_dict()
+    bad = {**data, "generated_seq": -1}
+    with pytest.raises(ValueError, match="generated_seq"):
+        team_bundles.validate_team_bundle(bad)
+
+
+def test_validate_team_bundle_rejects_non_int_generated_seq(tmp_path):
+    data = _bundle_from_sanitized(tmp_path).to_dict()
+    bad = {**data, "generated_seq": "x"}
+    with pytest.raises(ValueError, match="generated_seq"):
+        team_bundles.validate_team_bundle(bad)
 
 
 def test_delete_team_member_removes_only_that_member(tmp_path):

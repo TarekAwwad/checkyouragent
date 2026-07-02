@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import secrets
 import time
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Callable
@@ -165,14 +165,20 @@ def _current_bundle(conn: Connection):
     )
 
 
-def _current_team_bundle(conn: Connection):
+def _current_team_bundle(conn: Connection, *, persist_seq: bool):
     salt, member_id = contributor_identity()
+    settings = read_settings()
+    # export-preview must show the NEXT seq without burning it; export persists it.
+    seq = settings.team_bundle_seq + 1
+    if persist_seq:
+        write_settings(replace(settings, team_bundle_seq=seq))
     return build_team_bundle(
         conn,
         salt=salt,
         member_id=member_id,
         app_version=config.app_version(),
         generated_on=date.today(),
+        generated_seq=seq,
     )
 
 
@@ -197,13 +203,13 @@ def contribution_export(conn: Connection = Depends(get_db)) -> ContributionExpor
 
 @router.get("/team/export-preview", response_model=TeamExportPreviewResponse)
 def team_export_preview(conn: Connection = Depends(get_db)) -> TeamExportPreviewResponse:
-    bundle = _current_team_bundle(conn)
+    bundle = _current_team_bundle(conn, persist_seq=False)
     return TeamExportPreviewResponse(manifest=team_bundle_manifest(bundle), bundle=bundle.to_dict())
 
 
 @router.post("/team/export", response_model=TeamExportResponse)
 def team_export(conn: Connection = Depends(get_db)) -> TeamExportResponse:
-    bundle = _current_team_bundle(conn)
+    bundle = _current_team_bundle(conn, persist_seq=True)
     out_dir = team_bundle_root() / "exports"
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S_%fZ")

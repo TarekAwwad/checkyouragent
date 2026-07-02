@@ -284,6 +284,7 @@ CREATE TABLE IF NOT EXISTS team_bundles (
     schema_version INTEGER NOT NULL,
     member_id TEXT NOT NULL,
     generated_at TEXT NOT NULL,
+    generated_seq INTEGER NOT NULL DEFAULT 0,
     app_version TEXT,
     imported_at TEXT NOT NULL,
     source_path TEXT NOT NULL,
@@ -396,6 +397,12 @@ def migrate_db(conn: sqlite3.Connection) -> None:
     project_columns = _column_names(conn, "projects")
     if project_columns and "source_signature" not in project_columns:
         conn.execute("ALTER TABLE projects ADD COLUMN source_signature TEXT")
+
+    # Per-member export sequence for same-day bundle ordering (sub-project C). Added to
+    # older databases whose team_bundles predates the column.
+    team_bundle_columns = _column_names(conn, "team_bundles")
+    if team_bundle_columns and "generated_seq" not in team_bundle_columns:
+        conn.execute("ALTER TABLE team_bundles ADD COLUMN generated_seq INTEGER NOT NULL DEFAULT 0")
 
 
 def connect(path: Path) -> sqlite3.Connection:

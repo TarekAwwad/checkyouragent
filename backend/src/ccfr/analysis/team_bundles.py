@@ -61,6 +61,7 @@ TOP_LEVEL_KEYS = {
     "bundle_id",
     "member_id",
     "generated_at",
+    "generated_seq",
     "app_version",
     "sessions",
 }
@@ -84,6 +85,10 @@ class TeamBundle:
     generated_at: str
     app_version: str
     sessions: list[dict[str, Any]] = field(default_factory=list)
+    # Per-member monotonic export counter (defaults to 0 for legacy v1 bundles).
+    # Not part of bundle_content_id's key tuple: two identical-content same-day
+    # bundles legitimately share a content id (the duplicate check handles them).
+    generated_seq: int = 0
     bundle_id: str | None = None
 
     def base_dict(self) -> dict[str, Any]:
@@ -92,6 +97,7 @@ class TeamBundle:
             "profile": PROFILE,
             "member_id": self.member_id,
             "generated_at": self.generated_at,
+            "generated_seq": self.generated_seq,
             "app_version": self.app_version,
             "sessions": self.sessions,
         }
@@ -162,6 +168,7 @@ def build_team_bundle(
     member_id: str,
     app_version: str,
     generated_on: date,
+    generated_seq: int = 0,
 ) -> TeamBundle:
     sessions: list[dict[str, Any]] = []
     session_rows = conn.execute(
@@ -200,6 +207,7 @@ def build_team_bundle(
         generated_at=generated_on.isoformat(),
         app_version=app_version,
         sessions=sessions,
+        generated_seq=generated_seq,
     )
     canonical = validate_team_bundle(raw_bundle.base_dict())
     return TeamBundle(
@@ -207,6 +215,7 @@ def build_team_bundle(
         generated_at=canonical["generated_at"],
         app_version=canonical["app_version"],
         sessions=canonical["sessions"],
+        generated_seq=canonical["generated_seq"],
         bundle_id=canonical["bundle_id"],
     )
 
@@ -251,6 +260,7 @@ def validate_team_bundle(payload: Any) -> dict[str, Any]:
 
     member_id = _required_str(payload.get("member_id"), "member_id")
     generated_at = _date_or_string(payload.get("generated_at"), "generated_at")
+    generated_seq = _generated_seq(payload.get("generated_seq"))
     app_version = _required_str(payload.get("app_version"), "app_version")
     raw_sessions = payload.get("sessions")
     if not isinstance(raw_sessions, list):
@@ -281,6 +291,7 @@ def validate_team_bundle(payload: Any) -> dict[str, Any]:
         "profile": PROFILE,
         "member_id": member_id,
         "generated_at": generated_at,
+        "generated_seq": generated_seq,
         "app_version": app_version,
         "sessions": sessions,
     }
@@ -312,18 +323,29 @@ def import_team_bundle(
             status="duplicate",
         )
 
-    newest = conn.execute(
-        "SELECT MAX(generated_at) FROM team_bundles WHERE member_id = ?",
+    # Ordered by (generated_at, generated_seq) so two different bundles from the
+    # same member on the same day are ordered by export sequence rather than
+    # silently replacing each other based on import order.
+    newest_row = conn.execute(
+        """
+        SELECT generated_at, generated_seq FROM team_bundles
+        WHERE member_id = ?
+        ORDER BY generated_at DESC, generated_seq DESC
+        LIMIT 1
+        """,
         (bundle["member_id"],),
-    ).fetchone()[0]
-    if newest is not None and str(bundle["generated_at"]) < str(newest):
-        return TeamImportResult(
-            bundle_id=bundle["bundle_id"],
-            member_id=bundle["member_id"],
-            session_count=0,
-            imported=False,
-            status="stale",
-        )
+    ).fetchone()
+    if newest_row is not None:
+        newest_tuple = (str(newest_row["generated_at"]), int(newest_row["generated_seq"] or 0))
+        incoming_tuple = (str(bundle["generated_at"]), int(bundle["generated_seq"]))
+        if incoming_tuple < newest_tuple:
+            return TeamImportResult(
+                bundle_id=bundle["bundle_id"],
+                member_id=bundle["member_id"],
+                session_count=0,
+                imported=False,
+                status="stale",
+            )
 
     imported_at = datetime.now(timezone.utc).isoformat()
     with conn:
@@ -338,10 +360,10 @@ def import_team_bundle(
         cur = conn.execute(
             """
             INSERT INTO team_bundles(
-                bundle_id, profile, schema_version, member_id, generated_at,
+                bundle_id, profile, schema_version, member_id, generated_at, generated_seq,
                 app_version, imported_at, source_path, session_count
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 bundle["bundle_id"],
@@ -349,6 +371,7 @@ def import_team_bundle(
                 bundle["schema_version"],
                 bundle["member_id"],
                 bundle["generated_at"],
+                bundle["generated_seq"],
                 bundle["app_version"],
                 imported_at,
                 str(source_path),
@@ -604,6 +627,17 @@ def _optional_date(value: Any, name: str) -> str | None:
     if value is None:
         return None
     return _date_or_string(value, name)
+
+
+def _generated_seq(value: Any) -> int:
+    # Missing generated_seq means a legacy (pre-sequence) bundle: treat as 0.
+    if value is None:
+        return 0
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError("generated_seq must be a non-negative integer")
+    if value < 0:
+        raise ValueError("generated_seq must be a non-negative integer")
+    return value
 
 
 def _hex_id(value: Any, name: str) -> str:

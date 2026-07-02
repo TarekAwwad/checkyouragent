@@ -19,6 +19,10 @@ class Settings:
     privacy_mode: bool = False
     contributor_salt: str | None = None
     contributor_id: str | None = None
+    # Monotonic per-member counter for team bundle exports, used to order
+    # same-day bundles (generated_at alone is date-only). Incremented on
+    # /team/export, never on the preview endpoint.
+    team_bundle_seq: int = 0
 
 
 def _settings_path() -> Path:
@@ -40,6 +44,7 @@ def read_settings() -> Settings:
         privacy_mode=bool(raw.get("privacy_mode", False)),
         contributor_salt=raw.get("contributor_salt"),
         contributor_id=raw.get("contributor_id"),
+        team_bundle_seq=int(raw.get("team_bundle_seq", 0) or 0),
     )
 
 

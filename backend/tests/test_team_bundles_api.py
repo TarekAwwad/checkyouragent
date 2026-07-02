@@ -72,6 +72,23 @@ def test_team_export_writes_under_bundle_root_without_network(client, monkeypatc
     assert body["session_count"] == 3
 
 
+def test_team_export_increments_seq_while_preview_does_not_consume_it(client):
+    c, _conn, _bundle_root = client
+
+    first = c.post("/api/team/export").json()
+    first_bundle = json.loads(Path(first["path"]).read_text(encoding="utf-8"))
+    assert first_bundle["generated_seq"] == 1
+
+    preview_bundle = c.get("/api/team/export-preview").json()["bundle"]
+    assert preview_bundle["generated_seq"] == 2
+
+    # The preview above must not have burned a sequence number: the next real
+    # export still gets 2, not 3.
+    second = c.post("/api/team/export").json()
+    second_bundle = json.loads(Path(second["path"]).read_text(encoding="utf-8"))
+    assert second_bundle["generated_seq"] == 2
+
+
 def test_team_import_is_no_network_and_idempotent(client, monkeypatch):
     import socket
     import urllib.request
