@@ -501,3 +501,37 @@ def test_import_stores_cache_breakdown_and_costs_per_model(tmp_path: Path, monke
     # base 5 + 5m 3.75 + 1h 4 + read 1.0 + output 10 = 23.75
     assert cost["usd"] == 23.75
     assert cost["tokens"]["cache_read"] == 2_000_000
+
+
+def test_non_object_jsonl_line_is_recorded_not_fatal(tmp_path: Path) -> None:
+    project = tmp_path / "d--Sample"
+    project.mkdir()
+    session_id = "11111111-1111-1111-1111-111111111111"
+    (project / f"{session_id}.jsonl").write_text(
+        "\n".join(
+            [
+                '{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","message":{"role":"user","content":"hello"}}',
+                "42",
+                "null",
+                '{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"2026-01-01T00:00:01Z","message":{"role":"assistant","content":[{"type":"text","text":"ok"}]}}',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    conn = memory_conn()
+    summary = import_export(conn, tmp_path)
+    assert summary.event_count == 2
+    assert summary.error_count == 2
+    assert conn.execute("SELECT COUNT(*) FROM import_errors").fetchone()[0] == 2
+
+
+def test_invalid_utf8_subagent_meta_is_recorded_not_fatal(tmp_path: Path) -> None:
+    _write_project(tmp_path, "d--Sample", "11111111-1111-1111-1111-111111111111")
+    subagents = tmp_path / "d--Sample" / "11111111-1111-1111-1111-111111111111" / "subagents"
+    subagents.mkdir(parents=True)
+    (subagents / "agent-x.meta.json").write_bytes(b"\xff\xfe{ not utf8")
+    conn = memory_conn()
+    summary = import_export(conn, tmp_path)
+    assert summary.error_count == 1
+    assert summary.project_count == 1
+    assert conn.execute("SELECT COUNT(*) FROM subagents").fetchone()[0] == 0

@@ -383,6 +383,9 @@ def _parse_jsonl(
             except json.JSONDecodeError as exc:
                 _record_error(conn, summary, rel_path, line_no, f"Invalid JSONL: {exc}")
                 continue
+            if not isinstance(obj, dict):
+                _record_error(conn, summary, rel_path, line_no, "Invalid JSONL: line is not a JSON object")
+                continue
             event_id = _insert_event(conn, session_pk, rel_path, line_no, obj, is_sidechain, agent_id)
             _update_session_from_event(conn, session_pk, obj)
             _insert_message_content(conn, session_pk, event_id, obj, persisted_by_export_path, message_usage_owner)
@@ -754,7 +757,7 @@ def _insert_subagent_meta(
     rel_path = _rel(root, meta_file)
     try:
         meta = json.loads(meta_file.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         _record_error(conn, summary, rel_path, None, f"Invalid subagent metadata: {exc}")
         return
     agent_id = meta_file.name.removeprefix("agent-").removesuffix(".meta.json")
