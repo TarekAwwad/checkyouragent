@@ -247,3 +247,65 @@ def test_validate_team_bundle_canonicalizes_raw_symbol_and_model(tmp_path):
     assert "SECRET_SERVER" not in blob
     assert canonical["sessions"][0]["models"] == ["other"]
     assert canonical["sessions"][0]["sequence"][0]["sym"] == "CALL:mcp"
+
+
+def _team_conn() -> sqlite3.Connection:
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    init_db(conn)
+    return conn
+
+
+def _redated(bundle_dict: dict, generated_at: str) -> dict:
+    newer = copy.deepcopy(bundle_dict)
+    newer.pop("bundle_id", None)
+    newer["generated_at"] = generated_at
+    newer["bundle_id"] = team_bundles.bundle_content_id(newer)
+    return newer
+
+
+def test_reimport_newer_bundle_replaces_members_previous_sessions(tmp_path):
+    bundle = _bundle_from_sanitized(tmp_path).to_dict()
+    newer = _redated(bundle, "2026-06-19")
+    conn = _team_conn()
+
+    first = team_bundles.import_team_bundle(conn, bundle, source_path=Path("a.json"))
+    second = team_bundles.import_team_bundle(conn, newer, source_path=Path("b.json"))
+
+    assert first.imported and first.status == "imported"
+    assert second.imported and second.status == "replaced"
+    # Exactly one bundle row for the member; sessions counted once.
+    assert conn.execute("SELECT COUNT(*) FROM team_bundles").fetchone()[0] == 1
+    assert (
+        conn.execute("SELECT COUNT(*) FROM team_bundle_sessions").fetchone()[0]
+        == len(bundle["sessions"])
+    )
+    dash = team_bundles.team_dashboard(conn)
+    assert dash["meta"]["session_count"] == len(bundle["sessions"])
+    assert dash["meta"]["bundle_count"] == 1
+    assert len(dash["members"]) == 1
+
+
+def test_import_stale_bundle_is_skipped(tmp_path):
+    bundle = _bundle_from_sanitized(tmp_path).to_dict()   # generated 2026-06-18
+    newer = _redated(bundle, "2026-06-19")
+    conn = _team_conn()
+
+    team_bundles.import_team_bundle(conn, newer, source_path=Path("b.json"))
+    result = team_bundles.import_team_bundle(conn, bundle, source_path=Path("a.json"))
+
+    assert not result.imported and result.status == "stale"
+    assert conn.execute("SELECT COUNT(*) FROM team_bundles").fetchone()[0] == 1
+    assert (
+        conn.execute("SELECT generated_at FROM team_bundles").fetchone()[0]
+        == "2026-06-19"
+    )
+
+
+def test_reimport_identical_bundle_stays_duplicate(tmp_path):
+    bundle = _bundle_from_sanitized(tmp_path).to_dict()
+    conn = _team_conn()
+    team_bundles.import_team_bundle(conn, bundle, source_path=Path("a.json"))
+    result = team_bundles.import_team_bundle(conn, bundle, source_path=Path("a.json"))
+    assert not result.imported and result.status == "duplicate"
+    assert conn.execute("SELECT COUNT(*) FROM team_bundle_sessions").fetchone()[0] == len(bundle["sessions"])

@@ -687,6 +687,7 @@ export interface TeamImportResult {
   member_id: string;
   session_count: number;
   imported: boolean;
+  status: "imported" | "replaced" | "duplicate" | "stale";
 }
 
 // GET /api/team/imports -> list[TeamImportEntry].

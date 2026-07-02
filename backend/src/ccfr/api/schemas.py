@@ -706,6 +706,7 @@ class TeamImportResponse(BaseModel):
     member_id: str
     session_count: int
     imported: bool
+    status: str
 
 
 class TeamImportEntry(BaseModel):

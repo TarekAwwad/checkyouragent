@@ -108,6 +108,7 @@ class TeamImportResult:
     member_id: str
     session_count: int
     imported: bool
+    status: str  # "imported" | "replaced" | "duplicate" | "stale"
 
 
 def _hash_id(salt: str, namespace: str, *parts: object) -> str:
@@ -308,10 +309,32 @@ def import_team_bundle(
             member_id=str(existing["member_id"]),
             session_count=int(existing["session_count"]),
             imported=False,
+            status="duplicate",
+        )
+
+    newest = conn.execute(
+        "SELECT MAX(generated_at) FROM team_bundles WHERE member_id = ?",
+        (bundle["member_id"],),
+    ).fetchone()[0]
+    if newest is not None and str(bundle["generated_at"]) < str(newest):
+        return TeamImportResult(
+            bundle_id=bundle["bundle_id"],
+            member_id=bundle["member_id"],
+            session_count=0,
+            imported=False,
+            status="stale",
         )
 
     imported_at = datetime.now(timezone.utc).isoformat()
     with conn:
+        # A bundle is a full snapshot of one member's sessions, so a newer
+        # bundle supersedes everything previously imported for that member.
+        replaced = int(conn.execute(
+            "SELECT COUNT(*) FROM team_bundles WHERE member_id = ?",
+            (bundle["member_id"],),
+        ).fetchone()[0])
+        conn.execute("DELETE FROM team_bundle_sessions WHERE member_id = ?", (bundle["member_id"],))
+        conn.execute("DELETE FROM team_bundles WHERE member_id = ?", (bundle["member_id"],))
         cur = conn.execute(
             """
             INSERT INTO team_bundles(
@@ -371,6 +394,7 @@ def import_team_bundle(
         member_id=bundle["member_id"],
         session_count=len(bundle["sessions"]),
         imported=True,
+        status="replaced" if replaced else "imported",
     )
 
 

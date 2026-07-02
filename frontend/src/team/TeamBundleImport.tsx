@@ -95,12 +95,18 @@ export default function TeamBundleImport() {
               {importer.isPending ? "Importing…" : "Import bundle"}
             </button>
           </div>
-          {importer.isSuccess ? (
+          {importer.isSuccess && importer.data ? (
             <div className="flow-result">
               <FileJson size={14} aria-hidden="true" />
               <code>
                 <Blurred>{importTarget}</Blurred>
               </code>
+              <span>
+                {importer.data.status === "replaced" && "Replaced this member's previous bundle."}
+                {importer.data.status === "duplicate" && "Already imported — nothing changed."}
+                {importer.data.status === "stale" && "Older than this member's current bundle — nothing changed."}
+                {importer.data.status === "imported" && `Imported ${importer.data.session_count} sessions.`}
+              </span>
             </div>
           ) : null}
           {importer.isError && (
