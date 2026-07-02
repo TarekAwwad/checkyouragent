@@ -238,10 +238,12 @@ def _add_assistant_event(conn: sqlite3.Connection, event_id: int, session_id: in
         )
         # In real exports the result lives on a later user-type event; the loader
         # joins on (session_id, tool_use_id) only, so attaching it here is fine.
+        # Populate raw_json with 10k chars to simulate real tool result content.
+        tool_result_json = json.dumps({"content": "x" * 10_000})
         conn.execute(
             "INSERT INTO tool_results (event_id, session_id, tool_use_id, is_error, raw_json) "
-            "VALUES (?, ?, ?, ?, '{}')",
-            (event_id, session_id, tool_use_id, 1 if is_error else 0),
+            "VALUES (?, ?, ?, ?, ?)",
+            (event_id, session_id, tool_use_id, 1 if is_error else 0, tool_result_json),
         )
     conn.commit()
 

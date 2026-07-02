@@ -12,6 +12,7 @@ from ccfr.analysis.context_economics import (
     EpochRec,
     RawItem,
     _percentile,
+    _raw_item,
     calibrate_contributors,
     split_epochs,
 )
@@ -145,6 +146,43 @@ def test_calibrate_many_items_still_sum_to_delta() -> None:
     items = {1: [RawItem(kind="user", label=f"m{n}", raw_chars=4_000) for n in range(7)]}
     contributors = [c for c in calibrate_contributors(calls, epochs, items) if c.kind != "baseline"]
     assert sum(c.est_tokens for c in contributors) == 10
+
+
+# ---------------------------------------------------------------------------
+# _raw_item: sizing individual tool results
+# ---------------------------------------------------------------------------
+
+def test_raw_item_sizes_parallel_results_by_their_own_length() -> None:
+    # One user event carrying two parallel tool_results: the event JSON is 20k
+    # chars, but this result's own payload is only 400 chars.
+    row = {
+        "tool_result_id": 1, "tool_name": "Read", "call_json": None,
+        "size_bytes": None, "raw_len": 20_000, "result_raw_len": 400,
+        "event_id": 7, "type": "user",
+    }
+    item = _raw_item(row)
+    assert item.kind == "tool_result"
+    assert item.raw_chars == 400
+
+
+def test_raw_item_persisted_output_still_wins() -> None:
+    row = {
+        "tool_result_id": 1, "tool_name": "Bash", "call_json": None,
+        "size_bytes": 12_345, "raw_len": 20_000, "result_raw_len": 400,
+        "event_id": 7, "type": "user",
+    }
+    assert _raw_item(row).raw_chars == 12_345
+
+
+def test_raw_item_user_message_uses_event_length() -> None:
+    row = {
+        "tool_result_id": None, "tool_name": None, "call_json": None,
+        "size_bytes": None, "raw_len": 5_000, "result_raw_len": None,
+        "event_id": 8, "type": "user",
+    }
+    item = _raw_item(row)
+    assert item.kind == "user"
+    assert item.raw_chars == 5_000
 
 
 # ---------------------------------------------------------------------------

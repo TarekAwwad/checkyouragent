@@ -344,6 +344,7 @@ def load_threads(
             """
             SELECT e.id AS event_id, e.agent_id, e.timestamp, e.type,
                    length(e.raw_json) AS raw_len,
+                   length(tr.raw_json) AS result_raw_len,
                    tr.id AS tool_result_id, po.size_bytes,
                    tc.tool_name, tc.raw_json AS call_json
             FROM events e
@@ -403,8 +404,9 @@ def _raw_item(row: sqlite3.Row) -> RawItem:
                 detail = None
         label = f"{tool_name} result" + (f": {detail}" if detail else "")
         # `is not None`, not truthiness: a genuinely empty (0-byte) persisted output
-        # must not fall back to the raw_json wrapper length.
-        chars = row["size_bytes"] if row["size_bytes"] is not None else row["raw_len"]
+        # must not fall back to the result length. Size by THIS result's own JSON,
+        # not the whole event's — parallel sibling results must not share one size.
+        chars = row["size_bytes"] if row["size_bytes"] is not None else row["result_raw_len"]
         return RawItem(kind="tool_result", label=label, raw_chars=chars or 0,
                        event_id=row["event_id"], tool_name=tool_name, detail=detail)
     kind = "attachment" if row["type"] == "attachment" else "user"
