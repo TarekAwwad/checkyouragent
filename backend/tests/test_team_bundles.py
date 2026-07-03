@@ -33,15 +33,14 @@ def _bundle_from_sanitized(tmp_path):
         conn.close()
 
 
-def test_team_bundle_has_profile_and_pseudonymous_ids(tmp_path):
+def test_team_bundle_v2_structural_shape(tmp_path):
     bundle = _bundle_from_sanitized(tmp_path)
     data = bundle.to_dict()
 
-    assert data["schema_version"] == 1
-    assert data["profile"] == "team_strict"
-    assert data["member_id"] == "22222222-2222-2222-2222-222222222222"
-    assert data["generated_at"] == "2026-06-18"
-    assert len(data["bundle_id"]) == 64
+    assert data["schema_version"] == 2
+    assert data["privacy_level"] == "structural"
+    assert "profile" not in data
+    assert "member_name" not in data
 
     blob = json.dumps(data)
     assert ALPHA_SESSION_ID not in blob
@@ -222,11 +221,12 @@ def test_validate_team_bundle_buckets_raw_tokens_by_model(tmp_path):
 def test_validate_team_bundle_rejects_invalid_profile_and_schema(tmp_path):
     data = _bundle_from_sanitized(tmp_path).to_dict()
 
-    bad_profile = {**data, "profile": "loose"}
-    with pytest.raises(ValueError, match="profile"):
-        team_bundles.validate_team_bundle(bad_profile)
+    bad_level = copy.deepcopy(data)
+    bad_level["privacy_level"] = "everything"
+    with pytest.raises(ValueError, match="privacy_level"):
+        team_bundles.validate_team_bundle(bad_level)
 
-    bad_schema = {**data, "schema_version": 2}
+    bad_schema = {**data, "schema_version": 99}
     with pytest.raises(ValueError, match="schema_version"):
         team_bundles.validate_team_bundle(bad_schema)
 
@@ -257,19 +257,19 @@ def _team_conn() -> sqlite3.Connection:
 
 
 def _redated(bundle_dict: dict, generated_at: str) -> dict:
-    newer = copy.deepcopy(bundle_dict)
-    newer.pop("bundle_id", None)
-    newer["generated_at"] = generated_at
-    newer["bundle_id"] = team_bundles.bundle_content_id(newer)
-    return newer
+    updated = copy.deepcopy(bundle_dict)
+    updated["generated_at"] = generated_at
+    updated.pop("bundle_id", None)
+    updated["bundle_id"] = team_bundles.bundle_content_id_v2(updated)
+    return updated
 
 
 def _reseq(bundle_dict: dict, generated_at: str, generated_seq: int) -> dict:
     updated = copy.deepcopy(bundle_dict)
-    updated.pop("bundle_id", None)
     updated["generated_at"] = generated_at
     updated["generated_seq"] = generated_seq
-    updated["bundle_id"] = team_bundles.bundle_content_id(updated)
+    updated.pop("bundle_id", None)
+    updated["bundle_id"] = team_bundles.bundle_content_id_v2(updated)
     return updated
 
 
@@ -280,7 +280,7 @@ def test_team_dashboard_counts_subagent_sessions_once_per_session(tmp_path):
         {"agent_type": "custom", "event_count": 3},
         {"agent_type": "custom", "event_count": 2},
     ]
-    bundle["bundle_id"] = team_bundles.bundle_content_id(bundle)
+    bundle["bundle_id"] = team_bundles.bundle_content_id_v2(bundle)
     conn = _team_conn()
 
     team_bundles.import_team_bundle(conn, bundle, source_path=Path("a.json"))
@@ -350,7 +350,7 @@ def _with_fewer_sessions(bundle_dict: dict) -> dict:
     thinned = copy.deepcopy(bundle_dict)
     thinned.pop("bundle_id", None)
     thinned["sessions"] = thinned["sessions"][:-1]
-    thinned["bundle_id"] = team_bundles.bundle_content_id(thinned)
+    thinned["bundle_id"] = team_bundles.bundle_content_id_v2(thinned)
     return thinned
 
 
@@ -395,16 +395,27 @@ def test_same_day_in_order_import_replaces(tmp_path):
     )
 
 
+def _legacy_v1_bundle(generated_at: str = "2026-06-18") -> dict:
+    base = {
+        "schema_version": 1,
+        "profile": "team_strict",
+        "member_id": "22222222-2222-2222-2222-222222222222",
+        "generated_at": generated_at,
+        "app_version": "0.1.0",
+        "sessions": [],
+    }
+    base["bundle_id"] = team_bundles.bundle_content_id(base)
+    return base
+
+
 def test_legacy_bundle_without_generated_seq_validates_and_imports_as_zero(tmp_path):
     bundle = _bundle_from_sanitized(tmp_path).to_dict()
-    assert len(bundle["sessions"]) > 1
-    legacy = _with_fewer_sessions(bundle)
-    legacy.pop("generated_seq", None)
-    legacy.pop("bundle_id", None)
-    legacy["bundle_id"] = team_bundles.bundle_content_id(legacy)
+    legacy = _legacy_v1_bundle()
 
     canonical = team_bundles.validate_team_bundle(legacy)
     assert canonical["generated_seq"] == 0
+    assert canonical["privacy_level"] == "structural"
+    assert canonical["profile"] == "team_strict"
 
     conn = _team_conn()
     result = team_bundles.import_team_bundle(conn, legacy, source_path=Path("a.json"))
@@ -424,11 +435,7 @@ def test_legacy_bundle_on_a_later_date_beats_an_earlier_high_seq_bundle(tmp_path
     first = team_bundles.import_team_bundle(conn, earlier_high_seq, source_path=Path("a.json"))
     assert first.imported and first.status == "imported"
 
-    legacy_later = copy.deepcopy(bundle)
-    legacy_later.pop("generated_seq", None)
-    legacy_later.pop("bundle_id", None)
-    legacy_later["generated_at"] = "2026-06-19"
-    legacy_later["bundle_id"] = team_bundles.bundle_content_id(legacy_later)
+    legacy_later = _legacy_v1_bundle(generated_at="2026-06-19")
 
     second = team_bundles.import_team_bundle(conn, legacy_later, source_path=Path("b.json"))
     assert second.imported and second.status == "replaced"
@@ -453,7 +460,7 @@ def test_delete_team_member_removes_only_that_member(tmp_path):
     other = copy.deepcopy(bundle)
     other.pop("bundle_id", None)
     other["member_id"] = "33333333-3333-3333-3333-333333333333"
-    other["bundle_id"] = team_bundles.bundle_content_id(other)
+    other["bundle_id"] = team_bundles.bundle_content_id_v2(other)
     conn = _team_conn()
     team_bundles.import_team_bundle(conn, bundle, source_path=Path("a.json"))
     team_bundles.import_team_bundle(conn, other, source_path=Path("b.json"))
@@ -468,3 +475,168 @@ def test_delete_team_member_removes_only_that_member(tmp_path):
         == len(other["sessions"])
     )
     assert team_bundles.delete_team_member(conn, bundle["member_id"]) == 0
+
+
+def _team_level_bundle(tmp_path, projects=None, member_name="Avery", label=None):
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    init_db(conn)
+    import_export(conn, sanitized_export(tmp_path))
+    selection = projects
+    if selection is None:
+        selection = [{"export_name": "d--Alpha", "label": label}]
+    try:
+        return team_bundles.build_team_bundle(
+            conn,
+            salt="00ff" * 16,
+            member_id="22222222-2222-2222-2222-222222222222",
+            app_version="0.1.0",
+            generated_on=datetime.date(2026, 7, 3),
+            privacy_level=team_bundles.LEVEL_TEAM,
+            member_name=member_name,
+            projects=selection,
+        )
+    finally:
+        conn.close()
+
+
+def test_team_level_bundle_names_projects_tools_and_file_types(tmp_path):
+    data = _team_level_bundle(tmp_path).to_dict()
+
+    assert data["privacy_level"] == "team"
+    assert data["member_name"] == "Avery"
+    # Selection filtered to the Alpha project only (2 of the 3 fixture sessions).
+    assert len(data["sessions"]) == 2
+    by_first_date = {session["first_date"]: session for session in data["sessions"]}
+    session = by_first_date["2026-01-03"]
+    # Default label is the leaf of the inferred cwd (/workspace/alpha), not the export name.
+    assert session["project_name"] == "alpha"
+    assert "pid" not in session
+    tool_names = {tool["name"]: tool["calls"] for tool in session["tools"]}
+    assert tool_names["Read"] == 3
+    assert tool_names["Agent"] == 1
+    # Sidechain (subagent) events belong to the parent session, so Bash may
+    # count the main call plus the subagent's call — require at least the main one.
+    assert tool_names["Bash"] >= 1
+    assert session["file_types"] == [{"ext": "py", "count": 3}]
+    assert {sub["agent_type"] for sub in session["subagents"]} == {"general-purpose"}
+
+    blob = json.dumps(data)
+    assert "/workspace" not in blob          # real paths stay home
+    assert "importer.py" not in blob         # file names stay home
+    assert "uv run pytest" not in blob       # commands stay home
+    assert "d--Alpha" not in blob            # raw export folder name stays home
+
+
+def test_team_level_label_override_wins(tmp_path):
+    data = _team_level_bundle(tmp_path, label="payments-api").to_dict()
+    assert {session["project_name"] for session in data["sessions"]} == {"payments-api"}
+
+
+def test_build_rejects_bad_level_and_name_combinations(tmp_path):
+    # sanitized_export() always writes to a fixed "sanitized-claude-export"
+    # subdirectory, so each call in this test needs its own tmp_path (same
+    # workaround as test_team_bundle_pseudonymous_ids_are_stable_for_same_salt).
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    with pytest.raises(ValueError, match="member_name"):
+        _team_level_bundle(first, member_name=None)
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    init_db(conn)
+    import_export(conn, sanitized_export(second))
+    with pytest.raises(ValueError, match="structural"):
+        team_bundles.build_team_bundle(
+            conn, salt="00ff" * 16, member_id="m", app_version="0.1.0",
+            generated_on=datetime.date(2026, 7, 3), member_name="Avery",
+        )
+    with pytest.raises(ValueError, match="unknown project"):
+        team_bundles.build_team_bundle(
+            conn, salt="00ff" * 16, member_id="m", app_version="0.1.0",
+            generated_on=datetime.date(2026, 7, 3),
+            projects=[{"export_name": "d--Nope", "label": None}],
+        )
+    with pytest.raises(ValueError, match="empty"):
+        team_bundles.build_team_bundle(
+            conn, salt="00ff" * 16, member_id="m", app_version="0.1.0",
+            generated_on=datetime.date(2026, 7, 3), projects=[],
+        )
+    conn.close()
+
+
+def test_validate_enforces_levels_in_both_directions(tmp_path):
+    # Separate subdirectories: sanitized_export() isn't safe to call twice
+    # against the same tmp_path (see test_build_rejects_bad_level_... above).
+    structural_dir = tmp_path / "structural"
+    team_dir = tmp_path / "team"
+    structural_dir.mkdir()
+    team_dir.mkdir()
+    structural = _bundle_from_sanitized(structural_dir).to_dict()
+    named = copy.deepcopy(structural)
+    named["member_name"] = "Avery"
+    with pytest.raises(ValueError, match="member_name"):
+        team_bundles.validate_team_bundle(named)
+
+    team = _team_level_bundle(team_dir).to_dict()
+    nameless = copy.deepcopy(team)
+    del nameless["member_name"]
+    with pytest.raises(ValueError, match="member_name"):
+        team_bundles.validate_team_bundle(nameless)
+
+    with_pid = copy.deepcopy(team)
+    with_pid["sessions"][0]["pid"] = "ab" * 32
+    with pytest.raises(ValueError, match="pid"):
+        team_bundles.validate_team_bundle(with_pid)
+
+    smuggled = copy.deepcopy(structural)
+    smuggled["sessions"][0]["project_name"] = "secret"
+    with pytest.raises(ValueError, match="project_name"):
+        team_bundles.validate_team_bundle(smuggled)
+
+
+def test_validate_rejects_reserved_levels(tmp_path):
+    bundle = _team_level_bundle(tmp_path).to_dict()
+    for reserved in ("sessions", "raw"):
+        mutated = copy.deepcopy(bundle)
+        mutated["privacy_level"] = reserved
+        with pytest.raises(ValueError, match="not yet supported"):
+            team_bundles.validate_team_bundle(mutated)
+
+
+def test_validate_rejects_bad_tools_and_file_types(tmp_path):
+    bundle = _team_level_bundle(tmp_path).to_dict()
+
+    bad_tool_key = copy.deepcopy(bundle)
+    bad_tool_key["sessions"][0]["tools"] = [{"name": "Read", "calls": 1, "cmd": "rm"}]
+    with pytest.raises(ValueError, match="cmd"):
+        team_bundles.validate_team_bundle(bad_tool_key)
+
+    bad_ext = copy.deepcopy(bundle)
+    bad_ext["sessions"][0]["file_types"] = [{"ext": "PY!", "count": 1}]
+    with pytest.raises(ValueError, match="extension"):
+        team_bundles.validate_team_bundle(bad_ext)
+
+
+def test_normalize_project_key():
+    assert team_bundles.normalize_project_key("Agent-Dashboard") == "agent-dashboard"
+    assert team_bundles.normalize_project_key("agent dashboard") == "agent-dashboard"
+    assert team_bundles.normalize_project_key("Payments API (v2)") == "payments-api-v2"
+    with pytest.raises(ValueError):
+        team_bundles.normalize_project_key("??!")
+
+
+def test_manifest_is_level_aware(tmp_path):
+    # Separate subdirectories: see test_build_rejects_bad_level_... above.
+    structural_dir = tmp_path / "structural"
+    team_dir = tmp_path / "team"
+    structural_dir.mkdir()
+    team_dir.mkdir()
+    structural = team_bundles.team_bundle_manifest(_bundle_from_sanitized(structural_dir))
+    team = team_bundles.team_bundle_manifest(_team_level_bundle(team_dir))
+    assert structural["privacy_level"] == "structural"
+    assert team["privacy_level"] == "team"
+    assert any("member name" in item.lower() for item in team["included_fields"])
+    assert any("tool" in item.lower() for item in team["included_fields"])
+    assert not any("member name" in item.lower() for item in structural["included_fields"])

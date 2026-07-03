@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sqlite3
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
@@ -23,10 +24,28 @@ from ccfr.analysis.contribution import (
     sanitize_symbol,
 )
 from ccfr.analysis import contribution as contribution_helpers
+from ccfr.naming import project_display_name
 
-SCHEMA_VERSION = 1
-PROFILE = "team_strict"
+SCHEMA_VERSION = 2
+LEGACY_SCHEMA_VERSION = 1
+PROFILE = "team_strict"  # legacy v1 wire profile == the structural level
 DEFAULT_PROVIDER = "claude"
+
+LEVEL_STRUCTURAL = "structural"
+LEVEL_TEAM = "team"
+BUILD_LEVELS = (LEVEL_STRUCTURAL, LEVEL_TEAM)
+# Ladder rungs reserved for raw-session sharing (separate sub-project).
+RESERVED_LEVELS = ("sessions", "raw")
+
+_EXT_RE = re.compile(r"^[a-z0-9_+-]{1,12}$")
+_MAX_TOOLS_PER_SESSION = 300
+_MAX_FILE_TYPES_PER_SESSION = 100
+
+
+def privacy_level_of(profile: str | None) -> str:
+    """Level for a stored profile string ("team_strict" is legacy structural)."""
+    return LEVEL_TEAM if profile == LEVEL_TEAM else LEVEL_STRUCTURAL
+
 
 TOKEN_KEYS = ("input", "output", "base", "cache_5m", "cache_1h", "cache_read")
 STAT_KEYS = (
@@ -65,6 +84,18 @@ TOP_LEVEL_KEYS = {
     "app_version",
     "sessions",
 }
+SESSION_KEYS_TEAM = (SESSION_KEYS - {"pid"}) | {"project_name", "tools", "file_types"}
+TOP_LEVEL_KEYS_V2 = {
+    "schema_version",
+    "privacy_level",
+    "bundle_id",
+    "member_id",
+    "member_name",
+    "generated_at",
+    "generated_seq",
+    "app_version",
+    "sessions",
+}
 RISK_CATEGORIES = frozenset(
     {
         "cost_context_blowup",
@@ -85,26 +116,31 @@ class TeamBundle:
     generated_at: str
     app_version: str
     sessions: list[dict[str, Any]] = field(default_factory=list)
-    # Per-member monotonic export counter (defaults to 0 for legacy v1 bundles).
+    # Per-member monotonic export counter (defaults to 0 for legacy bundles).
     # Not part of bundle_content_id's key tuple: two identical-content same-day
     # bundles legitimately share a content id (the duplicate check handles them).
     generated_seq: int = 0
+    privacy_level: str = LEVEL_STRUCTURAL
+    member_name: str | None = None
     bundle_id: str | None = None
 
     def base_dict(self) -> dict[str, Any]:
-        return {
+        data: dict[str, Any] = {
             "schema_version": SCHEMA_VERSION,
-            "profile": PROFILE,
+            "privacy_level": self.privacy_level,
             "member_id": self.member_id,
             "generated_at": self.generated_at,
             "generated_seq": self.generated_seq,
             "app_version": self.app_version,
             "sessions": self.sessions,
         }
+        if self.privacy_level == LEVEL_TEAM:
+            data["member_name"] = self.member_name
+        return data
 
     def to_dict(self) -> dict[str, Any]:
         data = self.base_dict()
-        data["bundle_id"] = self.bundle_id or bundle_content_id(data)
+        data["bundle_id"] = self.bundle_id or bundle_content_id_v2(data)
         return data
 
 
@@ -128,6 +164,25 @@ def bundle_content_id(bundle: dict[str, Any]) -> str:
     )}
     encoded = json.dumps(base, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(encoded).hexdigest()
+
+
+def bundle_content_id_v2(bundle: dict[str, Any]) -> str:
+    base = {key: bundle[key] for key in (
+        "schema_version", "privacy_level", "member_id", "generated_at", "app_version", "sessions",
+    )}
+    if bundle.get("privacy_level") == LEVEL_TEAM:
+        base["member_name"] = bundle.get("member_name")
+    encoded = json.dumps(base, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def normalize_project_key(name: str) -> str:
+    """Cross-member grouping key: casefold, collapse non-alphanumeric runs to '-'."""
+    folded = "".join(ch if ch.isalnum() else "-" for ch in name.casefold())
+    key = re.sub("-+", "-", folded).strip("-")
+    if not key:
+        raise ValueError(f"project name has no usable characters: {name!r}")
+    return key
 
 
 def _fold_tokens_by_model(pairs: Any) -> dict[str, dict[str, int]]:
@@ -161,6 +216,48 @@ def _session_tokens_by_model(conn: sqlite3.Connection, session_pk: int) -> dict[
     )
 
 
+def _session_tools(conn: sqlite3.Connection, session_pk: int) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT tool_name, COUNT(*) AS calls
+        FROM tool_calls
+        WHERE session_id = ? AND tool_name IS NOT NULL AND TRIM(tool_name) != ''
+        GROUP BY tool_name
+        ORDER BY tool_name
+        """,
+        (session_pk,),
+    ).fetchall()
+    return [{"name": str(row["tool_name"])[:120], "calls": int(row["calls"])} for row in rows]
+
+
+def _session_file_types(conn: sqlite3.Connection, session_pk: int) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        """
+        SELECT file_ext, COUNT(*) AS count
+        FROM tool_calls
+        WHERE session_id = ? AND file_ext IS NOT NULL
+        GROUP BY file_ext
+        ORDER BY file_ext
+        """,
+        (session_pk,),
+    ).fetchall()
+    return [{"ext": str(row["file_ext"]), "count": int(row["count"])} for row in rows]
+
+
+def _session_subagents_raw(conn: sqlite3.Connection, session_pk: int) -> list[dict[str, Any]]:
+    rows = conn.execute(
+        "SELECT agent_type, event_count FROM subagents WHERE parent_session_id = ? ORDER BY id",
+        (session_pk,),
+    ).fetchall()
+    return [
+        {
+            "agent_type": (str(row["agent_type"]).strip()[:80] or "custom") if row["agent_type"] else "custom",
+            "event_count": int(row["event_count"]),
+        }
+        for row in rows
+    ]
+
+
 def build_team_bundle(
     conn: sqlite3.Connection,
     *,
@@ -169,38 +266,79 @@ def build_team_bundle(
     app_version: str,
     generated_on: date,
     generated_seq: int = 0,
+    privacy_level: str = LEVEL_STRUCTURAL,
+    member_name: str | None = None,
+    projects: list[dict[str, Any]] | None = None,
 ) -> TeamBundle:
-    sessions: list[dict[str, Any]] = []
+    if privacy_level not in BUILD_LEVELS:
+        raise ValueError(f"unsupported privacy_level: {privacy_level}")
+    if privacy_level == LEVEL_TEAM and not (member_name or "").strip():
+        raise ValueError("member_name is required at the team level")
+    if privacy_level == LEVEL_STRUCTURAL and member_name:
+        raise ValueError("member_name is not allowed at the structural level")
+
+    label_overrides: dict[str, str] = {}
+    selected: list[str] | None = None
+    if projects is not None:
+        selected = []
+        for item in projects:
+            export_name = str(item["export_name"])
+            selected.append(export_name)
+            label = str(item.get("label") or "").strip()
+            if label:
+                label_overrides[export_name] = label
+        if not selected:
+            raise ValueError("projects selection must not be empty")
+        known = {str(row["export_name"]) for row in conn.execute("SELECT export_name FROM projects")}
+        unknown_projects = sorted(name for name in selected if name not in known)
+        if unknown_projects:
+            raise ValueError(f"unknown project: {unknown_projects[0]}")
+
+    where = ""
+    params: list[Any] = []
+    if selected is not None:
+        placeholders = ",".join("?" * len(selected))
+        where = f"WHERE p.export_name IN ({placeholders})"
+        params = selected
     session_rows = conn.execute(
-        """
-        SELECT s.id, s.session_id, s.first_ts, s.last_ts, p.export_name
+        f"""
+        SELECT s.id, s.session_id, s.first_ts, s.last_ts, p.export_name, p.inferred_cwd
         FROM sessions s
         JOIN projects p ON p.id = s.project_id
+        {where}
         ORDER BY p.id, s.id
-        """
+        """,
+        params,
     ).fetchall()
 
+    sessions: list[dict[str, Any]] = []
     for row in session_rows:
         session_pk = int(row["id"])
         export_name = str(row["export_name"])
-        sessions.append(
-            {
-                "pid": _hash_id(salt, "project", export_name),
-                "sid": _hash_id(salt, "session", export_name, row["session_id"]),
-                "provider": DEFAULT_PROVIDER,
-                "models": contribution_helpers._session_models(conn, session_pk),
-                "first_date": contribution_helpers._date_only(row["first_ts"]),
-                "last_date": contribution_helpers._date_only(row["last_ts"]),
-                "duration_s": contribution_helpers._duration_s(row["first_ts"], row["last_ts"]),
-                "tokens": contribution_helpers._session_tokens(conn, session_pk),
-                "tokens_by_model": _session_tokens_by_model(conn, session_pk),
-                "stats": contribution_helpers._session_stats(conn, session_pk),
-                "stop_reasons": contribution_helpers._session_stop_reasons(conn, session_pk),
-                "risk_categories": contribution_helpers._session_risk_categories(conn, session_pk),
-                "subagents": contribution_helpers._session_subagents(conn, session_pk),
-                "sequence": contribution_helpers._session_sequence(conn, session_pk),
-            }
-        )
+        session: dict[str, Any] = {
+            "sid": _hash_id(salt, "session", export_name, row["session_id"]),
+            "provider": DEFAULT_PROVIDER,
+            "models": contribution_helpers._session_models(conn, session_pk),
+            "first_date": contribution_helpers._date_only(row["first_ts"]),
+            "last_date": contribution_helpers._date_only(row["last_ts"]),
+            "duration_s": contribution_helpers._duration_s(row["first_ts"], row["last_ts"]),
+            "tokens": contribution_helpers._session_tokens(conn, session_pk),
+            "tokens_by_model": _session_tokens_by_model(conn, session_pk),
+            "stats": contribution_helpers._session_stats(conn, session_pk),
+            "stop_reasons": contribution_helpers._session_stop_reasons(conn, session_pk),
+            "risk_categories": contribution_helpers._session_risk_categories(conn, session_pk),
+            "sequence": contribution_helpers._session_sequence(conn, session_pk),
+        }
+        if privacy_level == LEVEL_TEAM:
+            default_label = project_display_name(export_name, row["inferred_cwd"])
+            session["project_name"] = label_overrides.get(export_name, default_label)
+            session["subagents"] = _session_subagents_raw(conn, session_pk)
+            session["tools"] = _session_tools(conn, session_pk)
+            session["file_types"] = _session_file_types(conn, session_pk)
+        else:
+            session["pid"] = _hash_id(salt, "project", export_name)
+            session["subagents"] = contribution_helpers._session_subagents(conn, session_pk)
+        sessions.append(session)
 
     raw_bundle = TeamBundle(
         member_id=member_id,
@@ -208,6 +346,8 @@ def build_team_bundle(
         app_version=app_version,
         sessions=sessions,
         generated_seq=generated_seq,
+        privacy_level=privacy_level,
+        member_name=(member_name or "").strip() or None,
     )
     canonical = validate_team_bundle(raw_bundle.base_dict())
     return TeamBundle(
@@ -216,46 +356,78 @@ def build_team_bundle(
         app_version=canonical["app_version"],
         sessions=canonical["sessions"],
         generated_seq=canonical["generated_seq"],
+        privacy_level=canonical["privacy_level"],
+        member_name=canonical["member_name"],
         bundle_id=canonical["bundle_id"],
     )
 
 
 def team_bundle_manifest(bundle: TeamBundle) -> dict[str, Any]:
     sessions = bundle.sessions
-    return {
-        "profile": PROFILE,
+    manifest: dict[str, Any] = {
+        "privacy_level": bundle.privacy_level,
         "session_count": len(sessions),
         "sequence_step_count": sum(len(session["sequence"]) for session in sessions),
-        "included_fields": [
+    }
+    if bundle.privacy_level == LEVEL_TEAM:
+        manifest["included_fields"] = [
+            "Your member name and the selected projects' names (editable labels)",
+            "Real tool, MCP server, and subagent names with call counts",
+            "File-type mix (extensions only — never paths or file names)",
+            "Provider and bucketed model families",
+            "Date-only session timing and structural per-step deltas",
+            "Token counts with cache breakdowns, split per model family",
+            "Session stats, stop reasons, risk categories",
+        ]
+        manifest["excluded"] = [
+            "Prompts, assistant text, reasoning, titles, and free text",
+            "Paths, cwd, branches, file names, shell commands, and tool IO",
+            "Raw JSON and previews",
+        ]
+        manifest["fingerprint_caveat"] = (
+            "Team level: your name, project names, tool names, and file types are visible "
+            "to everyone who imports this bundle. Conversation content never leaves this machine."
+        )
+    else:
+        manifest["included_fields"] = [
             "Pseudonymous member, project, and session IDs",
             "Provider and bucketed model families",
             "Date-only session timing and structural per-step deltas",
             "Token counts with cache breakdowns, split per model family",
             "Session stats, stop reasons, risk categories",
             "Bucketed subagent types and structural event sequence",
-        ],
-        "excluded": [
+        ]
+        manifest["excluded"] = [
             "Raw JSON and previews",
             "Prompts, assistant text, reasoning, titles, and free text",
             "Paths, cwd, branches, file names, shell commands, and tool IO",
             "Raw model aliases, MCP server names, and custom subagent names",
-        ],
-        "fingerprint_caveat": (
+        ]
+        manifest["fingerprint_caveat"] = (
             "This bundle contains no content, but token counts and structural sequences "
             "can still be distinctive."
-        ),
-    }
+        )
+    return manifest
 
 
 def validate_team_bundle(payload: Any) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError("team bundle must be a JSON object")
+    version = payload.get("schema_version")
+    if version == LEGACY_SCHEMA_VERSION:
+        return _validate_v1(payload)
+    if version == SCHEMA_VERSION:
+        return _validate_v2(payload)
+    raise ValueError("unsupported team bundle schema_version")
+
+
+def _validate_v1(payload: dict[str, Any]) -> dict[str, Any]:
     unknown = set(payload) - TOP_LEVEL_KEYS
     if unknown:
         raise ValueError(f"unexpected team bundle field: {sorted(unknown)[0]}")
     if payload.get("profile") != PROFILE:
         raise ValueError("unsupported team bundle profile")
-    if payload.get("schema_version") != SCHEMA_VERSION:
+    if payload.get("schema_version") != LEGACY_SCHEMA_VERSION:
         raise ValueError("unsupported team bundle schema_version")
 
     member_id = _required_str(payload.get("member_id"), "member_id")
@@ -267,7 +439,7 @@ def validate_team_bundle(payload: Any) -> dict[str, Any]:
         raise ValueError("sessions must be a list")
 
     raw_base = {
-        "schema_version": SCHEMA_VERSION,
+        "schema_version": LEGACY_SCHEMA_VERSION,
         "profile": PROFILE,
         "member_id": member_id,
         "generated_at": generated_at,
@@ -279,17 +451,19 @@ def validate_team_bundle(payload: Any) -> dict[str, Any]:
     sessions: list[dict[str, Any]] = []
     seen_sids: set[str] = set()
     for index, raw_session in enumerate(raw_sessions):
-        session = _validate_session(raw_session, index)
+        session = _validate_session(raw_session, index, LEVEL_STRUCTURAL)
         sid = session["sid"]
         if sid in seen_sids:
             raise ValueError("duplicate session id in team bundle")
         seen_sids.add(sid)
         sessions.append(session)
 
-    canonical = {
-        "schema_version": SCHEMA_VERSION,
+    canonical: dict[str, Any] = {
+        "schema_version": LEGACY_SCHEMA_VERSION,
         "profile": PROFILE,
+        "privacy_level": LEVEL_STRUCTURAL,
         "member_id": member_id,
+        "member_name": None,
         "generated_at": generated_at,
         "generated_seq": generated_seq,
         "app_version": app_version,
@@ -301,6 +475,84 @@ def validate_team_bundle(payload: Any) -> dict[str, Any]:
         raise ValueError("bundle_id does not match bundle content")
     canonical["bundle_id"] = computed_id
     return canonical
+
+
+def _validate_v2(payload: dict[str, Any]) -> dict[str, Any]:
+    unknown = set(payload) - TOP_LEVEL_KEYS_V2
+    if unknown:
+        raise ValueError(f"unexpected team bundle field: {sorted(unknown)[0]}")
+    level = payload.get("privacy_level")
+    if level in RESERVED_LEVELS:
+        raise ValueError(f"privacy_level not yet supported: {level}")
+    if level not in BUILD_LEVELS:
+        raise ValueError("unsupported team bundle privacy_level")
+
+    member_id = _required_str(payload.get("member_id"), "member_id")
+    if level == LEVEL_TEAM:
+        member_name = _member_name(payload.get("member_name"))
+    else:
+        if payload.get("member_name") is not None:
+            raise ValueError("member_name is not allowed at the structural level")
+        member_name = None
+    generated_at = _date_or_string(payload.get("generated_at"), "generated_at")
+    generated_seq = _generated_seq(payload.get("generated_seq"))
+    app_version = _required_str(payload.get("app_version"), "app_version")
+    raw_sessions = payload.get("sessions")
+    if not isinstance(raw_sessions, list):
+        raise ValueError("sessions must be a list")
+
+    sessions: list[dict[str, Any]] = []
+    seen_sids: set[str] = set()
+    for index, raw_session in enumerate(raw_sessions):
+        session = _validate_session(raw_session, index, level)
+        sid = session["sid"]
+        if sid in seen_sids:
+            raise ValueError("duplicate session id in team bundle")
+        seen_sids.add(sid)
+        sessions.append(session)
+
+    canonical: dict[str, Any] = {
+        "schema_version": SCHEMA_VERSION,
+        "privacy_level": level,
+        "profile": level,  # stored in the team_bundles.profile column
+        "member_id": member_id,
+        "member_name": member_name,
+        "generated_at": generated_at,
+        "generated_seq": generated_seq,
+        "app_version": app_version,
+        "sessions": sessions,
+    }
+    if level == LEVEL_TEAM:
+        canonical_for_id = dict(canonical)
+    else:
+        canonical_for_id = {k: v for k, v in canonical.items() if k != "member_name"}
+    computed_id = bundle_content_id_v2(canonical_for_id)
+    supplied_id = payload.get("bundle_id")
+    if supplied_id is not None and str(supplied_id) != computed_id:
+        raise ValueError("bundle_id does not match bundle content")
+    canonical["bundle_id"] = computed_id
+    return canonical
+
+
+def _member_name(value: Any) -> str:
+    name = _required_str(value, "member_name").strip()
+    if not name:
+        raise ValueError("member_name must be a non-empty string")
+    if len(name) > 80:
+        raise ValueError("member_name is too long (max 80 characters)")
+    return name
+
+
+def _project_label(value: Any, name: str) -> str:
+    label = _required_str(value, name).strip()
+    if not label:
+        raise ValueError(f"{name} must be a non-empty string")
+    if len(label) > 120:
+        raise ValueError(f"{name} is too long (max 120 characters)")
+    if "/" in label or "\\" in label:
+        raise ValueError(f"{name} must not contain path separators")
+    normalize_project_key(label)  # reject labels that normalize to nothing
+    return label
 
 
 def import_team_bundle(
@@ -393,7 +645,7 @@ def import_team_bundle(
                 (
                     team_bundle_id,
                     bundle["member_id"],
-                    session["pid"],
+                    session.get("pid") or normalize_project_key(session["project_name"]),
                     session["sid"],
                     session["provider"],
                     session["first_date"],
@@ -584,17 +836,15 @@ def team_dashboard(conn: sqlite3.Connection) -> dict[str, Any]:
     }
 
 
-def _validate_session(raw_session: Any, index: int) -> dict[str, Any]:
+def _validate_session(raw_session: Any, index: int, level: str) -> dict[str, Any]:
     if not isinstance(raw_session, dict):
         raise ValueError(f"sessions[{index}] must be an object")
-    unknown = set(raw_session) - SESSION_KEYS
+    allowed = SESSION_KEYS_TEAM if level == LEVEL_TEAM else SESSION_KEYS
+    unknown = set(raw_session) - allowed
     if unknown:
         raise ValueError(f"unexpected session field: {sorted(unknown)[0]}")
-    pid = _hex_id(raw_session.get("pid"), f"sessions[{index}].pid")
-    sid = _hex_id(raw_session.get("sid"), f"sessions[{index}].sid")
-    return {
-        "pid": pid,
-        "sid": sid,
+    session: dict[str, Any] = {
+        "sid": _hex_id(raw_session.get("sid"), f"sessions[{index}].sid"),
         "provider": _provider(raw_session.get("provider")),
         "models": _models(raw_session.get("models")),
         "first_date": _optional_date(raw_session.get("first_date"), f"sessions[{index}].first_date"),
@@ -605,9 +855,18 @@ def _validate_session(raw_session: Any, index: int) -> dict[str, Any]:
         "stats": _number_map(raw_session.get("stats"), STAT_KEYS),
         "stop_reasons": _stop_reasons(raw_session.get("stop_reasons")),
         "risk_categories": _risk_categories(raw_session.get("risk_categories")),
-        "subagents": _subagents(raw_session.get("subagents")),
+        "subagents": _subagents(raw_session.get("subagents"), raw=(level == LEVEL_TEAM)),
         "sequence": _sequence(raw_session.get("sequence")),
     }
+    if level == LEVEL_TEAM:
+        session["project_name"] = _project_label(
+            raw_session.get("project_name"), f"sessions[{index}].project_name"
+        )
+        session["tools"] = _tools(raw_session.get("tools"))
+        session["file_types"] = _file_types(raw_session.get("file_types"))
+    else:
+        session["pid"] = _hex_id(raw_session.get("pid"), f"sessions[{index}].pid")
+    return session
 
 
 def _required_str(value: Any, name: str) -> str:
@@ -698,7 +957,49 @@ def _risk_categories(value: Any) -> list[str]:
     return sorted({str(item) if str(item) in RISK_CATEGORIES else "other" for item in value})
 
 
-def _subagents(value: Any) -> list[dict[str, int | str]]:
+def _tools(value: Any) -> list[dict[str, Any]]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError("tools must be a list")
+    if len(value) > _MAX_TOOLS_PER_SESSION:
+        raise ValueError("tools list is too long")
+    result: list[dict[str, Any]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            raise ValueError("tools entries must be objects")
+        unknown = set(item) - {"name", "calls"}
+        if unknown:
+            raise ValueError(f"unexpected tool field: {sorted(unknown)[0]}")
+        name = _required_str(item.get("name"), "tools[].name").strip()
+        if len(name) > 120:
+            raise ValueError("tool name is too long (max 120 characters)")
+        result.append({"name": name, "calls": _nonnegative_int(item.get("calls"))})
+    return sorted(result, key=lambda entry: entry["name"])
+
+
+def _file_types(value: Any) -> list[dict[str, Any]]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError("file_types must be a list")
+    if len(value) > _MAX_FILE_TYPES_PER_SESSION:
+        raise ValueError("file_types list is too long")
+    result: list[dict[str, Any]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            raise ValueError("file_types entries must be objects")
+        unknown = set(item) - {"ext", "count"}
+        if unknown:
+            raise ValueError(f"unexpected file_types field: {sorted(unknown)[0]}")
+        ext = _required_str(item.get("ext"), "file_types[].ext")
+        if not _EXT_RE.match(ext):
+            raise ValueError(f"invalid file extension: {ext!r}")
+        result.append({"ext": ext, "count": _nonnegative_int(item.get("count"))})
+    return sorted(result, key=lambda entry: entry["ext"])
+
+
+def _subagents(value: Any, *, raw: bool = False) -> list[dict[str, int | str]]:
     if not isinstance(value, list):
         return []
     result: list[dict[str, int | str]] = []
@@ -708,12 +1009,13 @@ def _subagents(value: Any) -> list[dict[str, int | str]]:
         unknown = set(item) - {"agent_type", "event_count"}
         if unknown:
             raise ValueError(f"unexpected subagent field: {sorted(unknown)[0]}")
-        result.append(
-            {
-                "agent_type": bucket_agent_type(item.get("agent_type")),
-                "event_count": _nonnegative_int(item.get("event_count")),
-            }
-        )
+        if raw:
+            agent_type = str(item.get("agent_type") or "").strip() or "custom"
+            if len(agent_type) > 80:
+                raise ValueError("subagent agent_type is too long (max 80 characters)")
+        else:
+            agent_type = bucket_agent_type(item.get("agent_type"))
+        result.append({"agent_type": agent_type, "event_count": _nonnegative_int(item.get("event_count"))})
     return result
 
 

@@ -67,7 +67,8 @@ def test_team_export_writes_under_bundle_root_without_network(client, monkeypatc
     assert len(written) == 1
     assert body["path"] == str(written[0])
     parsed = json.loads(written[0].read_text(encoding="utf-8"))
-    assert parsed["profile"] == "team_strict"
+    assert parsed["privacy_level"] == "structural"
+    assert "profile" not in parsed
     assert parsed["bundle_id"] == body["bundle_id"]
     assert body["session_count"] == 3
 
@@ -154,6 +155,12 @@ def test_team_import_accepts_legacy_precanonical_export_hash(client):
     bundle["sessions"][0]["sequence"] = [
         {"sym": "CALL:mcp", "fam": "tool_call", "dt_s": 0, "out_tok": 1}
     ]
+    # Downgrade the fresh v2 structural preview to a v1 payload: the dual-id
+    # (precanonical-hash) leniency this test exercises is legacy-only
+    # (team_bundles._validate_v1) -- v2 bundles have no such leniency.
+    bundle["schema_version"] = 1
+    bundle["profile"] = "team_strict"
+    del bundle["privacy_level"]
     raw_base = {key: bundle[key] for key in (
         "schema_version", "profile", "member_id", "generated_at", "app_version", "sessions",
     )}
@@ -184,7 +191,7 @@ def test_team_import_rejects_outside_root_and_invalid_profile_schema(client, tmp
     assert resp.status_code == 400
     assert "profile" in resp.json()["detail"]
 
-    bad_schema = {**bundle, "schema_version": 2}
+    bad_schema = {**bundle, "schema_version": 99}
     bad_schema_path = bundle_root / "bad-schema.json"
     bad_schema_path.write_text(json.dumps(bad_schema), encoding="utf-8")
     resp = c.post("/api/team/import", json={"path": str(bad_schema_path)})
