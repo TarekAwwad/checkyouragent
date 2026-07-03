@@ -4,10 +4,12 @@ import {
   getCostAnalytics,
   getTeamDashboard,
   getTeamPreview,
+  getTeamProjects,
   importTeamBundle,
   importTeamBundleFile,
   listTeamImports,
 } from "./client";
+import type { TeamExportRequestBody } from "./types";
 
 function okJson(body: unknown) {
   return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
@@ -52,12 +54,25 @@ describe("api client", () => {
   });
 
   it("uses the planned team bundle API routes", async () => {
-    await getTeamPreview();
-    expect(fetchMock.mock.calls.at(-1)?.[0]).toBe("/api/team/export-preview");
+    await getTeamProjects();
+    expect(fetchMock.mock.calls.at(-1)?.[0]).toBe("/api/team/projects");
 
-    await exportTeamBundle();
+    const exportBody: TeamExportRequestBody = {
+      privacy_level: "structural",
+      projects: [{ export_name: "d--Alpha", label: null }],
+    };
+
+    await getTeamPreview(exportBody);
+    expect(fetchMock.mock.calls.at(-1)?.[0]).toBe("/api/team/export-preview");
+    const previewInit = fetchMock.mock.calls.at(-1)?.[1] as RequestInit;
+    expect(previewInit.method).toBe("POST");
+    expect(JSON.parse(String(previewInit.body))).toEqual(exportBody);
+
+    await exportTeamBundle(exportBody);
     expect(fetchMock.mock.calls.at(-1)?.[0]).toBe("/api/team/export");
-    expect((fetchMock.mock.calls.at(-1)?.[1] as RequestInit).method).toBe("POST");
+    const exportInit = fetchMock.mock.calls.at(-1)?.[1] as RequestInit;
+    expect(exportInit.method).toBe("POST");
+    expect(JSON.parse(String(exportInit.body))).toEqual(exportBody);
 
     await importTeamBundle("D:\\TeamBundles\\team-a.json");
     expect(fetchMock.mock.calls.at(-1)?.[0]).toBe("/api/team/import");

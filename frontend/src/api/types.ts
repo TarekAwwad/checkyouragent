@@ -649,6 +649,7 @@ export interface UsageCharacteristicsResponse {
 export interface Settings {
   historical_pricing: boolean;
   privacy_mode: boolean;
+  team_export_prefs?: Record<string, unknown>;
 }
 
 export interface ContributionManifest {
@@ -657,6 +658,7 @@ export interface ContributionManifest {
   included_fields: string[];
   excluded: string[];
   fingerprint_caveat: string;
+  privacy_level?: string;
 }
 
 export interface ContributionPreview {
@@ -667,6 +669,35 @@ export interface ContributionPreview {
 export interface ContributionExportResult {
   path: string;
   session_count: number;
+}
+
+export type TeamPrivacyLevel = "structural" | "team";
+
+// GET /api/team/projects -> TeamProjectsResponse.
+export interface TeamProjectEntry {
+  export_name: string;
+  default_label: string;
+  session_count: number;
+  tokens: number;
+}
+
+export interface TeamExportPrefs {
+  member_name?: string | null;
+  privacy_level?: TeamPrivacyLevel;
+  project_labels?: Record<string, string>;
+  deselected?: string[];
+}
+
+export interface TeamProjectsResult {
+  projects: TeamProjectEntry[];
+  prefs: TeamExportPrefs;
+}
+
+// POST /api/team/export and /api/team/export-preview request body.
+export interface TeamExportRequestBody {
+  privacy_level: TeamPrivacyLevel;
+  member_name?: string | null;
+  projects: { export_name: string; label?: string | null }[];
 }
 
 // GET /api/team/export-preview -> TeamExportPreviewResponse { manifest, bundle }.
@@ -709,6 +740,8 @@ export interface TeamImportRecord {
   imported_at: string;
   source_path: string;
   session_count: number;
+  member_name?: string | null;
+  privacy_level?: string;
 }
 
 // GET /api/team/dashboard -> TeamDashboardResponse (team_dashboard()).
@@ -744,6 +777,22 @@ export interface TeamDashboard {
   risk_categories?: Array<{ category: string; session_count: number }>;
   subagents?: Array<{ agent_type: string; event_count: number; session_count: number }>;
   sequence?: Array<{ sym: string; count: number }>;
-  members?: Array<Record<string, unknown>>;
+  members?: {
+    member_name: string;
+    member_ids: string[];
+    bundle_count: number;
+    project_count: number;
+    session_count: number;
+    tokens: number;
+  }[];
+  projects?: {
+    project_key: string;
+    project_name: string;
+    member_count: number;
+    session_count: number;
+    tokens: number;
+  }[];
+  tools?: { name: string; call_count: number; session_count: number }[];
+  file_types?: { ext: string; count: number; session_count: number }[];
   over_time?: Array<{ date: string; session_count: number; tokens: number }>;
 }

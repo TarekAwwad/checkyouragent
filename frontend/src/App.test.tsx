@@ -12,6 +12,7 @@ vi.mock("./api/client", () => ({
   discoverSourceProjects: vi.fn(async () => []),
   getSettings: vi.fn(async () => ({ historical_pricing: true, privacy_mode: false })),
   updateSettings: vi.fn(async (s: { historical_pricing: boolean; privacy_mode: boolean }) => s),
+  getTeamProjects: vi.fn(async () => ({ projects: [], prefs: {} })),
   getTeamPreview: vi.fn(async () => ({
     manifest: {
       session_count: 0,

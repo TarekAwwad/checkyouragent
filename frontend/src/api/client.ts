@@ -20,11 +20,13 @@ import type {
   Settings,
   Subagent,
   TeamDashboard,
+  TeamExportRequestBody,
   TeamExportResult,
   TeamImportRecord,
   TeamImportResult,
   TeamMemberDeleteResult,
   TeamPreview,
+  TeamProjectsResult,
   TimelineItem,
   TurnCostBreakdown,
   TraceResponse,
@@ -262,12 +264,22 @@ export function exportContribution() {
   return request<ContributionExportResult>("/contribution/export", { method: "POST" });
 }
 
-export function getTeamPreview() {
-  return request<TeamPreview>("/team/export-preview");
+export function getTeamProjects() {
+  return request<TeamProjectsResult>("/team/projects");
 }
 
-export function exportTeamBundle() {
-  return request<TeamExportResult>("/team/export", { method: "POST" });
+export function getTeamPreview(body: TeamExportRequestBody) {
+  return request<TeamPreview>("/team/export-preview", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function exportTeamBundle(body: TeamExportRequestBody) {
+  return request<TeamExportResult>("/team/export", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }
 
 export function importTeamBundle(path?: string | null) {

@@ -3837,3 +3837,76 @@ html:has(.specimen-dialog[open]) {
     grid-template-columns: 1fr;
   }
 }
+
+.team-level-selector {
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
+}
+.team-level {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.team-level.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.team-level.planned {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.team-level-hint {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  opacity: 0.75;
+}
+.team-member-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  font-size: 13px;
+}
+.team-member-name input {
+  flex: 1;
+  max-width: 340px;
+}
+.team-project-picker {
+  margin-top: 14px;
+}
+.team-project-picker ul {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.team-project-picker li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.team-project-label {
+  flex: 1;
+  max-width: 340px;
+}
+.team-project-label-static {
+  flex: 1;
+}
+.team-project-meta {
+  font-size: 12px;
+  opacity: 0.7;
+  white-space: nowrap;
+}
