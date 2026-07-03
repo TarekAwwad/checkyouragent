@@ -63,122 +63,199 @@ export default function TeamBundleImport() {
   });
 
   const importedRecords = imports.data ?? [];
+  const importedSessionCount = importedRecords.reduce((total, record) => total + (record.session_count ?? 0), 0);
+  const importedMemberCount = new Set(
+    importedRecords.map((record, index) => record.member_id ?? record.member_name ?? importRecordId(record, index)),
+  ).size;
   const importTarget = selectedFile?.name || importPath.trim() || "";
   const bundleRoot = config.data?.team_bundle_root ?? null;
+  const sourceMode = selectedFile ? "File" : importPath.trim() ? "Path" : "Idle";
 
   return (
-    <main className="page team-import-page">
-      <section className="card team-data-sources" aria-labelledby="team-import-title">
-        <div className="card-head">
-          <h2 id="team-import-title">Import a team bundle</h2>
-          <span className="card-count">Local JSON only — no uploads, no content</span>
-        </div>
-
-        <div className="team-ds-root">
-          <span>team_bundle_root</span>
-          <code>
-            <Blurred>{bundleRoot || "Not configured"}</Blurred>
-          </code>
-        </div>
-
-        <div className="team-ds-single">
-          <p>Choose a bundle JSON from this browser, or enter a server-visible path.</p>
-          <div className="team-import-controls">
-            <label className="team-file-picker">
-              <span>Bundle file</span>
-              <input
-                aria-label="Choose local team bundle file"
-                type="file"
-                accept=".json,application/json"
-                onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
-              />
-            </label>
-            <input
-              aria-label="Optional server-visible team bundle path"
-              value={importPath}
-              onChange={(event) => setImportPath(event.target.value)}
-              placeholder="Optional server-visible JSON path"
-            />
-            <button
-              type="button"
-              className="contribute-primary-button"
-              onClick={() => importer.mutate()}
-              disabled={importer.isPending || !importTarget}
-            >
-              <FolderInput size={15} aria-hidden="true" />
-              {importer.isPending ? "Importing…" : "Import bundle"}
-            </button>
+    <main className="page team-flow-page team-import-page">
+      <section className="contribute-header team-flow-header" aria-labelledby="team-import-title">
+        <div className="contribute-titleblock team-titleblock">
+          <h1 id="team-import-title">Import a team bundle</h1>
+          <p>
+            Bring in content-free bundles your teammates shared. You can import from a local JSON
+            file in the browser or from a server-visible path without uploading conversation data.
+          </p>
+          <div className="team-root-row">
+            <span>team_bundle_root</span>
+            <code>
+              <Blurred>{bundleRoot || "Not configured"}</Blurred>
+            </code>
           </div>
-          {importer.isSuccess && importer.data ? (
-            <div className="flow-result">
-              <FileJson size={14} aria-hidden="true" />
-              <code>
-                <Blurred>{importTarget}</Blurred>
-              </code>
-              <span>
-                {importer.data.status === "replaced" && "Replaced this member's previous bundle."}
-                {importer.data.status === "duplicate" && "Already imported — nothing changed."}
-                {importer.data.status === "stale" && "Older than this member's current bundle — nothing changed."}
-                {importer.data.status === "imported" && `Imported ${importer.data.session_count} sessions.`}
-              </span>
+        </div>
+
+        <div className="contribute-metrics team-metrics team-flow-metrics" aria-label="Team import summary">
+          <Metric value={importedRecords.length} label="Bundles" />
+          <Metric value={importedMemberCount} label="Members" />
+          <Metric value={importedSessionCount} label="Sessions" />
+          <Metric value={sourceMode} label="Source" mono={false} />
+        </div>
+      </section>
+
+      <section className="team-flow-body team-import-layout" aria-label="Team import workspace">
+        <div className="team-flow-column">
+          <section className="card team-flow-card">
+            <div className="card-head">
+              <h2>Import sources</h2>
+              <span className="card-count">Local JSON only</span>
             </div>
-          ) : null}
-          {importer.isError && (
-            <span className="flow-error">Import failed: {errorMessage(importer.error)}. The team dashboard was not changed.</span>
-          )}
+            <div className="team-flow-card-body team-flow-stack">
+              <p className="team-flow-copy">
+                Choose a bundle JSON from this browser, or point to a server-visible file when the
+                backend can already read that location.
+              </p>
+              <div className="team-mini-summary" aria-label="Supported import sources">
+                <span>Browser file</span>
+                <span>Server path</span>
+                <span>No prompts or content</span>
+              </div>
+            </div>
+          </section>
+
+          <section className="card team-flow-card">
+            <div className="card-head">
+              <h2>Import workflow</h2>
+              <span className="card-count">Replaces stale bundles automatically</span>
+            </div>
+            <div className="team-flow-card-body team-flow-stack">
+              <div className="team-import-controls">
+                <label className="team-file-picker">
+                  <span>Bundle file</span>
+                  <input
+                    aria-label="Choose local team bundle file"
+                    type="file"
+                    accept=".json,application/json"
+                    onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
+                  />
+                </label>
+                <label className="team-path-field">
+                  <span>Server-visible path</span>
+                  <input
+                    aria-label="Optional server-visible team bundle path"
+                    value={importPath}
+                    onChange={(event) => setImportPath(event.target.value)}
+                    placeholder="Optional server-visible JSON path"
+                  />
+                </label>
+                <button
+                  type="button"
+                  className="contribute-primary-button"
+                  onClick={() => importer.mutate()}
+                  disabled={importer.isPending || !importTarget}
+                >
+                  <FolderInput size={15} aria-hidden="true" />
+                  {importer.isPending ? "Importing…" : "Import bundle"}
+                </button>
+              </div>
+
+              {importer.isSuccess && importer.data ? (
+                <div className="flow-result">
+                  <FileJson size={14} aria-hidden="true" />
+                  <code>
+                    <Blurred>{importTarget}</Blurred>
+                  </code>
+                  <span>
+                    {importer.data.status === "replaced" && "Replaced this member's previous bundle."}
+                    {importer.data.status === "duplicate" && "Already imported — nothing changed."}
+                    {importer.data.status === "stale" && "Older than this member's current bundle — nothing changed."}
+                    {importer.data.status === "imported" && `Imported ${importer.data.session_count} sessions.`}
+                  </span>
+                </div>
+              ) : null}
+
+              {importer.isError && (
+                <span className="flow-error">Import failed: {errorMessage(importer.error)}. The team dashboard was not changed.</span>
+              )}
+            </div>
+          </section>
         </div>
 
-        <section className="team-import-list" aria-label="Imported team bundles">
-          <div className="team-import-list-head">
-            <h3>Imported team bundles</h3>
-            <strong>{compactInt(importedRecords.length)}</strong>
+        <section className="team-import-list team-flow-card team-scroll-card" aria-label="Imported team bundles">
+          <div className="card-head">
+            <h2>Imported team bundles</h2>
+            <span className="card-count">
+              <b>{compactInt(importedRecords.length)}</b> active
+            </span>
           </div>
-          {imports.isError ? (
-            <p className="flow-error">Could not read the team bundle import list.</p>
-          ) : importedRecords.length > 0 ? (
-            <ul>
-              {importedRecords.map((record, index) => (
-                <li key={importRecordId(record, index)}>
-                  <div>
-                    <strong>
-                      <Blurred>{record.member_name ?? record.member_id ?? record.bundle_id ?? "team bundle"}</Blurred>
-                    </strong>
-                    <span className="team-level-tag">{record.privacy_level ?? "structural"}</span>
-                    <span>
-                      {compactInt(record.session_count)} sessions
-                      {record.generated_at ? ` · generated ${record.generated_at}` : ""}
-                    </span>
-                  </div>
-                  {record.source_path ? (
-                    <code>
-                      <Blurred>{record.source_path}</Blurred>
-                    </code>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="team-remove-member"
-                    aria-label={`Remove ${record.member_name ?? record.member_id ?? "member"}`}
-                    disabled={removeMember.isPending}
-                    onClick={() => {
-                      const display = record.member_name ?? record.member_id;
-                      if (record.member_id && window.confirm(`Remove all imported bundles from ${display}?`)) {
-                        removeMember.mutate(record.member_id);
-                      }
-                    }}
-                  >
-                    Remove
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p>No team bundles have been imported yet.</p>
-          )}
-          {removeMember.isError && (
-            <span className="flow-error">Remove failed: {errorMessage(removeMember.error)}. The team dashboard was not changed.</span>
-          )}
+          <div className="team-flow-card-body team-flow-scroll-body">
+            <p className="team-flow-copy">
+              Newer imports replace older bundles from the same member. Remove a member to drop all
+              of their imported bundles from the team dashboard.
+            </p>
+            {imports.isError ? (
+              <p className="flow-error">Could not read the team bundle import list.</p>
+            ) : importedRecords.length > 0 ? (
+              <ul>
+                {importedRecords.map((record, index) => (
+                  <li key={importRecordId(record, index)}>
+                    <div>
+                      <div className="team-import-member-head">
+                        <strong>
+                          <Blurred>{record.member_name ?? record.member_id ?? record.bundle_id ?? "team bundle"}</Blurred>
+                        </strong>
+                        <span className="team-level-tag" data-level={record.privacy_level ?? "structural"}>
+                          {record.privacy_level ?? "structural"}
+                        </span>
+                      </div>
+                      <span>
+                        {compactInt(record.session_count)} sessions
+                        {record.generated_at ? ` · generated ${record.generated_at}` : ""}
+                      </span>
+                    </div>
+                    {record.source_path ? (
+                      <code>
+                        <Blurred>{record.source_path}</Blurred>
+                      </code>
+                    ) : null}
+                    <button
+                      type="button"
+                      className="team-remove-member"
+                      aria-label={`Remove ${record.member_name ?? record.member_id ?? "member"}`}
+                      disabled={removeMember.isPending}
+                      onClick={() => {
+                        const display = record.member_name ?? record.member_id;
+                        if (record.member_id && window.confirm(`Remove all imported bundles from ${display}?`)) {
+                          removeMember.mutate(record.member_id);
+                        }
+                      }}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>No team bundles have been imported yet.</p>
+            )}
+            {removeMember.isError && (
+              <span className="flow-error">Remove failed: {errorMessage(removeMember.error)}. The team dashboard was not changed.</span>
+            )}
+          </div>
         </section>
       </section>
     </main>
+  );
+}
+
+function Metric({
+  value,
+  label,
+  mono = true,
+}: {
+  value: number | string;
+  label: string;
+  mono?: boolean;
+}) {
+  return (
+    <div className="contribute-metric">
+      <strong className={mono ? undefined : "team-metric-text"}>
+        {typeof value === "number" ? compactInt(value) : value}
+      </strong>
+      <span>{label}</span>
+    </div>
   );
 }
