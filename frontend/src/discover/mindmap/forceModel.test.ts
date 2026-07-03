@@ -132,6 +132,20 @@ describe("buildForceModel", () => {
     expect(a.nodes.map((n) => [n.x, n.y])).toEqual(b.nodes.map((n) => [n.x, n.y]));
     expect(a.nodes[1].x !== 0 || a.nodes[1].y !== 0).toBe(true);
   });
+
+  it("keeps every leaf visible when cost is unavailable (token basis)", () => {
+    const tokenPhases = phases.map((p) => ({
+      ...p,
+      cost_usd: 0,
+      habits: p.habits.map((h) => ({ ...h, cost_usd: 0 })),
+      tools: p.tools.map((t) => ({ ...t, cost_usd: 0 })),
+    }));
+    // Regression: the page passes the TOKEN total here in token-basis mode.
+    const model = buildForceModel(tokenPhases, { totalUsd: 5_000_000, costAvailable: false });
+    const habitNodes = model.nodes.filter((n) => n.kind === "habit");
+    expect(habitNodes.length).toBeGreaterThan(0);
+    expect(habitNodes.every((n) => n.habitKey !== undefined)).toBe(true); // no "+N more" group node
+  });
 });
 
 describe("buildForceModel tool lens", () => {

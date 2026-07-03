@@ -16,6 +16,10 @@ def import_root() -> Path:
     return Path(os.getenv("CCFR_IMPORT_ROOT", str(repository_root() / "Data")))
 
 
+def team_bundle_root() -> Path:
+    return Path(os.getenv("CCFR_TEAM_BUNDLE_ROOT", str(data_dir() / "team-bundles")))
+
+
 def resolve_within_import_root(candidate: str | None, root: Path | None = None) -> Path:
     """Resolve a request-supplied path, confining it to the import root.
 
@@ -30,6 +34,17 @@ def resolve_within_import_root(candidate: str | None, root: Path | None = None) 
     path = Path(candidate).resolve()
     if path != base and not path.is_relative_to(base):
         raise ValueError("source_path must be within the import root")
+    return path
+
+
+def resolve_within_team_bundle_root(candidate: str | None, root: Path | None = None) -> Path:
+    """Resolve a request-supplied team bundle path, confining it to the team bundle root."""
+    base = (root if root is not None else team_bundle_root()).resolve()
+    if not candidate:
+        return base
+    path = Path(candidate).resolve()
+    if path != base and not path.is_relative_to(base):
+        raise ValueError("path must be within the team bundle root")
     return path
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
@@ -20,7 +21,8 @@ CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     import_id INTEGER NOT NULL REFERENCES imports(id) ON DELETE CASCADE,
     export_name TEXT NOT NULL,
-    inferred_cwd TEXT
+    inferred_cwd TEXT,
+    source_signature TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_projects_export_name ON projects(export_name);
@@ -103,6 +105,7 @@ CREATE TABLE IF NOT EXISTS tool_calls (
     tool_use_id TEXT,
     tool_name TEXT,
     input_preview TEXT,
+    file_ext TEXT,
     raw_json TEXT NOT NULL
 );
 
@@ -276,6 +279,52 @@ CREATE INDEX IF NOT EXISTS idx_risk_findings_session ON risk_findings(session_id
 CREATE INDEX IF NOT EXISTS idx_risk_findings_category ON risk_findings(category);
 CREATE INDEX IF NOT EXISTS idx_risk_findings_score ON risk_findings(score);
 
+CREATE TABLE IF NOT EXISTS team_bundles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bundle_id TEXT NOT NULL UNIQUE,
+    profile TEXT NOT NULL,
+    schema_version INTEGER NOT NULL,
+    member_id TEXT NOT NULL,
+    member_name TEXT,
+    generated_at TEXT NOT NULL,
+    generated_seq INTEGER NOT NULL DEFAULT 0,
+    app_version TEXT,
+    imported_at TEXT NOT NULL,
+    source_path TEXT NOT NULL,
+    session_count INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_team_bundles_member ON team_bundles(member_id);
+CREATE INDEX IF NOT EXISTS idx_team_bundles_imported_at ON team_bundles(imported_at);
+
+CREATE TABLE IF NOT EXISTS team_bundle_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    team_bundle_id INTEGER NOT NULL REFERENCES team_bundles(id) ON DELETE CASCADE,
+    member_id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    project_name TEXT,
+    session_id TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    first_date TEXT,
+    last_date TEXT,
+    duration_s INTEGER NOT NULL DEFAULT 0,
+    models_json TEXT NOT NULL DEFAULT '[]',
+    tokens_json TEXT NOT NULL DEFAULT '{}',
+    tokens_by_model_json TEXT NOT NULL DEFAULT '{}',
+    stats_json TEXT NOT NULL DEFAULT '{}',
+    stop_reasons_json TEXT NOT NULL DEFAULT '{}',
+    risk_categories_json TEXT NOT NULL DEFAULT '[]',
+    subagents_json TEXT NOT NULL DEFAULT '[]',
+    tools_json TEXT NOT NULL DEFAULT '[]',
+    file_types_json TEXT NOT NULL DEFAULT '[]',
+    sequence_json TEXT NOT NULL DEFAULT '[]',
+    UNIQUE(team_bundle_id, session_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_team_bundle_sessions_bundle ON team_bundle_sessions(team_bundle_id);
+CREATE INDEX IF NOT EXISTS idx_team_bundle_sessions_member ON team_bundle_sessions(member_id);
+CREATE INDEX IF NOT EXISTS idx_team_bundle_sessions_first_date ON team_bundle_sessions(first_date);
+
 CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
     kind,
     ref_id UNINDEXED,
@@ -288,6 +337,8 @@ CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
 
 DROP_TABLES = [
     "search_index",
+    "team_bundle_sessions",
+    "team_bundles",
     "risk_findings",
     "pattern_hits",
     "event_features",
@@ -339,6 +390,73 @@ def migrate_db(conn: sqlite3.Connection) -> None:
           AND COALESCE(cache_read_tokens, 0) = 0
         """
     )
+
+    # Per-model token attribution for team bundles (sub-project B). Added to
+    # older databases whose team_bundle_sessions predates the column.
+    team_session_columns = _column_names(conn, "team_bundle_sessions")
+    if team_session_columns and "tokens_by_model_json" not in team_session_columns:
+        conn.execute(
+            "ALTER TABLE team_bundle_sessions ADD COLUMN tokens_by_model_json TEXT NOT NULL DEFAULT '{}'"
+        )
+
+    # On-disk change detection for already-imported projects (sub-project A).
+    project_columns = _column_names(conn, "projects")
+    if project_columns and "source_signature" not in project_columns:
+        conn.execute("ALTER TABLE projects ADD COLUMN source_signature TEXT")
+
+    # Per-member export sequence for same-day bundle ordering (sub-project C). Added to
+    # older databases whose team_bundles predates the column.
+    team_bundle_columns = _column_names(conn, "team_bundles")
+    if team_bundle_columns and "generated_seq" not in team_bundle_columns:
+        conn.execute("ALTER TABLE team_bundles ADD COLUMN generated_seq INTEGER NOT NULL DEFAULT 0")
+
+    # Team privacy levels (L2): member display name on bundles; cleartext project
+    # name, tool mix, and file-type mix on imported sessions; extension-only file
+    # types on local tool calls (derive-then-drop at ingest, never at export).
+    team_bundle_columns = _column_names(conn, "team_bundles")
+    if team_bundle_columns and "member_name" not in team_bundle_columns:
+        conn.execute("ALTER TABLE team_bundles ADD COLUMN member_name TEXT")
+
+    team_session_columns = _column_names(conn, "team_bundle_sessions")
+    if team_session_columns and "project_name" not in team_session_columns:
+        conn.execute("ALTER TABLE team_bundle_sessions ADD COLUMN project_name TEXT")
+    if team_session_columns and "tools_json" not in team_session_columns:
+        conn.execute("ALTER TABLE team_bundle_sessions ADD COLUMN tools_json TEXT NOT NULL DEFAULT '[]'")
+    if team_session_columns and "file_types_json" not in team_session_columns:
+        conn.execute("ALTER TABLE team_bundle_sessions ADD COLUMN file_types_json TEXT NOT NULL DEFAULT '[]'")
+
+    tool_call_columns = _column_names(conn, "tool_calls")
+    if tool_call_columns and "file_ext" not in tool_call_columns:
+        conn.execute("ALTER TABLE tool_calls ADD COLUMN file_ext TEXT")
+        _backfill_tool_call_file_ext(conn)
+
+
+def _backfill_tool_call_file_ext(conn: sqlite3.Connection) -> None:
+    """One-time backfill after adding tool_calls.file_ext.
+
+    Parses raw_json in the LOCAL index only (never at export time) to derive the
+    extension-only file type for rows imported before the column existed.
+    """
+    # Imported lazily: at call time both modules are fully loaded, so the
+    # storage <- ingest import cannot bite during package initialization.
+    from ccfr.ingest.file_ext import FILE_ARG_TOOLS, file_ext_from_tool_input
+
+    placeholders = ",".join("?" * len(FILE_ARG_TOOLS))
+    rows = conn.execute(
+        f"SELECT id, tool_name, raw_json FROM tool_calls WHERE tool_name IN ({placeholders})",
+        sorted(FILE_ARG_TOOLS),
+    ).fetchall()
+    updates: list[tuple[str, int]] = []
+    for row in rows:
+        try:
+            block = json.loads(row["raw_json"] or "{}")
+        except json.JSONDecodeError:
+            continue
+        input_obj = block.get("input") if isinstance(block, dict) else None
+        ext = file_ext_from_tool_input(row["tool_name"], input_obj)
+        if ext:
+            updates.append((ext, int(row["id"])))
+    conn.executemany("UPDATE tool_calls SET file_ext = ? WHERE id = ?", updates)
 
 
 def connect(path: Path) -> sqlite3.Connection:

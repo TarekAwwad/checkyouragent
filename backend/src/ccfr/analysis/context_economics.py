@@ -344,6 +344,7 @@ def load_threads(
             """
             SELECT e.id AS event_id, e.agent_id, e.timestamp, e.type,
                    length(e.raw_json) AS raw_len,
+                   length(tr.raw_json) AS result_raw_len,
                    tr.id AS tool_result_id, po.size_bytes,
                    tc.tool_name, tc.raw_json AS call_json
             FROM events e
@@ -403,8 +404,9 @@ def _raw_item(row: sqlite3.Row) -> RawItem:
                 detail = None
         label = f"{tool_name} result" + (f": {detail}" if detail else "")
         # `is not None`, not truthiness: a genuinely empty (0-byte) persisted output
-        # must not fall back to the raw_json wrapper length.
-        chars = row["size_bytes"] if row["size_bytes"] is not None else row["raw_len"]
+        # must not fall back to the result length. Size by THIS result's own JSON,
+        # not the whole event's — parallel sibling results must not share one size.
+        chars = row["size_bytes"] if row["size_bytes"] is not None else row["result_raw_len"]
         return RawItem(kind="tool_result", label=label, raw_chars=chars or 0,
                        event_id=row["event_id"], tool_name=tool_name, detail=detail)
     kind = "attachment" if row["type"] == "attachment" else "user"
@@ -599,6 +601,9 @@ def detect_late_compaction(
     later growth. Savings = dropped tokens (minus any already claimed by
     contributor-level findings) read-priced over the tail, minus the one-off
     re-write of the retained content.
+
+    `savings_tokens` is the one-time avoidable footprint; `savings_usd`
+    accumulates the per-call carry.
     """
     pressure = CONTEXT_WINDOW_TOKENS * COMPACTION_PRESSURE_RATIO
     thresholds = [
@@ -629,7 +634,10 @@ def detect_late_compaction(
                 residual = dropped - claimed[k]
                 if residual > 0:
                     savings_usd += residual * thread.read_prices[k]
-                    savings_tokens += int(residual)
+                    # Footprint, not token-turns: the same ballast is re-paid each
+                    # call; the frontend subtracts savings_tokens from EVERY tail
+                    # turn (streamGeometry counterfactual), so report it once.
+                    savings_tokens = max(savings_tokens, int(residual))
                     covered.append(k)
             if savings_usd < MIN_FINDING_USD:
                 continue
@@ -645,7 +653,7 @@ def detect_late_compaction(
                 label=(f"Context above {int(pressure / 1000)}k tokens for "
                        f"{epoch.end - eligible} more turns without compaction"),
                 carried_turns=epoch.end - eligible,
-                carried_tokens=savings_tokens,
+                carried_tokens=int(dropped),
                 savings_tokens=savings_tokens,
                 savings_usd=savings_usd,
                 counterfactual={
@@ -685,6 +693,9 @@ def detect_stale_continuation(
 
     Must run AFTER detect_late_compaction so compaction-claimed calls (in
     claims.calls) are excluded here.
+
+    `savings_tokens` is the one-time avoidable footprint; `savings_usd`
+    accumulates the per-call carry.
     """
     all_gaps = [
         _gap_seconds(thread.calls[i - 1].ts, thread.calls[i].ts)
@@ -730,7 +741,7 @@ def detect_stale_continuation(
                 residual = avoidable_ctx - claimed_tokens[k]
                 if residual > 0:
                     savings_usd += residual * thread.read_prices[k]
-                    savings_tokens += int(residual)
+                    savings_tokens = max(savings_tokens, int(residual))
             if savings_usd < MIN_FINDING_USD:
                 continue
             claims.calls[thread_index].update(tail_calls)
@@ -745,7 +756,7 @@ def detect_stale_continuation(
                 label=(f"Resumed a {thread.calls[i - 1].context_tokens // 1000}k-token "
                        f"context after {gap_minutes} min for {tail} short turns"),
                 carried_turns=tail,
-                carried_tokens=savings_tokens,
+                carried_tokens=int(avoidable_ctx),
                 savings_tokens=savings_tokens,
                 savings_usd=savings_usd,
                 counterfactual={

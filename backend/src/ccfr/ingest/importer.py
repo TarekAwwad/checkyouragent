@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import sqlite3
@@ -10,6 +11,7 @@ from typing import Any, Callable
 
 from ccfr.analysis.metrics import compute_loop_stats
 from ccfr.analysis.risk_patterns import clear_risk_pattern_tables, rebuild_risk_patterns
+from ccfr.ingest.file_ext import file_ext_from_tool_input
 from ccfr.storage.database import init_db
 
 
@@ -38,6 +40,7 @@ class DiscoveredProject:
     imported: bool
     session_count: int
     last_imported_at: str | None
+    stale: bool = False
 
 
 @dataclass
@@ -67,24 +70,38 @@ def import_all_new(
     _prepare_conn(conn)
     file_count = sum(1 for p in source_root.rglob("*") if p.is_file())
     import_id, summary = _create_import_row(conn, source_root, file_count)
+    conn.commit()  # the imports row must survive a later project rollback
     _notify_progress(progress_callback, summary, "running")
 
     session_ids: list[int] = []
     project_ids: list[int] = []
     for project_dir in sorted(p for p in source_root.iterdir() if p.is_dir()):
-        if not include_existing and _project_exists(conn, project_dir.name):
+        if not include_existing and not _project_needs_import(conn, project_dir):
             continue
-        pid, sids = _import_one_project(
-            conn, import_id, source_root, project_dir, summary,
-            progress_callback=progress_callback,
-        )
+        project_count_before = summary.project_count
+        errors_before = len(summary.errors)
+        try:
+            pid, sids = _import_one_project(
+                conn, import_id, source_root, project_dir, summary,
+                progress_callback=progress_callback,
+            )
+            conn.commit()  # project is all-or-nothing: delete+rebuild in one txn
+        except Exception as exc:  # a broken project must not poison the rest
+            conn.rollback()
+            # Restore pre-project truth: the rollback erased this project's rows,
+            # including any import_errors it recorded along the way.
+            summary.project_count = project_count_before
+            del summary.errors[errors_before:]
+            _record_error(conn, summary, project_dir.name, None, f"Project import failed: {exc}")
+            conn.commit()
+            continue
         project_ids.append(pid)
         session_ids.extend(sids)
         _notify_progress(progress_callback, summary, "importing")
 
-    _notify_progress(progress_callback, summary, "rebuilding")
-    _rebuild_derived(conn, session_ids, project_ids)
-    _finalize_import(conn, summary, import_id, session_ids, project_ids, progress_callback=progress_callback)
+    _finish_import_or_strand(
+        conn, summary, import_id, session_ids, project_ids, progress_callback=progress_callback
+    )
     return summary
 
 
@@ -102,15 +119,31 @@ def import_project(
     _prepare_conn(conn)
     file_count = sum(1 for p in project_dir.rglob("*") if p.is_file())
     import_id, summary = _create_import_row(conn, source_root, file_count)
+    conn.commit()
     _notify_progress(progress_callback, summary, "running")
 
-    pid, sids = _import_one_project(
-        conn, import_id, source_root, project_dir, summary,
-        progress_callback=progress_callback,
+    project_ids: list[int] = []
+    sids: list[int] = []
+    project_count_before = summary.project_count
+    errors_before = len(summary.errors)
+    try:
+        pid, sids = _import_one_project(
+            conn, import_id, source_root, project_dir, summary,
+            progress_callback=progress_callback,
+        )
+        conn.commit()
+        project_ids = [pid]
+    except Exception as exc:
+        conn.rollback()
+        # Restore pre-project truth: the rollback erased this project's rows,
+        # including any import_errors it recorded along the way.
+        summary.project_count = project_count_before
+        del summary.errors[errors_before:]
+        _record_error(conn, summary, project_dir.name, None, f"Project import failed: {exc}")
+        conn.commit()
+    _finish_import_or_strand(
+        conn, summary, import_id, sids, project_ids, progress_callback=progress_callback
     )
-    _notify_progress(progress_callback, summary, "rebuilding")
-    _rebuild_derived(conn, sids, [pid])
-    _finalize_import(conn, summary, import_id, sids, [pid], progress_callback=progress_callback)
     return summary
 
 
@@ -121,7 +154,8 @@ def discover_projects(conn: sqlite3.Connection, source_root: Path) -> list[Disco
     for project_dir in sorted(p for p in source_root.iterdir() if p.is_dir()):
         row = conn.execute(
             """
-            SELECT COUNT(DISTINCT s.id) AS session_count, MAX(i.imported_at) AS last_imported_at
+            SELECT COUNT(DISTINCT s.id) AS session_count, MAX(i.imported_at) AS last_imported_at,
+                   MAX(p.source_signature) AS source_signature
             FROM projects p
             LEFT JOIN sessions s ON s.project_id = p.id
             LEFT JOIN imports i ON i.id = p.import_id
@@ -130,12 +164,15 @@ def discover_projects(conn: sqlite3.Connection, source_root: Path) -> list[Disco
             (project_dir.name,),
         ).fetchone()
         last_imported_at = row["last_imported_at"]
+        imported = last_imported_at is not None
+        stale = imported and row["source_signature"] != _project_source_signature(project_dir)
         result.append(
             DiscoveredProject(
                 name=project_dir.name,
-                imported=last_imported_at is not None,
+                imported=imported,
                 session_count=int(row["session_count"] or 0),
                 last_imported_at=last_imported_at,
+                stale=stale,
             )
         )
     return result
@@ -151,8 +188,10 @@ def _validate_root(source_root: Path) -> Path:
 
 
 def _prepare_conn(conn: sqlite3.Connection) -> None:
-    conn.execute("PRAGMA journal_mode = OFF")
-    conn.execute("PRAGMA synchronous = OFF")
+    # storage.connect() sets WAL. NORMAL keeps bulk inserts fast while a crash
+    # mid-import can still roll back to the last per-project commit; the old
+    # journal_mode=OFF setting could corrupt the whole DB on a failed import.
+    conn.execute("PRAGMA synchronous = NORMAL")
     conn.execute("PRAGMA temp_store = MEMORY")
     init_db(conn)
 
@@ -168,8 +207,28 @@ def _create_import_row(conn: sqlite3.Connection, source_path: Path, file_count: 
     return import_id, summary
 
 
-def _project_exists(conn: sqlite3.Connection, export_name: str) -> bool:
-    return conn.execute("SELECT 1 FROM projects WHERE export_name = ?", (export_name,)).fetchone() is not None
+def _project_source_signature(project_dir: Path) -> str:
+    """Fingerprint of the project's on-disk file set (relpath, size, mtime)."""
+    digest = hashlib.sha256()
+    for path in sorted(project_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        stat = path.stat()
+        digest.update(
+            f"{path.relative_to(project_dir).as_posix()}\0{stat.st_size}\0{stat.st_mtime_ns}\0".encode()
+        )
+    return digest.hexdigest()
+
+
+def _project_needs_import(conn: sqlite3.Connection, project_dir: Path) -> bool:
+    row = conn.execute(
+        "SELECT source_signature FROM projects WHERE export_name = ? ORDER BY id DESC LIMIT 1",
+        (project_dir.name,),
+    ).fetchone()
+    if row is None:
+        return True
+    # NULL signature (pre-migration DB) counts as changed: re-import once, self-heals.
+    return row["source_signature"] != _project_source_signature(project_dir)
 
 
 def _import_one_project(
@@ -183,6 +242,10 @@ def _import_one_project(
 ) -> tuple[int, list[int]]:
     _delete_project_by_name(conn, project_dir.name)
     project_id = _insert_project(conn, import_id, project_dir.name)
+    conn.execute(
+        "UPDATE projects SET source_signature = ? WHERE id = ?",
+        (_project_source_signature(project_dir), project_id),
+    )
     summary.project_count += 1
     _notify_progress(progress_callback, summary, "importing")
 
@@ -297,6 +360,44 @@ def _finalize_import(
     _notify_progress(progress_callback, summary, status)
 
 
+def _finish_import_or_strand(
+    conn: sqlite3.Connection,
+    summary: ImportSummary,
+    import_id: int,
+    session_ids: list[int],
+    project_ids: list[int],
+    *,
+    progress_callback: ProgressCallback | None = None,
+) -> None:
+    """Run the rebuild/finalize tail, guarding against stranding projects.
+
+    Each project above is committed WITH its fresh source_signature before we get
+    here. If _rebuild_derived/_finalize_import then raises, those signatures
+    already match what's on disk, so the next import_all_new() run's skip check
+    (_project_needs_import) would treat these projects as unchanged and never
+    retry them — even though their derived tables (event_edges, session_stats,
+    search_index, risk_findings/patterns) never got rebuilt. Roll back any
+    partial derived writes, null the signatures so the projects are re-imported
+    on the next run, and mark the import failed before re-raising so callers
+    (e.g. the API route) see the failure instead of a silently-stuck "running" row.
+    """
+    try:
+        _notify_progress(progress_callback, summary, "rebuilding")
+        _rebuild_derived(conn, session_ids, project_ids)
+        _finalize_import(conn, summary, import_id, session_ids, project_ids, progress_callback=progress_callback)
+    except Exception:
+        conn.rollback()
+        if project_ids:
+            sp = ",".join("?" * len(project_ids))
+            conn.execute(f"UPDATE projects SET source_signature = NULL WHERE id IN ({sp})", project_ids)
+        conn.execute(
+            "UPDATE imports SET status = 'failed', error_count = ? WHERE id = ?",
+            (len(summary.errors), import_id),
+        )
+        conn.commit()
+        raise
+
+
 def _notify_progress(
     progress_callback: ProgressCallback | None,
     summary: ImportSummary,
@@ -382,6 +483,9 @@ def _parse_jsonl(
                 obj = json.loads(line)
             except json.JSONDecodeError as exc:
                 _record_error(conn, summary, rel_path, line_no, f"Invalid JSONL: {exc}")
+                continue
+            if not isinstance(obj, dict):
+                _record_error(conn, summary, rel_path, line_no, "Invalid JSONL: line is not a JSON object")
                 continue
             event_id = _insert_event(conn, session_pk, rel_path, line_no, obj, is_sidechain, agent_id)
             _update_session_from_event(conn, session_pk, obj)
@@ -634,10 +738,18 @@ def _insert_content_block(
     if block_type == "tool_use":
         conn.execute(
             """
-            INSERT INTO tool_calls(event_id, session_id, tool_use_id, tool_name, input_preview, raw_json)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO tool_calls(event_id, session_id, tool_use_id, tool_name, input_preview, file_ext, raw_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (event_id, session_pk, tool_use_id, tool_name, _shorten(block_obj.get("input")), _json(_compact_for_storage(block_obj))),
+            (
+                event_id,
+                session_pk,
+                tool_use_id,
+                tool_name,
+                _shorten(block_obj.get("input")),
+                file_ext_from_tool_input(tool_name, block_obj.get("input")),
+                _json(_compact_for_storage(block_obj)),
+            ),
         )
     elif block_type == "tool_result":
         persisted_id = _find_persisted_id(str(block_obj.get("content") or ""), persisted_by_export_path)
@@ -754,7 +866,7 @@ def _insert_subagent_meta(
     rel_path = _rel(root, meta_file)
     try:
         meta = json.loads(meta_file.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         _record_error(conn, summary, rel_path, None, f"Invalid subagent metadata: {exc}")
         return
     agent_id = meta_file.name.removeprefix("agent-").removesuffix(".meta.json")

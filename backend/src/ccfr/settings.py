@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 import secrets
 import uuid
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
 from ccfr.config import data_dir
@@ -19,6 +19,14 @@ class Settings:
     privacy_mode: bool = False
     contributor_salt: str | None = None
     contributor_id: str | None = None
+    # Monotonic per-member counter for team bundle exports, used to order
+    # same-day bundles (generated_at alone is date-only). Incremented on
+    # /team/export, never on the preview endpoint.
+    team_bundle_seq: int = 0
+    # Export-page prefill: last member name, level, per-project label overrides,
+    # and deselected export_names (deselected, not selected, so newly imported
+    # projects default to included — protecting full-snapshot semantics).
+    team_export_prefs: dict = field(default_factory=dict)
 
 
 def _settings_path() -> Path:
@@ -40,6 +48,8 @@ def read_settings() -> Settings:
         privacy_mode=bool(raw.get("privacy_mode", False)),
         contributor_salt=raw.get("contributor_salt"),
         contributor_id=raw.get("contributor_id"),
+        team_bundle_seq=int(raw.get("team_bundle_seq", 0) or 0),
+        team_export_prefs=raw.get("team_export_prefs") if isinstance(raw.get("team_export_prefs"), dict) else {},
     )
 
 

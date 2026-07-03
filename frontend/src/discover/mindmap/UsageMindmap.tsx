@@ -199,7 +199,7 @@ export default function UsageMindmap({ projects }: Props) {
               <MindmapCanvas
                 phases={displayedPhases}
                 totalUsd={displayedTotal}
-                costAvailable={meta.cost_available}
+                costAvailable={basis === "cost"}
                 selectedNodeId={activeNode?.id ?? null}
                 onSelectNode={setSelectedNode}
                 previousShares={origin === "all" ? previousShares : undefined}

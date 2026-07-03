@@ -230,3 +230,34 @@ def test_stats_reflect_current_cache(client) -> None:
 
     c.post("/api/imports/reset")
     assert c.get("/api/stats").json()["project_count"] == 0
+
+
+def test_progress_callback_throttles_db_stat_queries(monkeypatch):
+    from ccfr.api import repository
+    from ccfr.ingest import ImportSummary
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    init_db(conn)
+
+    calls = {"stats": 0}
+    monkeypatch.setattr(repository, "import_summary_stats", lambda c, i: calls.__setitem__("stats", calls["stats"] + 1) or {})
+    monkeypatch.setattr(repository, "cache_stats", lambda c: {})
+
+    fake = {"now": 0.0}
+    cb = routes._progress_callback(conn, Path("."), None, min_interval_s=0.5, clock=lambda: fake["now"])
+    summary = ImportSummary(import_id=1, source_path="x")
+
+    for _ in range(100):
+        cb(summary, "importing")          # same status, same instant: 1 query
+    assert calls["stats"] == 1
+
+    fake["now"] = 1.0
+    cb(summary, "importing")              # interval elapsed: re-query
+    assert calls["stats"] == 2
+
+    cb(summary, "rebuilding")             # status change publishes immediately
+    assert calls["stats"] == 3
+
+    cb(summary, "completed")              # terminal always publishes
+    assert calls["stats"] == 4

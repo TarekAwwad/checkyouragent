@@ -12,6 +12,7 @@ class ImportRequest(BaseModel):
 
 class RuntimeConfigResponse(BaseModel):
     import_root: str
+    team_bundle_root: str
     database_path: str
     is_docker: bool = False
 
@@ -19,6 +20,7 @@ class RuntimeConfigResponse(BaseModel):
 class SettingsResponse(BaseModel):
     historical_pricing: bool = True
     privacy_mode: bool = False
+    team_export_prefs: dict[str, Any] = Field(default_factory=dict)
 
 
 class CacheStatsResponse(BaseModel):
@@ -71,6 +73,7 @@ class DiscoveredProjectResponse(BaseModel):
     imported: bool
     session_count: int
     last_imported_at: str | None
+    stale: bool = False
 
 
 class ProjectResponse(BaseModel):
@@ -678,3 +681,91 @@ class ContributionPreviewResponse(BaseModel):
 class ContributionExportResponse(BaseModel):
     path: str
     session_count: int
+
+
+class TeamExportPreviewResponse(BaseModel):
+    manifest: dict[str, Any]
+    bundle: dict[str, Any]
+
+
+class TeamExportResponse(BaseModel):
+    path: str
+    bundle_id: str
+    session_count: int
+
+
+class TeamProjectEntry(BaseModel):
+    export_name: str
+    default_label: str
+    session_count: int
+    tokens: int
+
+
+class TeamProjectsResponse(BaseModel):
+    projects: list[TeamProjectEntry] = Field(default_factory=list)
+    prefs: dict[str, Any] = Field(default_factory=dict)
+
+
+class TeamExportProjectSelection(BaseModel):
+    export_name: str
+    label: str | None = None
+
+
+class TeamExportRequest(BaseModel):
+    privacy_level: str = "structural"
+    member_name: str | None = None
+    projects: list[TeamExportProjectSelection] = Field(default_factory=list)
+
+
+class TeamImportRequest(BaseModel):
+    path: str = Field(description="Path to a team bundle JSON file under CCFR_TEAM_BUNDLE_ROOT.")
+
+
+class TeamBundleUploadRequest(BaseModel):
+    filename: str | None = Field(default=None, description="Original local filename selected in the browser.")
+    bundle: dict[str, Any] = Field(description="Parsed team bundle JSON payload.")
+
+
+class TeamImportResponse(BaseModel):
+    bundle_id: str
+    member_id: str
+    session_count: int
+    imported: bool
+    status: str
+
+
+class TeamImportEntry(BaseModel):
+    id: int
+    bundle_id: str
+    profile: str
+    schema_version: int
+    member_id: str
+    generated_at: str
+    app_version: str | None = None
+    imported_at: str
+    source_path: str
+    session_count: int
+    member_name: str | None = None
+    privacy_level: str = "structural"
+
+
+class TeamMemberDeleteResponse(BaseModel):
+    member_id: str
+    bundles_removed: int
+
+
+class TeamDashboardResponse(BaseModel):
+    meta: dict[str, Any] = Field(default_factory=dict)
+    tokens: dict[str, Any] = Field(default_factory=dict)
+    stats: dict[str, Any] = Field(default_factory=dict)
+    providers: list[dict[str, Any]] = Field(default_factory=list)
+    models: list[dict[str, Any]] = Field(default_factory=list)
+    stop_reasons: list[dict[str, Any]] = Field(default_factory=list)
+    risk_categories: list[dict[str, Any]] = Field(default_factory=list)
+    subagents: list[dict[str, Any]] = Field(default_factory=list)
+    sequence: list[dict[str, Any]] = Field(default_factory=list)
+    members: list[dict[str, Any]] = Field(default_factory=list)
+    over_time: list[dict[str, Any]] = Field(default_factory=list)
+    projects: list[dict[str, Any]] = Field(default_factory=list)
+    tools: list[dict[str, Any]] = Field(default_factory=list)
+    file_types: list[dict[str, Any]] = Field(default_factory=list)

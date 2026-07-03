@@ -4,6 +4,8 @@ import json
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 from ccfr.api import repository
 from ccfr.ingest import import_export
 from ccfr.storage import init_db
@@ -501,3 +503,225 @@ def test_import_stores_cache_breakdown_and_costs_per_model(tmp_path: Path, monke
     # base 5 + 5m 3.75 + 1h 4 + read 1.0 + output 10 = 23.75
     assert cost["usd"] == 23.75
     assert cost["tokens"]["cache_read"] == 2_000_000
+
+
+def test_non_object_jsonl_line_is_recorded_not_fatal(tmp_path: Path) -> None:
+    project = tmp_path / "d--Sample"
+    project.mkdir()
+    session_id = "11111111-1111-1111-1111-111111111111"
+    (project / f"{session_id}.jsonl").write_text(
+        "\n".join(
+            [
+                '{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","message":{"role":"user","content":"hello"}}',
+                "42",
+                "null",
+                '{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"2026-01-01T00:00:01Z","message":{"role":"assistant","content":[{"type":"text","text":"ok"}]}}',
+            ]
+        ),
+        encoding="utf-8",
+    )
+    conn = memory_conn()
+    summary = import_export(conn, tmp_path)
+    assert summary.event_count == 2
+    assert summary.error_count == 2
+    assert conn.execute("SELECT COUNT(*) FROM import_errors").fetchone()[0] == 2
+
+
+def test_invalid_utf8_subagent_meta_is_recorded_not_fatal(tmp_path: Path) -> None:
+    _write_project(tmp_path, "d--Sample", "11111111-1111-1111-1111-111111111111")
+    subagents = tmp_path / "d--Sample" / "11111111-1111-1111-1111-111111111111" / "subagents"
+    subagents.mkdir(parents=True)
+    (subagents / "agent-x.meta.json").write_bytes(b"\xff\xfe{ not utf8")
+    conn = memory_conn()
+    summary = import_export(conn, tmp_path)
+    assert summary.error_count == 1
+    assert summary.project_count == 1
+    assert conn.execute("SELECT COUNT(*) FROM subagents").fetchone()[0] == 0
+
+
+def test_import_keeps_a_rollback_journal(tmp_path: Path) -> None:
+    _write_project(tmp_path, "d--Alpha", "11111111-1111-1111-1111-111111111111")
+    conn = memory_conn()
+    import_export(conn, tmp_path)
+    assert conn.execute("PRAGMA journal_mode").fetchone()[0].lower() != "off"
+
+
+def test_failed_project_rolls_back_and_others_survive(tmp_path: Path, monkeypatch) -> None:
+    import ccfr.ingest.importer as importer_mod
+    from ccfr.ingest import import_all_new
+
+    _write_project(tmp_path, "d--Alpha", "11111111-1111-1111-1111-111111111111")
+    _write_project(tmp_path, "d--Beta", "22222222-2222-2222-2222-222222222222")
+
+    original = importer_mod._parse_jsonl
+
+    def boom(conn, summary, root, path, *args, **kwargs):
+        if "d--Beta" in str(path):
+            raise RuntimeError("disk exploded")
+        return original(conn, summary, root, path, *args, **kwargs)
+
+    monkeypatch.setattr(importer_mod, "_parse_jsonl", boom)
+    conn = memory_conn()
+    summary = import_all_new(conn, tmp_path, include_existing=True)
+
+    names = [r[0] for r in conn.execute("SELECT export_name FROM projects ORDER BY export_name")]
+    assert names == ["d--Alpha"]
+    assert summary.error_count == 1
+    assert conn.execute("SELECT status FROM imports ORDER BY id DESC LIMIT 1").fetchone()[0] == "completed_with_errors"
+
+
+def test_failed_reimport_preserves_previous_project_data(tmp_path: Path, monkeypatch) -> None:
+    import ccfr.ingest.importer as importer_mod
+    from ccfr.ingest import import_all_new
+
+    _write_project(tmp_path, "d--Beta", "22222222-2222-2222-2222-222222222222")
+    conn = memory_conn()
+    import_all_new(conn, tmp_path, include_existing=True)
+    assert conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 1
+
+    original = importer_mod._parse_jsonl
+
+    def boom(conn_, summary, root, path, *args, **kwargs):
+        if "d--Beta" in str(path):
+            raise RuntimeError("disk exploded")
+        return original(conn_, summary, root, path, *args, **kwargs)
+
+    monkeypatch.setattr(importer_mod, "_parse_jsonl", boom)
+    import_all_new(conn, tmp_path, include_existing=True)
+
+    # The failed re-import must roll back its delete: old Beta data intact.
+    assert conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 1
+    assert conn.execute("SELECT COUNT(*) FROM events").fetchone()[0] == 2
+
+
+def test_failure_before_project_insert_keeps_counts_truthful(tmp_path: Path, monkeypatch) -> None:
+    import ccfr.ingest.importer as importer_mod
+    from ccfr.ingest import import_all_new
+
+    _write_project(tmp_path, "d--Alpha", "11111111-1111-1111-1111-111111111111")
+    _write_project(tmp_path, "d--Beta", "22222222-2222-2222-2222-222222222222")
+
+    original = importer_mod._insert_project
+
+    def boom(conn, import_id, export_name):
+        if export_name == "d--Beta":
+            raise RuntimeError("insert failed")
+        return original(conn, import_id, export_name)
+
+    monkeypatch.setattr(importer_mod, "_insert_project", boom)
+    conn = memory_conn()
+    summary = import_all_new(conn, tmp_path, include_existing=True)
+
+    # Alpha imported and still counted; Beta failed BEFORE its count bump.
+    assert summary.project_count == 1
+    assert summary.error_count == 1
+    assert conn.execute("SELECT COUNT(*) FROM projects").fetchone()[0] == 1
+
+
+def test_rolled_back_recoverable_errors_do_not_linger_in_summary(tmp_path: Path, monkeypatch) -> None:
+    import ccfr.ingest.importer as importer_mod
+    from ccfr.ingest import import_all_new
+
+    # Beta has a recoverable bad line (recorded mid-transaction) and a memory
+    # file whose insert we make fatal — the rollback must also purge the
+    # recoverable entry from the in-memory summary.
+    project = tmp_path / "d--Beta"
+    project.mkdir()
+    (project / "22222222-2222-2222-2222-222222222222.jsonl").write_text(
+        "\n".join(
+            [
+                '{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","message":{"role":"user","content":"hi"}}',
+                "{bad json",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    memory_dir = project / "memory"
+    memory_dir.mkdir()
+    (memory_dir / "note.md").write_text("note", encoding="utf-8")
+
+    def boom(conn, summary, root, memory_file, project_id):
+        raise RuntimeError("memory insert failed")
+
+    monkeypatch.setattr(importer_mod, "_insert_memory", boom)
+    conn = memory_conn()
+    summary = import_all_new(conn, tmp_path, include_existing=True)
+
+    # Only the project-failure entry remains, matching the persisted rows.
+    assert summary.error_count == 1
+    assert summary.errors[0]["message"].startswith("Project import failed")
+    assert conn.execute("SELECT COUNT(*) FROM import_errors").fetchone()[0] == 1
+
+
+def test_import_all_new_reimports_project_changed_on_disk(tmp_path: Path) -> None:
+    from ccfr.ingest import import_all_new
+
+    _write_project(tmp_path, "d--Alpha", "11111111-1111-1111-1111-111111111111")
+    conn = memory_conn()
+    import_all_new(conn, tmp_path)
+    assert conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 1
+
+    # A new session lands in the SAME project directory.
+    _write_project(tmp_path, "d--Alpha", "33333333-3333-3333-3333-333333333333")
+    import_all_new(conn, tmp_path)
+    assert conn.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 2
+
+
+def test_import_all_new_skips_unchanged_project(tmp_path: Path) -> None:
+    from ccfr.ingest import import_all_new
+
+    _write_project(tmp_path, "d--Alpha", "11111111-1111-1111-1111-111111111111")
+    conn = memory_conn()
+    import_all_new(conn, tmp_path)
+    first_ids = [r[0] for r in conn.execute("SELECT id FROM sessions ORDER BY id")]
+    import_all_new(conn, tmp_path)
+    # Unchanged on disk: skipped entirely, session rows not rebuilt.
+    assert [r[0] for r in conn.execute("SELECT id FROM sessions ORDER BY id")] == first_ids
+
+
+def test_discover_projects_flags_stale(tmp_path: Path) -> None:
+    from ccfr.ingest import discover_projects, import_all_new
+
+    _write_project(tmp_path, "d--Alpha", "11111111-1111-1111-1111-111111111111")
+    conn = memory_conn()
+    import_all_new(conn, tmp_path)
+    assert discover_projects(conn, tmp_path)[0].stale is False
+
+    _write_project(tmp_path, "d--Alpha", "33333333-3333-3333-3333-333333333333")
+    assert discover_projects(conn, tmp_path)[0].stale is True
+
+
+def test_failed_rebuild_marks_import_failed_and_next_run_retries(tmp_path: Path, monkeypatch) -> None:
+    import ccfr.ingest.importer as importer_mod
+    from ccfr.ingest import import_all_new
+
+    _write_project(tmp_path, "d--Alpha", "11111111-1111-1111-1111-111111111111")
+    conn = memory_conn()
+
+    def boom(conn_, session_ids, project_ids):
+        raise RuntimeError("rebuild exploded")
+
+    monkeypatch.setattr(importer_mod, "_rebuild_derived", boom)
+    with pytest.raises(RuntimeError):
+        import_all_new(conn, tmp_path, include_existing=True)
+
+    assert conn.execute("SELECT status FROM imports ORDER BY id DESC LIMIT 1").fetchone()[0] == "failed"
+    assert conn.execute("SELECT source_signature FROM projects").fetchone()[0] is None
+
+    monkeypatch.undo()
+    import_all_new(conn, tmp_path)  # incremental run must NOT skip the stranded project
+    assert conn.execute("SELECT status FROM imports ORDER BY id DESC LIMIT 1").fetchone()[0] == "completed"
+    assert conn.execute("SELECT COUNT(*) FROM session_stats").fetchone()[0] > 0
+
+
+def test_import_populates_file_ext_for_file_arg_tools(tmp_path):
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    init_db(conn)
+    import_export(conn, sanitized_export(tmp_path))
+
+    rows = conn.execute("SELECT tool_name, file_ext FROM tool_calls ORDER BY id").fetchall()
+    read_exts = [row["file_ext"] for row in rows if row["tool_name"] == "Read"]
+    assert read_exts == ["py", "py", "py"]  # alpha fixture reads three .py files
+    other = {row["file_ext"] for row in rows if row["tool_name"] != "Read"}
+    assert other == {None}  # Bash / Agent calls carry no file extension

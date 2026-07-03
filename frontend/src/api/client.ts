@@ -19,6 +19,14 @@ import type {
   SessionContextEconomicsResponse,
   Settings,
   Subagent,
+  TeamDashboard,
+  TeamExportRequestBody,
+  TeamExportResult,
+  TeamImportRecord,
+  TeamImportResult,
+  TeamMemberDeleteResult,
+  TeamPreview,
+  TeamProjectsResult,
   TimelineItem,
   TurnCostBreakdown,
   TraceResponse,
@@ -32,6 +40,25 @@ import type {
 // backend isn't reachable via the proxy (e.g. a built/Docker frontend).
 const API_BASE = (import.meta.env.VITE_API_BASE ?? "/api").replace(/\/$/, "");
 
+function errorMessageFromBody(body: string): string {
+  try {
+    const parsed = JSON.parse(body) as { detail?: unknown };
+    if (typeof parsed.detail === "string") return parsed.detail;
+    if (Array.isArray(parsed.detail)) {
+      return parsed.detail
+        .map((item) => {
+          if (typeof item === "string") return item;
+          if (item && typeof item === "object" && "msg" in item) return String(item.msg);
+          return JSON.stringify(item);
+        })
+        .join("; ");
+    }
+  } catch {
+    // Plain-text error body.
+  }
+  return body;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     // Always hit the backend: analytics responses carry no cache headers and some
@@ -43,7 +70,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!response.ok) {
     const detail = await response.text();
-    throw new Error(detail || `Request failed: ${response.status}`);
+    throw new Error(errorMessageFromBody(detail) || `Request failed: ${response.status}`);
   }
   return response.json() as Promise<T>;
 }
@@ -144,7 +171,7 @@ export function search(q: string, sessionId?: number) {
   return request<SearchResult[]>(`/search?${params.toString()}`);
 }
 
-export function getCostAnalytics(filters: CostAnalyticsFilters = {}, historical?: boolean) {
+function costRequest(path: string, filters: CostAnalyticsFilters, historical?: boolean) {
   const params = new URLSearchParams();
   if (filters.dateFrom) params.set("date_from", filters.dateFrom);
   if (filters.dateTo) params.set("date_to", filters.dateTo);
@@ -154,7 +181,16 @@ export function getCostAnalytics(filters: CostAnalyticsFilters = {}, historical?
   // request (the backend falls back to the persisted setting when it's absent).
   if (historical !== undefined) params.set("historical", String(historical));
   const query = params.toString();
-  return request<CostAnalyticsResponse>(`/analytics/cost${query ? `?${query}` : ""}`);
+  return request<CostAnalyticsResponse>(`${path}${query ? `?${query}` : ""}`);
+}
+
+export function getCostAnalytics(filters: CostAnalyticsFilters = {}, historical?: boolean) {
+  return costRequest("/analytics/cost", filters, historical);
+}
+
+// Same response shape as getCostAnalytics, computed over imported team bundles.
+export function getTeamCostAnalytics(filters: CostAnalyticsFilters = {}, historical?: boolean) {
+  return costRequest("/team/analytics/cost", filters, historical);
 }
 
 export function getDiscoveryAnalytics(filters: DiscoveryFilters = {}) {
@@ -226,4 +262,50 @@ export function getContributionPreview() {
 
 export function exportContribution() {
   return request<ContributionExportResult>("/contribution/export", { method: "POST" });
+}
+
+export function getTeamProjects() {
+  return request<TeamProjectsResult>("/team/projects");
+}
+
+export function getTeamPreview(body: TeamExportRequestBody) {
+  return request<TeamPreview>("/team/export-preview", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function exportTeamBundle(body: TeamExportRequestBody) {
+  return request<TeamExportResult>("/team/export", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function importTeamBundle(path?: string | null) {
+  return request<TeamImportResult>("/team/import", {
+    method: "POST",
+    body: JSON.stringify({ path: path || null }),
+  });
+}
+
+export function importTeamBundleFile(filename: string, bundle: unknown) {
+  return request<TeamImportResult>("/team/import-bundle", {
+    method: "POST",
+    body: JSON.stringify({ filename, bundle }),
+  });
+}
+
+export function listTeamImports() {
+  return request<TeamImportRecord[]>("/team/imports");
+}
+
+export function deleteTeamMember(memberId: string) {
+  return request<TeamMemberDeleteResult>(`/team/members/${encodeURIComponent(memberId)}`, {
+    method: "DELETE",
+  });
+}
+
+export function getTeamDashboard() {
+  return request<TeamDashboard>("/team/dashboard");
 }

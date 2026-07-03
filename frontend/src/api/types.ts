@@ -14,6 +14,7 @@ export interface ImportSummary {
 
 export interface RuntimeConfig {
   import_root: string;
+  team_bundle_root?: string;
   database_path: string;
   is_docker: boolean;
 }
@@ -60,6 +61,7 @@ export interface DiscoveredProject {
   imported: boolean;
   session_count: number;
   last_imported_at: string | null;
+  stale?: boolean;
 }
 
 export interface SessionCard {
@@ -647,6 +649,7 @@ export interface UsageCharacteristicsResponse {
 export interface Settings {
   historical_pricing: boolean;
   privacy_mode: boolean;
+  team_export_prefs?: Record<string, unknown>;
 }
 
 export interface ContributionManifest {
@@ -655,6 +658,7 @@ export interface ContributionManifest {
   included_fields: string[];
   excluded: string[];
   fingerprint_caveat: string;
+  privacy_level?: string;
 }
 
 export interface ContributionPreview {
@@ -665,4 +669,130 @@ export interface ContributionPreview {
 export interface ContributionExportResult {
   path: string;
   session_count: number;
+}
+
+export type TeamPrivacyLevel = "structural" | "team";
+
+// GET /api/team/projects -> TeamProjectsResponse.
+export interface TeamProjectEntry {
+  export_name: string;
+  default_label: string;
+  session_count: number;
+  tokens: number;
+}
+
+export interface TeamExportPrefs {
+  member_name?: string | null;
+  privacy_level?: TeamPrivacyLevel;
+  project_labels?: Record<string, string>;
+  deselected?: string[];
+}
+
+export interface TeamProjectsResult {
+  projects: TeamProjectEntry[];
+  prefs: TeamExportPrefs;
+}
+
+// POST /api/team/export and /api/team/export-preview request body.
+export interface TeamExportRequestBody {
+  privacy_level: TeamPrivacyLevel;
+  member_name?: string | null;
+  projects: { export_name: string; label?: string | null }[];
+}
+
+// GET /api/team/export-preview -> TeamExportPreviewResponse { manifest, bundle }.
+export interface TeamPreview {
+  manifest: ContributionManifest;
+  bundle: { sessions?: unknown[] } & Record<string, unknown>;
+}
+
+// POST /api/team/export -> TeamExportResponse.
+export interface TeamExportResult {
+  path: string;
+  bundle_id: string;
+  session_count: number;
+}
+
+// POST /api/team/import and /api/team/import-bundle -> TeamImportResponse.
+export interface TeamImportResult {
+  bundle_id: string;
+  member_id: string;
+  session_count: number;
+  imported: boolean;
+  status: "imported" | "replaced" | "duplicate" | "stale";
+}
+
+// DELETE /api/team/members/{member_id} -> TeamMemberDeleteResponse.
+export interface TeamMemberDeleteResult {
+  member_id: string;
+  bundles_removed: number;
+}
+
+// GET /api/team/imports -> list[TeamImportEntry].
+export interface TeamImportRecord {
+  id: number;
+  bundle_id: string;
+  profile: string;
+  schema_version: number;
+  member_id: string;
+  generated_at: string;
+  app_version?: string | null;
+  imported_at: string;
+  source_path: string;
+  session_count: number;
+  member_name?: string | null;
+  privacy_level?: string;
+}
+
+// GET /api/team/dashboard -> TeamDashboardResponse (team_dashboard()).
+export interface TeamDashboard {
+  meta?: {
+    bundle_count?: number;
+    member_count?: number;
+    project_count?: number;
+    session_count?: number;
+    date_from?: string | null;
+    date_to?: string | null;
+  };
+  tokens?: {
+    input?: number;
+    output?: number;
+    base?: number;
+    cache_5m?: number;
+    cache_1h?: number;
+    cache_read?: number;
+    total?: number;
+  };
+  stats?: {
+    turns?: number;
+    tool_calls?: number;
+    subagents?: number;
+    errors?: number;
+    loops?: number;
+    [key: string]: number | undefined;
+  };
+  providers?: Array<{ provider: string; session_count: number }>;
+  models?: Array<{ model: string; session_count: number }>;
+  stop_reasons?: Array<{ reason: string; count: number }>;
+  risk_categories?: Array<{ category: string; session_count: number }>;
+  subagents?: Array<{ agent_type: string; event_count: number; session_count: number }>;
+  sequence?: Array<{ sym: string; count: number }>;
+  members?: {
+    member_name: string;
+    member_ids: string[];
+    bundle_count: number;
+    project_count: number;
+    session_count: number;
+    tokens: number;
+  }[];
+  projects?: {
+    project_key: string;
+    project_name: string;
+    member_count: number;
+    session_count: number;
+    tokens: number;
+  }[];
+  tools?: { name: string; call_count: number; session_count: number }[];
+  file_types?: { ext: string; count: number; session_count: number }[];
+  over_time?: Array<{ date: string; session_count: number; tokens: number }>;
 }
