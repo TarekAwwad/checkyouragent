@@ -15,6 +15,7 @@ import {
   deleteTeamMember,
   getRuntimeConfig,
   importTeamBundle,
+  importTeamBundleFile,
   listTeamImports,
 } from "../api/client";
 
@@ -44,6 +45,13 @@ describe("TeamBundleImport", () => {
       imported: true,
       status: "imported",
     });
+    vi.mocked(importTeamBundleFile).mockImplementation(async (filename: string) => ({
+      bundle_id: `bundle-${filename}`,
+      member_id: filename,
+      session_count: 2,
+      imported: true,
+      status: "imported",
+    }));
     vi.mocked(deleteTeamMember).mockResolvedValue({
       member_id: "alice",
       bundles_removed: 1,
@@ -55,7 +63,7 @@ describe("TeamBundleImport", () => {
 
     expect(await screen.findByRole("heading", { name: /Import a team bundle/i })).toBeInTheDocument();
     expect(await screen.findByText("D:\\TeamBundles")).toBeInTheDocument();
-    expect(screen.getByLabelText("Choose local team bundle file")).toBeInTheDocument();
+    expect(screen.getByLabelText("Choose local team bundle files")).toBeInTheDocument();
     expect(screen.getByLabelText("Optional server-visible team bundle path")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Import bundle" })).toBeInTheDocument();
     expect(screen.getByText(/No team bundles have been imported yet/i)).toBeInTheDocument();
@@ -74,6 +82,82 @@ describe("TeamBundleImport", () => {
 
     await waitFor(() => expect(importTeamBundle).toHaveBeenCalledWith("D:\\TeamBundles\\shared.json"));
     expect(await screen.findByText(/shared\.json/)).toBeInTheDocument();
+  });
+
+  it("imports multiple selected files, calling importTeamBundleFile once per file in order", async () => {
+    renderImport();
+
+    const bundleA = { bundle_id: "alice-bundle" };
+    const bundleB = { bundle_id: "bob-bundle" };
+    const files = [
+      new File([JSON.stringify(bundleA)], "alice.json", { type: "application/json" }),
+      new File([JSON.stringify(bundleB)], "bob.json", { type: "application/json" }),
+    ];
+
+    const input = await screen.findByLabelText(/Choose local team bundle file/i);
+    fireEvent.change(input, { target: { files } });
+
+    fireEvent.click(screen.getByRole("button", { name: /Import/i }));
+
+    await waitFor(() => expect(importTeamBundleFile).toHaveBeenCalledTimes(2));
+    const calls = vi.mocked(importTeamBundleFile).mock.calls;
+    expect(calls[0][0]).toBe("alice.json");
+    expect(calls[0][1]).toEqual(bundleA);
+    expect(calls[1][0]).toBe("bob.json");
+    expect(calls[1][1]).toEqual(bundleB);
+
+    // Both files show up in the per-file result list.
+    expect(await screen.findByText("alice.json")).toBeInTheDocument();
+    expect(await screen.findByText("bob.json")).toBeInTheDocument();
+  });
+
+  it("reports a per-file failure without blocking the other files in the batch", async () => {
+    vi.mocked(importTeamBundleFile).mockImplementation(async (filename: string) => {
+      if (filename === "bob.json") throw new Error("boom");
+      return {
+        bundle_id: `bundle-${filename}`,
+        member_id: filename,
+        session_count: 2,
+        imported: true,
+        status: "imported",
+      };
+    });
+    renderImport();
+
+    const files = [
+      new File([JSON.stringify({ bundle_id: "a" })], "alice.json", { type: "application/json" }),
+      new File([JSON.stringify({ bundle_id: "b" })], "bob.json", { type: "application/json" }),
+    ];
+    const input = await screen.findByLabelText(/Choose local team bundle file/i);
+    fireEvent.change(input, { target: { files } });
+
+    fireEvent.click(screen.getByRole("button", { name: /Import/i }));
+
+    // Every file is still attempted even though one throws.
+    await waitFor(() => expect(importTeamBundleFile).toHaveBeenCalledTimes(2));
+    // The successful file's outcome is reported alongside the failed one.
+    expect(await screen.findByText("alice.json")).toBeInTheDocument();
+    expect(await screen.findByText("bob.json")).toBeInTheDocument();
+    expect(await screen.findByText(/boom/)).toBeInTheDocument();
+  });
+
+  it("records a failure for a file with invalid JSON and still imports the valid ones", async () => {
+    renderImport();
+
+    const files = [
+      new File(["this is not json"], "broken.json", { type: "application/json" }),
+      new File([JSON.stringify({ bundle_id: "ok" })], "good.json", { type: "application/json" }),
+    ];
+    const input = await screen.findByLabelText(/Choose local team bundle file/i);
+    fireEvent.change(input, { target: { files } });
+
+    fireEvent.click(screen.getByRole("button", { name: /Import/i }));
+
+    // Only the parseable file reaches the API.
+    await waitFor(() => expect(importTeamBundleFile).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(importTeamBundleFile).mock.calls[0][0]).toBe("good.json");
+    expect(await screen.findByText("broken.json")).toBeInTheDocument();
+    expect(await screen.findByText("good.json")).toBeInTheDocument();
   });
 
   it("shows the replaced-bundle message when the import supersedes a previous one", async () => {

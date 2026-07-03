@@ -16,6 +16,33 @@ function importRecordId(record: TeamImportRecord, index: number): string {
   return record.bundle_id ?? record.member_id ?? record.source_path ?? `team-import-${index}`;
 }
 
+type FileImportStatus = "imported" | "replaced" | "duplicate" | "stale" | "failed";
+
+interface FileImportResult {
+  filename: string;
+  status: FileImportStatus;
+  session_count?: number;
+  error?: string;
+}
+
+// Human-readable outcome for one bundle in a batch — mirrors the backend's
+// import status vocabulary so single- and multi-file imports read the same.
+function resultMessage(result: FileImportResult): string {
+  switch (result.status) {
+    case "replaced":
+      return "Replaced this member's previous bundle.";
+    case "duplicate":
+      return "Already imported — nothing changed.";
+    case "stale":
+      return "Older than this member's current bundle — nothing changed.";
+    case "failed":
+      return `Import failed: ${result.error ?? "unknown error"}.`;
+    case "imported":
+    default:
+      return `Imported ${result.session_count ?? 0} sessions.`;
+  }
+}
+
 function readLocalFile(file: File): Promise<string> {
   if (typeof file.text === "function") return file.text();
   return new Promise((resolve, reject) => {
@@ -31,22 +58,51 @@ function errorMessage(error: unknown): string {
 }
 
 // Team-scope "Import": bring in content-free bundles other members shared. Local
-// JSON files only — pick one from this browser or point at a server-visible path.
-// The app never uploads, and bundles carry no prompts/paths/commands/content.
+// JSON files only — pick one or more from this browser or point at a server-visible
+// path. The app never uploads, and bundles carry no prompts/paths/commands/content.
 export default function TeamBundleImport() {
   const queryClient = useQueryClient();
   const config = useQuery({ queryKey: ["config"], queryFn: getRuntimeConfig });
   const imports = useQuery({ queryKey: ["team-import-list"], queryFn: listTeamImports });
   const [importPath, setImportPath] = useState("");
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [fileResults, setFileResults] = useState<FileImportResult[] | null>(null);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
 
   const importer = useMutation({
     mutationFn: async () => {
-      if (selectedFile) {
-        const text = await readLocalFile(selectedFile);
-        return importTeamBundleFile(selectedFile.name, JSON.parse(text) as unknown);
+      // Browser files take precedence over the server path. Each file is
+      // imported sequentially — the backend resolves replace/duplicate/stale
+      // from stored state, so order does not matter and sequential writes keep
+      // SQLite from contending with itself.
+      if (selectedFiles.length) {
+        const results: FileImportResult[] = [];
+        setProgress({ done: 0, total: selectedFiles.length });
+        for (const file of selectedFiles) {
+          try {
+            const text = await readLocalFile(file);
+            const parsed = JSON.parse(text) as unknown;
+            const res = await importTeamBundleFile(file.name, parsed);
+            results.push({ filename: file.name, status: res.status as FileImportStatus, session_count: res.session_count });
+          } catch (error) {
+            // One bad file (unreadable, invalid JSON, rejected import) is
+            // recorded and skipped so the rest of the batch still imports.
+            results.push({ filename: file.name, status: "failed", error: errorMessage(error) });
+          }
+          setProgress((prev) => (prev ? { ...prev, done: prev.done + 1 } : prev));
+          setFileResults([...results]);
+        }
+        setProgress(null);
+        return results;
       }
-      return importTeamBundle(importPath.trim() || null);
+      const res = await importTeamBundle(importPath.trim() || null);
+      const single: FileImportResult = {
+        filename: importPath.trim(),
+        status: res.status as FileImportStatus,
+        session_count: res.session_count,
+      };
+      setFileResults([single]);
+      return [single];
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["team-import-list"] });
@@ -67,9 +123,11 @@ export default function TeamBundleImport() {
   const importedMemberCount = new Set(
     importedRecords.map((record, index) => record.member_id ?? record.member_name ?? importRecordId(record, index)),
   ).size;
-  const importTarget = selectedFile?.name || importPath.trim() || "";
+  const hasFiles = selectedFiles.length > 0;
+  const canImport = hasFiles || importPath.trim().length > 0;
   const bundleRoot = config.data?.team_bundle_root ?? null;
-  const sourceMode = selectedFile ? "File" : importPath.trim() ? "Path" : "Idle";
+  const sourceMode = hasFiles ? (selectedFiles.length > 1 ? "Files" : "File") : importPath.trim() ? "Path" : "Idle";
+  const importButtonLabel = selectedFiles.length > 1 ? `Import ${selectedFiles.length} bundles` : "Import bundle";
 
   return (
     <main className="page team-flow-page team-import-page">
@@ -77,8 +135,8 @@ export default function TeamBundleImport() {
         <div className="contribute-titleblock team-titleblock">
           <h1 id="team-import-title">Import a team bundle</h1>
           <p>
-            Bring in content-free bundles your teammates shared. You can import from a local JSON
-            file in the browser or from a server-visible path without uploading conversation data.
+            Bring in content-free bundles your teammates shared. You can import one or more local
+            JSON files in the browser or a server-visible path without uploading conversation data.
           </p>
           <div className="team-root-row">
             <span>team_bundle_root</span>
@@ -105,8 +163,8 @@ export default function TeamBundleImport() {
             </div>
             <div className="team-flow-card-body team-flow-stack">
               <p className="team-flow-copy">
-                Choose a bundle JSON from this browser, or point to a server-visible file when the
-                backend can already read that location.
+                Choose one or more bundle JSONs from this browser, or point to a server-visible file
+                when the backend can already read that location.
               </p>
               <div className="team-mini-summary" aria-label="Supported import sources">
                 <span>Browser file</span>
@@ -124,12 +182,16 @@ export default function TeamBundleImport() {
             <div className="team-flow-card-body team-flow-stack">
               <div className="team-import-controls">
                 <label className="team-file-picker">
-                  <span>Bundle file</span>
+                  <span>Bundle files</span>
                   <input
-                    aria-label="Choose local team bundle file"
+                    aria-label="Choose local team bundle files"
                     type="file"
+                    multiple
                     accept=".json,application/json"
-                    onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
+                    onChange={(event) => {
+                      setSelectedFiles(Array.from(event.target.files ?? []));
+                      setFileResults(null);
+                    }}
                   />
                 </label>
                 <label className="team-path-field">
@@ -145,25 +207,39 @@ export default function TeamBundleImport() {
                   type="button"
                   className="contribute-primary-button"
                   onClick={() => importer.mutate()}
-                  disabled={importer.isPending || !importTarget}
+                  disabled={importer.isPending || !canImport}
                 >
                   <FolderInput size={15} aria-hidden="true" />
-                  {importer.isPending ? "Importing…" : "Import bundle"}
+                  {importer.isPending ? "Importing…" : importButtonLabel}
                 </button>
               </div>
 
-              {importer.isSuccess && importer.data ? (
-                <div className="flow-result">
-                  <FileJson size={14} aria-hidden="true" />
-                  <code>
-                    <Blurred>{importTarget}</Blurred>
-                  </code>
-                  <span>
-                    {importer.data.status === "replaced" && "Replaced this member's previous bundle."}
-                    {importer.data.status === "duplicate" && "Already imported — nothing changed."}
-                    {importer.data.status === "stale" && "Older than this member's current bundle — nothing changed."}
-                    {importer.data.status === "imported" && `Imported ${importer.data.session_count} sessions.`}
-                  </span>
+              {hasFiles && !importer.isPending ? (
+                <span className="team-file-count">
+                  {selectedFiles.length} file{selectedFiles.length === 1 ? "" : "s"} selected
+                </span>
+              ) : null}
+
+              {importer.isPending && progress ? (
+                <span className="team-import-progress" role="status">
+                  Importing {Math.min(progress.done + 1, progress.total)} of {progress.total}…
+                </span>
+              ) : null}
+
+              {fileResults && fileResults.length > 0 ? (
+                <div className="team-import-results" aria-label="Import results">
+                  {fileResults.map((result, index) => (
+                    <div
+                      key={`${result.filename}-${index}`}
+                      className={result.status === "failed" ? "flow-result flow-error" : "flow-result"}
+                    >
+                      <FileJson size={14} aria-hidden="true" />
+                      <code>
+                        <Blurred>{result.filename}</Blurred>
+                      </code>
+                      <span>{resultMessage(result)}</span>
+                    </div>
+                  ))}
                 </div>
               ) : null}
 

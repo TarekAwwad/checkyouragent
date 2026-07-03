@@ -114,12 +114,17 @@ describe("TeamBundleExport", () => {
     expect(body.projects.map((p) => p.export_name)).toEqual(["d--Alpha"]);
   });
 
-  it("sends edited labels committed on blur", async () => {
+  it("reveals the label input only after clicking rename, then commits on blur", async () => {
     renderExport();
     fireEvent.click(await screen.findByRole("radio", { name: "Team" }));
+    // Names render read-only until the per-project edit button is used.
+    expect(screen.queryByLabelText("Label for alpha")).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "Rename alpha" }));
     const label = await screen.findByLabelText("Label for alpha");
     fireEvent.change(label, { target: { value: "Payments API" } });
     fireEvent.blur(label);
+    // Committing hides the input again.
+    expect(screen.queryByLabelText("Label for alpha")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Team member name"), { target: { value: "Avery" } });
 
     const exportBtn = screen.getByRole("button", { name: /Export bundle/i });

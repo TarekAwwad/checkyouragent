@@ -115,7 +115,32 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .sb-tag { margin-left: auto; font-style: normal; font-size: 8.5px; letter-spacing: .5px;
   color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 1px 6px; }
 
-.sb-foot { margin-top: auto; display: flex; gap: 8px; padding-top: 8px; }
+.sb-bottom {
+  margin-top: auto;
+}
+
+.sb-scope-row {
+  padding-top: 8px;
+}
+
+.sb-scope-row .sb-scope.segmented-control {
+  display: flex;
+  align-self: stretch;
+  width: 100%;
+  margin-bottom: 0;
+}
+
+.sb-scope-row .sb-scope.segmented-control button {
+  flex: 1 1 0;
+  justify-content: center;
+  text-align: center;
+}
+
+.sb-foot .sb-scope-action {
+  display: none;
+}
+
+.sb-foot { display: flex; gap: 8px; padding-top: 8px; }
 .sb-action {
   width: 34px; height: 34px; display: grid; place-items: center;
   border: 1px solid var(--border); background: var(--bg); color: var(--muted); border-radius: 9px;
@@ -139,6 +164,9 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .app-sidebar.is-collapsed .sb-brand { justify-content: center; }
 .app-sidebar.is-collapsed .sb-monogram { display: block; }
 .app-sidebar.is-collapsed .sb-item { justify-content: center; padding: 9px 0; }
+.app-sidebar.is-collapsed .sb-bottom { margin-top: auto; }
+.app-sidebar.is-collapsed .sb-scope-row { display: none; }
+.app-sidebar.is-collapsed .sb-foot .sb-scope-action { display: grid; }
 .app-sidebar.is-collapsed .sb-foot { flex-direction: column; align-items: center; }
 .app-sidebar.is-collapsed .sb-collapse { margin-left: 0; }
 
@@ -1475,7 +1503,8 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
   .app-sidebar .sb-tag,
   .app-sidebar .sb-brand-text,
   .app-sidebar .sb-subnav { display: none; }
-  .app-sidebar .sb-scope.segmented-control { display: none; }
+  .app-sidebar .sb-scope-row { display: none; }
+  .app-sidebar .sb-scope-action { display: grid; }
   .app-sidebar .sb-brand { justify-content: center; }
   .app-sidebar .sb-monogram { display: block; }
   .app-sidebar .sb-item { justify-content: center; padding: 9px 0; }
@@ -2867,6 +2896,9 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
 
 .privacy-column {
   min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   padding: 14px 16px;
 }
 
@@ -2899,6 +2931,10 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
   padding: 0;
   display: grid;
   gap: 9px;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .privacy-column li {
@@ -3535,7 +3571,53 @@ html:has(.specimen-dialog[open]) {
 
 .team-file-picker input[type="file"] {
   width: 100%;
-  padding-top: 7px;
+  height: 36px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--border-2);
+  border-radius: 9px;
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 11.5px;
+  padding: 0 8px;
+}
+
+.team-file-picker input[type="file"]::file-selector-button {
+  margin-right: 10px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-2);
+  border-radius: 7px;
+  background: var(--track);
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.team-file-picker input[type="file"]::file-selector-button:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border-2));
+  color: var(--accent);
+}
+
+/* Selection count + batch progress sit on their own line below the row. */
+.team-file-count,
+.team-import-progress {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+}
+
+.team-import-results {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.team-import-results .flow-result.flow-error {
+  border-color: color-mix(in srgb, var(--danger) 40%, var(--border));
 }
 
 .team-mini-summary {
@@ -3801,21 +3883,6 @@ html:has(.specimen-dialog[open]) {
 }
 
 /* ---- Team context (data-scope switch + team overview) -------------------- */
-.sb-scope.segmented-control {
-  display: flex;
-  align-self: stretch;
-  margin-bottom: 8px;
-}
-
-.sb-scope.segmented-control button {
-  flex: 1 1 0;
-  justify-content: center;
-  text-align: center;
-}
-
-.app-sidebar.is-collapsed .sb-scope {
-  display: none;
-}
 
 .team-empty {
   display: flex;
@@ -4130,11 +4197,39 @@ html:has(.specimen-dialog[open]) {
   font-size: 12.5px;
   overflow-wrap: anywhere;
 }
-.team-project-export-id {
+.team-project-label-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.team-project-label-row .team-project-label-static {
+  flex: 1;
+}
+.team-project-edit {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  /* Negative block margin keeps a 20px hit target without letting the icon
+     grow the row past the name text, so structural and team rows match height. */
+  margin-block: -5px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
   color: var(--faint);
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  overflow-wrap: anywhere;
+  cursor: pointer;
+  transition: color .12s ease, background .12s ease;
+}
+.team-project-edit:hover {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.team-project-edit:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 .team-project-meta {
   text-align: right;

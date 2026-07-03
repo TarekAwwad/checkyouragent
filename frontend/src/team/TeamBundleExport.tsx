@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Download, FileJson, Lock } from "lucide-react";
+import { Check, Download, FileJson, Lock, Pencil } from "lucide-react";
 import { exportTeamBundle, getRuntimeConfig, getTeamPreview, getTeamProjects } from "../api/client";
 import type { TeamExportRequestBody, TeamPrivacyLevel } from "../api/types";
 import type { ContributionSession } from "../contribute/specimen";
@@ -41,6 +41,8 @@ export default function TeamBundleExport() {
   const config = useQuery({ queryKey: ["config"], queryFn: getRuntimeConfig });
   const projectsQuery = useQuery({ queryKey: ["team-projects"], queryFn: getTeamProjects });
   const [specimenOpen, setSpecimenOpen] = useState(false);
+  // Which project's name is currently being renamed inline (team level only).
+  const [editingProject, setEditingProject] = useState<string | null>(null);
 
   // null = untouched; fall back to persisted prefs until the user edits a control.
   const [levelState, setLevelState] = useState<TeamPrivacyLevel | null>(null);
@@ -241,24 +243,42 @@ export default function TeamBundleExport() {
                           onChange={() => toggleProject(entry.export_name)}
                         />
                         <div className="team-project-copy">
-                          {level === "team" ? (
+                          {level === "team" && editingProject === entry.export_name ? (
                             <input
                               className="team-project-label"
                               aria-label={`Label for ${entry.default_label}`}
-                              key={`${entry.export_name}:${committed ?? ""}`}
+                              autoFocus
                               defaultValue={committed || entry.default_label}
                               maxLength={120}
                               disabled={!checked}
-                              onBlur={(event) => commitLabel(entry.export_name, event.target.value)}
+                              onBlur={(event) => {
+                                commitLabel(entry.export_name, event.target.value);
+                                setEditingProject(null);
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") event.currentTarget.blur();
+                              }}
                             />
+                          ) : level === "team" ? (
+                            <div className="team-project-label-row">
+                              <span className="team-project-label-static">
+                                <Blurred>{committed || entry.default_label}</Blurred>
+                              </span>
+                              <button
+                                type="button"
+                                className="team-project-edit"
+                                aria-label={`Rename ${entry.default_label}`}
+                                disabled={!checked}
+                                onClick={() => setEditingProject(entry.export_name)}
+                              >
+                                <Pencil size={12} aria-hidden="true" />
+                              </button>
+                            </div>
                           ) : (
                             <span className="team-project-label-static">
                               <Blurred>{entry.default_label}</Blurred>
                             </span>
                           )}
-                          <span className="team-project-export-id">
-                            <Blurred>{entry.export_name}</Blurred>
-                          </span>
                         </div>
                         <span className="team-project-meta">
                           {compactInt(entry.session_count)} sessions · {compactInt(entry.tokens)} tok

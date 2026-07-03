@@ -63,6 +63,15 @@ describe("Sidebar", () => {
     expect(props.onSelectScope).toHaveBeenCalledWith("team");
   });
 
+  it("renders a collapsed icon toggle for scope switching", () => {
+    const props = setup({ scope: "team", collapsed: true });
+    const scopeToggle = screen.getByRole("button", { name: /data scope: team\. switch to this machine/i });
+    expect(scopeToggle).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(scopeToggle);
+    expect(props.onSelectScope).toHaveBeenCalledWith("local");
+  });
+
   it("marks the active view and routes nav clicks", () => {
     const props = setup({ view: "cost" });
     expect(screen.getByRole("button", { name: "Cost" })).toHaveClass("active");
