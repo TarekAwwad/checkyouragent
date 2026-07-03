@@ -612,16 +612,17 @@ def import_team_bundle(
         cur = conn.execute(
             """
             INSERT INTO team_bundles(
-                bundle_id, profile, schema_version, member_id, generated_at, generated_seq,
-                app_version, imported_at, source_path, session_count
+                bundle_id, profile, schema_version, member_id, member_name, generated_at,
+                generated_seq, app_version, imported_at, source_path, session_count
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 bundle["bundle_id"],
                 bundle["profile"],
                 bundle["schema_version"],
                 bundle["member_id"],
+                bundle["member_name"],
                 bundle["generated_at"],
                 bundle["generated_seq"],
                 bundle["app_version"],
@@ -631,21 +632,20 @@ def import_team_bundle(
             ),
         )
         team_bundle_id = int(cur.lastrowid)
-        conn.executemany(
-            """
-            INSERT INTO team_bundle_sessions(
-                team_bundle_id, member_id, project_id, session_id, provider,
-                first_date, last_date, duration_s, models_json, tokens_json,
-                tokens_by_model_json, stats_json, stop_reasons_json,
-                risk_categories_json, subagents_json, sequence_json
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            [
+        session_rows = []
+        for session in bundle["sessions"]:
+            if bundle["profile"] == LEVEL_TEAM:
+                project_key = normalize_project_key(session["project_name"])
+                project_name = session["project_name"]
+            else:
+                project_key = session["pid"]
+                project_name = None
+            session_rows.append(
                 (
                     team_bundle_id,
                     bundle["member_id"],
-                    session.get("pid") or normalize_project_key(session["project_name"]),
+                    project_key,
+                    project_name,
                     session["sid"],
                     session["provider"],
                     session["first_date"],
@@ -658,10 +658,22 @@ def import_team_bundle(
                     _json(session["stop_reasons"]),
                     _json(session["risk_categories"]),
                     _json(session["subagents"]),
+                    _json(session.get("tools", [])),
+                    _json(session.get("file_types", [])),
                     _json(session["sequence"]),
                 )
-                for session in bundle["sessions"]
-            ],
+            )
+        conn.executemany(
+            """
+            INSERT INTO team_bundle_sessions(
+                team_bundle_id, member_id, project_id, project_name, session_id, provider,
+                first_date, last_date, duration_s, models_json, tokens_json,
+                tokens_by_model_json, stats_json, stop_reasons_json,
+                risk_categories_json, subagents_json, tools_json, file_types_json, sequence_json
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            session_rows,
         )
 
     return TeamImportResult(
@@ -676,13 +688,13 @@ def import_team_bundle(
 def list_team_imports(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     rows = conn.execute(
         """
-        SELECT id, bundle_id, profile, schema_version, member_id, generated_at,
+        SELECT id, bundle_id, profile, schema_version, member_id, member_name, generated_at,
                app_version, imported_at, source_path, session_count
         FROM team_bundles
         ORDER BY imported_at DESC, id DESC
         """
     ).fetchall()
-    return [dict(row) for row in rows]
+    return [dict(row) | {"privacy_level": privacy_level_of(row["profile"])} for row in rows]
 
 
 def delete_team_member(conn: sqlite3.Connection, member_id: str) -> int:
@@ -704,14 +716,15 @@ def reset_team_bundles(conn: sqlite3.Connection) -> None:
 
 def team_dashboard(conn: sqlite3.Connection) -> dict[str, Any]:
     bundles = conn.execute(
-        "SELECT bundle_id, member_id, session_count FROM team_bundles ORDER BY imported_at, id"
+        "SELECT bundle_id, member_id, member_name, session_count FROM team_bundles ORDER BY imported_at, id"
     ).fetchall()
     sessions = conn.execute(
         """
-        SELECT tb.bundle_id, tbs.member_id, tbs.project_id, tbs.provider,
+        SELECT tb.bundle_id, tbs.member_id, tbs.project_id, tbs.project_name, tbs.provider,
                tbs.first_date, tbs.last_date, tbs.duration_s, tbs.models_json,
                tbs.tokens_json, tbs.stats_json, tbs.stop_reasons_json,
-               tbs.risk_categories_json, tbs.subagents_json, tbs.sequence_json
+               tbs.risk_categories_json, tbs.subagents_json, tbs.tools_json,
+               tbs.file_types_json, tbs.sequence_json
         FROM team_bundle_sessions tbs
         JOIN team_bundles tb ON tb.id = tbs.team_bundle_id
         ORDER BY tbs.first_date, tbs.id
@@ -728,15 +741,36 @@ def team_dashboard(conn: sqlite3.Connection) -> dict[str, Any]:
     subagent_events: Counter[str] = Counter()
     subagent_sessions: Counter[str] = Counter()
     over_time: dict[str, dict[str, int]] = defaultdict(lambda: {"session_count": 0, "tokens": 0})
+
+    name_by_member: dict[str, str | None] = {
+        str(bundle["member_id"]): bundle["member_name"] for bundle in bundles
+    }
+
+    def _member_key(member_id: str) -> str:
+        return name_by_member.get(member_id) or f"id:{member_id}"
+
+    def _member_label(member_id: str) -> str:
+        return name_by_member.get(member_id) or f"member-{member_id[:8]}"
+
     member_summary: dict[str, dict[str, Any]] = defaultdict(
-        lambda: {"bundle_ids": set(), "project_ids": set(), "session_count": 0, "tokens": 0}
+        lambda: {"label": "", "member_ids": set(), "bundle_ids": set(), "project_ids": set(),
+                 "session_count": 0, "tokens": 0}
     )
+    project_summary: dict[str, dict[str, Any]] = {}
+    tool_calls_total: Counter[str] = Counter()
+    tool_sessions: Counter[str] = Counter()
+    file_type_counts: Counter[str] = Counter()
+    file_type_sessions: Counter[str] = Counter()
     project_ids: set[str] = set()
     first_dates: list[str] = []
     last_dates: list[str] = []
 
     for bundle in bundles:
-        member_summary[str(bundle["member_id"])]["bundle_ids"].add(str(bundle["bundle_id"]))
+        member_id = str(bundle["member_id"])
+        summary = member_summary[_member_key(member_id)]
+        summary["label"] = _member_label(member_id)
+        summary["member_ids"].add(member_id)
+        summary["bundle_ids"].add(str(bundle["bundle_id"]))
 
     for row in sessions:
         member_id = str(row["member_id"])
@@ -777,13 +811,46 @@ def team_dashboard(conn: sqlite3.Connection) -> dict[str, Any]:
             if isinstance(step, dict) and step.get("sym"):
                 sequence_counts[str(step["sym"])] += 1
 
-        project_id = str(row["project_id"])
-        project_ids.add(project_id)
-
         session_tokens = _nonnegative_int(tokens.get("input")) + _nonnegative_int(tokens.get("output"))
-        member_summary[member_id]["project_ids"].add(project_id)
-        member_summary[member_id]["session_count"] += 1
-        member_summary[member_id]["tokens"] += session_tokens
+
+        project_key = str(row["project_id"])
+        project_ids.add(project_key)
+        project = project_summary.setdefault(
+            project_key,
+            {"project_key": project_key, "project_name": row["project_name"] or project_key[:8],
+             "members": set(), "session_count": 0, "tokens": 0},
+        )
+        if row["project_name"] and project["project_name"] == project_key[:8]:
+            project["project_name"] = str(row["project_name"])
+        project["members"].add(_member_key(member_id))
+        project["session_count"] += 1
+        project["tokens"] += session_tokens
+
+        tools = _loads_list(row["tools_json"])
+        seen_tools: set[str] = set()
+        for tool in tools:
+            if not isinstance(tool, dict) or not tool.get("name"):
+                continue
+            name = str(tool["name"])
+            tool_calls_total[name] += _nonnegative_int(tool.get("calls"))
+            seen_tools.add(name)
+        for name in seen_tools:
+            tool_sessions[name] += 1
+
+        file_types = _loads_list(row["file_types_json"])
+        seen_exts: set[str] = set()
+        for entry in file_types:
+            if not isinstance(entry, dict) or not entry.get("ext"):
+                continue
+            ext = str(entry["ext"])
+            file_type_counts[ext] += _nonnegative_int(entry.get("count"))
+            seen_exts.add(ext)
+        for ext in seen_exts:
+            file_type_sessions[ext] += 1
+
+        member_summary[_member_key(member_id)]["project_ids"].add(project_key)
+        member_summary[_member_key(member_id)]["session_count"] += 1
+        member_summary[_member_key(member_id)]["tokens"] += session_tokens
         if row["first_date"]:
             bucket = str(row["first_date"])
             first_dates.append(bucket)
@@ -821,13 +888,34 @@ def team_dashboard(conn: sqlite3.Connection) -> dict[str, Any]:
         ],
         "members": [
             {
-                "member_id": member_id,
+                "member_name": summary["label"],
+                "member_ids": sorted(summary["member_ids"]),
                 "bundle_count": len(summary["bundle_ids"]),
                 "project_count": len(summary["project_ids"]),
                 "session_count": int(summary["session_count"]),
                 "tokens": int(summary["tokens"]),
             }
-            for member_id, summary in sorted(member_summary.items())
+            for _key, summary in sorted(member_summary.items(), key=lambda item: item[1]["label"])
+        ],
+        "projects": [
+            {
+                "project_key": project["project_key"],
+                "project_name": project["project_name"],
+                "member_count": len(project["members"]),
+                "session_count": int(project["session_count"]),
+                "tokens": int(project["tokens"]),
+            }
+            for project in sorted(
+                project_summary.values(), key=lambda item: (-item["tokens"], item["project_name"])
+            )
+        ],
+        "tools": [
+            {"name": name, "call_count": tool_calls_total[name], "session_count": tool_sessions[name]}
+            for name, _count in sorted(tool_calls_total.items(), key=lambda item: (-item[1], item[0]))
+        ],
+        "file_types": [
+            {"ext": ext, "count": file_type_counts[ext], "session_count": file_type_sessions[ext]}
+            for ext, _count in sorted(file_type_counts.items(), key=lambda item: (-item[1], item[0]))
         ],
         "over_time": [
             {"date": bucket, **values}

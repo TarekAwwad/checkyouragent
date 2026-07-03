@@ -6,8 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from ccfr.analysis import team_cost
+from ccfr.analysis import team_bundles, team_cost
+from ccfr.analysis.team_cost import team_cost_analytics
 from ccfr.storage import init_db
+from tests.test_team_bundles import _team_level_bundle
 
 OPUS = {"input": 1_000_000, "output": 1_000_000, "base": 1_000_000, "cache_5m": 0, "cache_1h": 0, "cache_read": 0}
 SONNET = {"input": 1_000_000, "output": 1_000_000, "base": 1_000_000, "cache_5m": 0, "cache_1h": 0, "cache_read": 0}
@@ -122,3 +124,27 @@ def test_team_cost_project_ids_stable_across_date_filter(seeded: sqlite3.Connect
     pid_by_name_filtered = {p["name"]: p["id"] for p in filtered["meta"]["available_projects"]}
 
     assert pid_by_name_filtered == pid_by_name_baseline
+
+
+def _team_conn() -> sqlite3.Connection:
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    init_db(conn)
+    return conn
+
+
+def _team_level_bundle_for_cost(tmp_path: Path) -> dict:
+    return _team_level_bundle(tmp_path).to_dict()
+
+
+def test_team_cost_uses_project_names_for_named_bundles(tmp_path):
+    conn = _team_conn()
+    bundle = _team_level_bundle_for_cost(tmp_path)
+    team_bundles.import_team_bundle(conn, bundle, source_path=Path("a.json"))
+
+    result = team_cost_analytics(conn)
+    names = {project["name"] for project in result["meta"]["available_projects"]}
+    assert "alpha" in names
+    assert all(len(name) != 8 or name == "alpha" for name in names)
+    if result["treemap"]:
+        assert result["treemap"][0]["project_name"] == "alpha"

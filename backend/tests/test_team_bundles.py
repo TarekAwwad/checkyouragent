@@ -640,3 +640,92 @@ def test_manifest_is_level_aware(tmp_path):
     assert any("member name" in item.lower() for item in team["included_fields"])
     assert any("tool" in item.lower() for item in team["included_fields"])
     assert not any("member name" in item.lower() for item in structural["included_fields"])
+
+
+def test_import_team_level_bundle_persists_names_and_key(tmp_path):
+    conn = _team_conn()
+    bundle = _team_level_bundle(tmp_path, label="Payments API").to_dict()
+    result = team_bundles.import_team_bundle(conn, bundle, source_path=Path("a.json"))
+
+    assert result.imported is True
+    bundle_row = conn.execute("SELECT member_name, profile FROM team_bundles").fetchone()
+    assert bundle_row["member_name"] == "Avery"
+    assert bundle_row["profile"] == "team"
+    session_row = conn.execute(
+        "SELECT project_id, project_name, tools_json, file_types_json FROM team_bundle_sessions LIMIT 1"
+    ).fetchone()
+    assert session_row["project_name"] == "Payments API"
+    assert session_row["project_id"] == "payments-api"  # normalized grouping key
+    assert "Read" in session_row["tools_json"]
+    assert '"py"' in session_row["file_types_json"]
+
+    listed = team_bundles.list_team_imports(conn)
+    assert listed[0]["member_name"] == "Avery"
+    assert listed[0]["privacy_level"] == "team"
+
+
+def test_import_structural_bundle_keeps_hash_key_and_null_name(tmp_path):
+    conn = _team_conn()
+    bundle = _bundle_from_sanitized(tmp_path).to_dict()
+    team_bundles.import_team_bundle(conn, bundle, source_path=Path("a.json"))
+
+    bundle_row = conn.execute("SELECT member_name, profile FROM team_bundles").fetchone()
+    assert bundle_row["member_name"] is None
+    assert bundle_row["profile"] == "structural"
+    session_row = conn.execute("SELECT project_id, project_name FROM team_bundle_sessions LIMIT 1").fetchone()
+    assert len(session_row["project_id"]) == 64
+    assert session_row["project_name"] is None
+    assert team_bundles.list_team_imports(conn)[0]["privacy_level"] == "structural"
+
+
+def test_dashboard_groups_members_by_name_across_machines(tmp_path):
+    conn = _team_conn()
+    laptop = _team_level_bundle(tmp_path).to_dict()  # member_id 2222..., name Avery
+    desktop = copy.deepcopy(laptop)
+    desktop["member_id"] = "33333333-3333-3333-3333-333333333333"
+    desktop["bundle_id"] = team_bundles.bundle_content_id_v2(
+        {k: v for k, v in desktop.items() if k != "bundle_id"}
+    )
+    team_bundles.import_team_bundle(conn, laptop, source_path=Path("a.json"))
+    team_bundles.import_team_bundle(conn, desktop, source_path=Path("b.json"))
+
+    dashboard = team_bundles.team_dashboard(conn)
+    assert dashboard["meta"]["member_count"] == 1  # one human, two machines
+    member = dashboard["members"][0]
+    assert member["member_name"] == "Avery"
+    assert len(member["member_ids"]) == 2
+    assert member["bundle_count"] == 2
+    assert member["session_count"] == 4  # 2 alpha sessions per machine
+
+
+def test_dashboard_mixed_levels_fall_back_gracefully(tmp_path):
+    # Separate subdirectories: sanitized_export() isn't safe to call twice
+    # against the same tmp_path (see test_build_rejects_bad_level_... above).
+    team_dir = tmp_path / "team"
+    structural_dir = tmp_path / "structural"
+    team_dir.mkdir()
+    structural_dir.mkdir()
+    conn = _team_conn()
+    named = _team_level_bundle(team_dir).to_dict()
+    anonymous = _bundle_from_sanitized(structural_dir).to_dict()
+    anonymous["member_id"] = "44444444-4444-4444-4444-444444444444"
+    anonymous["bundle_id"] = team_bundles.bundle_content_id_v2(
+        {k: v for k, v in anonymous.items() if k != "bundle_id"}
+    )
+    team_bundles.import_team_bundle(conn, named, source_path=Path("a.json"))
+    team_bundles.import_team_bundle(conn, anonymous, source_path=Path("b.json"))
+
+    dashboard = team_bundles.team_dashboard(conn)
+    names = {member["member_name"] for member in dashboard["members"]}
+    assert "Avery" in names
+    assert "member-44444444" in names  # UUID-prefix fallback label
+
+    project_names = {project["project_name"] for project in dashboard["projects"]}
+    assert "alpha" in project_names  # named project
+    assert any(len(name) == 8 and name not in {"alpha"} for name in project_names)  # hash-prefix fallback
+
+    tools = {tool["name"]: tool for tool in dashboard["tools"]}
+    assert tools["Read"]["call_count"] == 3
+    assert tools["Read"]["session_count"] == 1
+    file_types = {entry["ext"]: entry for entry in dashboard["file_types"]}
+    assert file_types["py"]["count"] == 3

@@ -103,10 +103,19 @@ def team_cost_analytics(
 
     # Stable across filter changes: ids depend only on the imported bundle
     # set, not on the date/project filters applied below.
-    all_pids = [
-        str(r["project_id"])
-        for r in conn.execute("SELECT DISTINCT project_id FROM team_bundle_sessions ORDER BY project_id")
-    ]
+    project_rows = conn.execute(
+        """
+        SELECT project_id, MAX(project_name) AS project_name
+        FROM team_bundle_sessions
+        GROUP BY project_id
+        ORDER BY project_id
+        """
+    ).fetchall()
+    all_pids = [str(row["project_id"]) for row in project_rows]
+    name_by_pid = {
+        str(row["project_id"]): (str(row["project_name"]) if row["project_name"] else str(row["project_id"])[:8])
+        for row in project_rows
+    }
     pid_id = {pid: index for index, pid in enumerate(all_pids, start=1)}
 
     where: list[str] = []
@@ -210,7 +219,7 @@ def team_cost_analytics(
 
             proj = treemap.setdefault(
                 pid_id[pid],
-                {"project_id": pid_id[pid], "project_name": pid[:8], "usd": 0.0, "children": {}},
+                {"project_id": pid_id[pid], "project_name": name_by_pid[pid], "usd": 0.0, "children": {}},
             )
             proj["usd"] += usd
             proj["children"][family] = proj["children"].get(family, 0.0) + usd
@@ -303,7 +312,7 @@ def team_cost_analytics(
     spikes_out = sorted(spikes, key=lambda item: item["delta_usd"], reverse=True)[:5]
 
     available_projects = sorted(
-        ({"id": pid_id[pid], "name": pid[:8]} for pid in all_pids), key=lambda item: item["name"]
+        ({"id": pid_id[pid], "name": name_by_pid[pid]} for pid in all_pids), key=lambda item: item["name"]
     )
 
     return {
