@@ -136,6 +136,33 @@ describe("TeamBundleExport", () => {
     expect(screen.getByLabelText("Include beta")).not.toBeChecked();
   });
 
+  it("never sends a member name in a structural export after a team prefill", async () => {
+    // A returning user whose last export was team-level has a persisted name in prefs.
+    vi.mocked(getTeamProjects).mockResolvedValue({
+      ...projectsPayload,
+      prefs: { member_name: "Avery", privacy_level: "team", deselected: [], project_labels: {} },
+    } as never);
+    renderExport();
+    // Prefilled to team; the name field is visible and holds "Avery"...
+    await waitFor(() => expect(screen.getByRole("radio", { name: "Team" })).toHaveAttribute("aria-checked", "true"));
+    // ...then they drop back to Structural, where the name field is no longer rendered.
+    fireEvent.click(screen.getByRole("radio", { name: "Structural" }));
+    await waitFor(() =>
+      expect(screen.getByRole("radio", { name: "Structural" })).toHaveAttribute("aria-checked", "true"),
+    );
+    expect(screen.queryByLabelText("Team member name")).not.toBeInTheDocument();
+
+    const exportBtn = screen.getByRole("button", { name: /Export bundle/i });
+    await waitFor(() => expect(exportBtn).toBeEnabled());
+    fireEvent.click(exportBtn);
+
+    await waitFor(() => expect(exportTeamBundle).toHaveBeenCalled());
+    const body = vi.mocked(exportTeamBundle).mock.calls[0][0];
+    // A structural bundle must never carry a name, even one left over from prefs.
+    expect(body.privacy_level).toBe("structural");
+    expect(body.member_name).toBeNull();
+  });
+
   it("disables export when the selection has no sessions", async () => {
     vi.mocked(getTeamPreview).mockResolvedValue({
       manifest: { ...previewPayload.manifest, session_count: 0 },

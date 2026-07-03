@@ -74,7 +74,10 @@ export default function TeamBundleExport() {
   });
 
   const exporter = useMutation({
-    mutationFn: () => exportTeamBundle({ ...previewBody, member_name: memberName.trim() || null }),
+    // Structural bundles never carry a name — even a stale one still resolved from
+    // prefs after switching down from team level (the name field is hidden there).
+    mutationFn: () =>
+      exportTeamBundle({ ...previewBody, member_name: level === "team" ? memberName.trim() || null : null }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["team-projects"] }),
   });
 
