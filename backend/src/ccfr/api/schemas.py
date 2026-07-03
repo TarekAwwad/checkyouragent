@@ -20,6 +20,7 @@ class RuntimeConfigResponse(BaseModel):
 class SettingsResponse(BaseModel):
     historical_pricing: bool = True
     privacy_mode: bool = False
+    team_export_prefs: dict[str, Any] = Field(default_factory=dict)
 
 
 class CacheStatsResponse(BaseModel):
@@ -693,6 +694,29 @@ class TeamExportResponse(BaseModel):
     session_count: int
 
 
+class TeamProjectEntry(BaseModel):
+    export_name: str
+    default_label: str
+    session_count: int
+    tokens: int
+
+
+class TeamProjectsResponse(BaseModel):
+    projects: list[TeamProjectEntry] = Field(default_factory=list)
+    prefs: dict[str, Any] = Field(default_factory=dict)
+
+
+class TeamExportProjectSelection(BaseModel):
+    export_name: str
+    label: str | None = None
+
+
+class TeamExportRequest(BaseModel):
+    privacy_level: str = "structural"
+    member_name: str | None = None
+    projects: list[TeamExportProjectSelection] = Field(default_factory=list)
+
+
 class TeamImportRequest(BaseModel):
     path: str = Field(description="Path to a team bundle JSON file under CCFR_TEAM_BUNDLE_ROOT.")
 
@@ -721,6 +745,8 @@ class TeamImportEntry(BaseModel):
     imported_at: str
     source_path: str
     session_count: int
+    member_name: str | None = None
+    privacy_level: str = "structural"
 
 
 class TeamMemberDeleteResponse(BaseModel):
@@ -740,3 +766,6 @@ class TeamDashboardResponse(BaseModel):
     sequence: list[dict[str, Any]] = Field(default_factory=list)
     members: list[dict[str, Any]] = Field(default_factory=list)
     over_time: list[dict[str, Any]] = Field(default_factory=list)
+    projects: list[dict[str, Any]] = Field(default_factory=list)
+    tools: list[dict[str, Any]] = Field(default_factory=list)
+    file_types: list[dict[str, Any]] = Field(default_factory=list)

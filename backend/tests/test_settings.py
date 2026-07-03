@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from ccfr import settings as settings_mod
 from ccfr.settings import Settings, read_settings, write_settings
 
@@ -20,6 +22,16 @@ def test_team_bundle_seq_defaults_to_zero_and_round_trips(monkeypatch, tmp_path)
 
     write_settings(Settings(team_bundle_seq=3))
     assert read_settings().team_bundle_seq == 3
+
+
+def test_settings_round_trips_team_export_prefs(tmp_path, monkeypatch):
+    import ccfr.settings as settings_mod
+
+    monkeypatch.setattr(settings_mod, "data_dir", lambda: tmp_path)
+    prefs = {"member_name": "Avery", "privacy_level": "team",
+             "project_labels": {"d--Alpha": "alpha"}, "deselected": ["d--Beta"]}
+    settings_mod.write_settings(replace(settings_mod.read_settings(), team_export_prefs=prefs))
+    assert settings_mod.read_settings().team_export_prefs == prefs
 
 
 def test_corrupt_file_falls_back_to_defaults(monkeypatch, tmp_path):

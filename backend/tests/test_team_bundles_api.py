@@ -38,6 +38,17 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     conn.close()
 
 
+ALL_PROJECTS = [{"export_name": "d--Alpha", "label": None}, {"export_name": "d--Beta", "label": None}]
+
+
+def _export_body(level="structural", member_name=None, projects=None):
+    return {
+        "privacy_level": level,
+        "member_name": member_name,
+        "projects": ALL_PROJECTS if projects is None else projects,
+    }
+
+
 def test_config_exposes_team_bundle_root(client):
     c, _conn, bundle_root = client
 
@@ -59,7 +70,7 @@ def test_team_export_writes_under_bundle_root_without_network(client, monkeypatc
     monkeypatch.setattr(socket, "create_connection", _no_net)
     monkeypatch.setattr(urllib.request, "urlopen", _no_net)
 
-    resp = c.post("/api/team/export")
+    resp = c.post("/api/team/export", json=_export_body())
 
     assert resp.status_code == 200
     body = resp.json()
@@ -76,16 +87,16 @@ def test_team_export_writes_under_bundle_root_without_network(client, monkeypatc
 def test_team_export_increments_seq_while_preview_does_not_consume_it(client):
     c, _conn, _bundle_root = client
 
-    first = c.post("/api/team/export").json()
+    first = c.post("/api/team/export", json=_export_body()).json()
     first_bundle = json.loads(Path(first["path"]).read_text(encoding="utf-8"))
     assert first_bundle["generated_seq"] == 1
 
-    preview_bundle = c.get("/api/team/export-preview").json()["bundle"]
+    preview_bundle = c.post("/api/team/export-preview", json=_export_body()).json()["bundle"]
     assert preview_bundle["generated_seq"] == 2
 
     # The preview above must not have burned a sequence number: the next real
     # export still gets 2, not 3.
-    second = c.post("/api/team/export").json()
+    second = c.post("/api/team/export", json=_export_body()).json()
     second_bundle = json.loads(Path(second["path"]).read_text(encoding="utf-8"))
     assert second_bundle["generated_seq"] == 2
 
@@ -95,7 +106,7 @@ def test_team_import_is_no_network_and_idempotent(client, monkeypatch):
     import urllib.request
 
     c, conn, bundle_root = client
-    export = c.post("/api/team/export").json()
+    export = c.post("/api/team/export", json=_export_body()).json()
 
     def _no_net(*args, **kwargs):
         raise AssertionError("team bundle import must not make a network connection")
@@ -122,7 +133,7 @@ def test_team_import_accepts_browser_selected_bundle_payload(client, monkeypatch
     import urllib.request
 
     c, conn, bundle_root = client
-    bundle = c.get("/api/team/export-preview").json()["bundle"]
+    bundle = c.post("/api/team/export-preview", json=_export_body()).json()["bundle"]
 
     def _no_net(*args, **kwargs):
         raise AssertionError("team bundle upload import must not make a network connection")
@@ -151,7 +162,7 @@ def test_team_import_accepts_browser_selected_bundle_payload(client, monkeypatch
 
 def test_team_import_accepts_legacy_precanonical_export_hash(client):
     c, _conn, _bundle_root = client
-    bundle = c.get("/api/team/export-preview").json()["bundle"]
+    bundle = c.post("/api/team/export-preview", json=_export_body()).json()["bundle"]
     bundle["sessions"][0]["sequence"] = [
         {"sym": "CALL:mcp", "fam": "tool_call", "dt_s": 0, "out_tok": 1}
     ]
@@ -177,7 +188,7 @@ def test_team_import_accepts_legacy_precanonical_export_hash(client):
 
 def test_team_import_rejects_outside_root_and_invalid_profile_schema(client, tmp_path):
     c, _conn, bundle_root = client
-    bundle = c.get("/api/team/export-preview").json()["bundle"]
+    bundle = c.post("/api/team/export-preview", json=_export_body()).json()["bundle"]
 
     outside = tmp_path / "outside-team-bundle.json"
     outside.write_text(json.dumps(bundle), encoding="utf-8")
@@ -205,7 +216,7 @@ def test_team_import_rejects_outside_root_and_invalid_profile_schema(client, tmp
 
 def test_team_dashboard_aggregates_imported_bundles(client):
     c, _conn, _bundle_root = client
-    export = c.post("/api/team/export").json()
+    export = c.post("/api/team/export", json=_export_body()).json()
     assert c.post("/api/team/import", json={"path": export["path"]}).status_code == 200
 
     resp = c.get("/api/team/dashboard")
@@ -225,7 +236,7 @@ def test_team_dashboard_aggregates_imported_bundles(client):
 
 def test_team_dashboard_reports_distinct_project_count(client):
     c, conn, _bundle_root = client
-    export = c.post("/api/team/export").json()
+    export = c.post("/api/team/export", json=_export_body()).json()
     assert c.post("/api/team/import", json={"path": export["path"]}).status_code == 200
 
     expected = conn.execute(
@@ -239,7 +250,7 @@ def test_team_dashboard_reports_distinct_project_count(client):
 
 def test_team_cost_endpoint_returns_cost_shape(client):
     c, _conn, _bundle_root = client
-    export = c.post("/api/team/export").json()
+    export = c.post("/api/team/export", json=_export_body()).json()
     assert c.post("/api/team/import", json={"path": export["path"]}).status_code == 200
 
     resp = c.get("/api/team/analytics/cost")
@@ -252,7 +263,7 @@ def test_team_cost_endpoint_returns_cost_shape(client):
 
 def test_team_cost_endpoint_filters_by_project_id(client):
     c, _conn, _bundle_root = client
-    export = c.post("/api/team/export").json()
+    export = c.post("/api/team/export", json=_export_body()).json()
     assert c.post("/api/team/import", json={"path": export["path"]}).status_code == 200
 
     baseline = c.get("/api/team/analytics/cost").json()
@@ -273,7 +284,7 @@ def test_team_cost_endpoint_filters_by_project_id(client):
 @pytest.fixture()
 def imported_bundle(client):
     c, _conn, _bundle_root = client
-    export = c.post("/api/team/export").json()
+    export = c.post("/api/team/export", json=_export_body()).json()
     assert c.post("/api/team/import", json={"path": export["path"]}).status_code == 200
     return c.get("/api/team/imports").json()[0]
 
@@ -291,7 +302,7 @@ def test_delete_member_endpoint(client, imported_bundle):
 
 def test_team_reset_clears_only_team_tables(client):
     c, conn, _bundle_root = client
-    export = c.post("/api/team/export").json()
+    export = c.post("/api/team/export", json=_export_body()).json()
     assert c.post("/api/team/import", json={"path": export["path"]}).status_code == 200
     assert c.get("/api/projects").json()
 
@@ -303,3 +314,78 @@ def test_team_reset_clears_only_team_tables(client):
     assert c.get("/api/projects").json()
     assert conn.execute("SELECT COUNT(*) FROM team_bundles").fetchone()[0] == 0
     assert conn.execute("SELECT COUNT(*) FROM team_bundle_sessions").fetchone()[0] == 0
+
+
+def test_team_projects_lists_labels_counts_and_prefs(client):
+    c, _conn, _root = client
+    resp = c.get("/api/team/projects")
+    assert resp.status_code == 200
+    body = resp.json()
+    by_name = {p["export_name"]: p for p in body["projects"]}
+    assert by_name["d--Alpha"]["default_label"] == "alpha"
+    assert by_name["d--Alpha"]["session_count"] == 2
+    assert by_name["d--Beta"]["default_label"] == "beta"
+    assert by_name["d--Beta"]["tokens"] == 27  # 18 in + 9 out from the beta fixture
+    assert body["prefs"] == {}
+
+
+def test_team_level_export_writes_names_and_persists_prefs(client):
+    c, _conn, bundle_root = client
+    body = _export_body(level="team", member_name="Avery",
+                        projects=[{"export_name": "d--Alpha", "label": "Payments API"}])
+    resp = c.post("/api/team/export", json=body)
+    assert resp.status_code == 200
+    written = json.loads(Path(resp.json()["path"]).read_text(encoding="utf-8"))
+    assert written["privacy_level"] == "team"
+    assert written["member_name"] == "Avery"
+    assert {s["project_name"] for s in written["sessions"]} == {"Payments API"}
+    assert resp.json()["session_count"] == 2  # beta excluded by selection
+
+    prefs = c.get("/api/team/projects").json()["prefs"]
+    assert prefs["member_name"] == "Avery"
+    assert prefs["privacy_level"] == "team"
+    assert prefs["project_labels"] == {"d--Alpha": "Payments API"}
+    assert prefs["deselected"] == ["d--Beta"]
+
+
+def test_team_export_level_violations_return_400(client):
+    c, _conn, _root = client
+    # Team export without a name.
+    resp = c.post("/api/team/export", json=_export_body(level="team"))
+    assert resp.status_code == 400
+    assert "member_name" in resp.json()["detail"]
+    # Structural export with a name.
+    resp = c.post("/api/team/export", json=_export_body(member_name="Avery"))
+    assert resp.status_code == 400
+    # Empty selection.
+    resp = c.post("/api/team/export", json=_export_body(projects=[]))
+    assert resp.status_code == 400
+    # Unknown project.
+    resp = c.post("/api/team/export", json=_export_body(projects=[{"export_name": "d--Nope", "label": None}]))
+    assert resp.status_code == 400
+    # Nothing was written or burned.
+    preview = c.post("/api/team/export-preview", json=_export_body()).json()
+    assert preview["bundle"]["generated_seq"] == 1
+
+
+def test_team_preview_at_team_level_uses_placeholder_name(client):
+    c, _conn, _root = client
+    resp = c.post("/api/team/export-preview", json=_export_body(level="team"))
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["bundle"]["member_name"] == "Unnamed member"
+    assert body["manifest"]["privacy_level"] == "team"
+
+
+def test_team_imports_list_carries_name_and_level(client):
+    c, _conn, _root = client
+    exported = c.post(
+        "/api/team/export",
+        json=_export_body(level="team", member_name="Avery",
+                          projects=[{"export_name": "d--Alpha", "label": None}]),
+    ).json()
+    imported = c.post("/api/team/import", json={"path": exported["path"]})
+    assert imported.status_code == 200
+    entries = c.get("/api/team/imports").json()
+    assert entries[0]["member_name"] == "Avery"
+    assert entries[0]["privacy_level"] == "team"

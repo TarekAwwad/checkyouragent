@@ -34,6 +34,7 @@ from ccfr.analysis.team_bundles import (
 from ccfr.analysis.team_cost import team_cost_analytics
 from ccfr.analysis.usage_map import usage_map_analytics, usage_map_evidence
 from ccfr.analysis.usage_characteristics import usage_characteristics_analytics
+from ccfr.naming import project_display_name
 from ccfr.api.schemas import (
     CacheStatsResponse,
     ContributionExportResponse,
@@ -57,11 +58,14 @@ from ccfr.api.schemas import (
     TeamDashboardResponse,
     TeamBundleUploadRequest,
     TeamExportPreviewResponse,
+    TeamExportRequest,
     TeamExportResponse,
     TeamImportEntry,
     TeamImportRequest,
     TeamImportResponse,
     TeamMemberDeleteResponse,
+    TeamProjectEntry,
+    TeamProjectsResponse,
     TimelineItem,
     TurnCostBreakdown,
     TraceResponse,
@@ -165,21 +169,73 @@ def _current_bundle(conn: Connection):
     )
 
 
-def _current_team_bundle(conn: Connection, *, persist_seq: bool):
+@router.get("/team/projects", response_model=TeamProjectsResponse)
+def team_projects(conn: Connection = Depends(get_db)) -> TeamProjectsResponse:
+    rows = conn.execute(
+        """
+        SELECT p.export_name, p.inferred_cwd,
+               COUNT(DISTINCT s.id) AS session_count,
+               COALESCE(SUM(m.input_tokens), 0) + COALESCE(SUM(m.output_tokens), 0) AS tokens
+        FROM projects p
+        LEFT JOIN sessions s ON s.project_id = p.id
+        LEFT JOIN events e ON e.session_id = s.id
+        LEFT JOIN messages m ON m.event_id = e.id
+        GROUP BY p.id
+        ORDER BY tokens DESC, p.export_name
+        """
+    ).fetchall()
+    projects = [
+        TeamProjectEntry(
+            export_name=str(row["export_name"]),
+            default_label=project_display_name(str(row["export_name"]), row["inferred_cwd"]),
+            session_count=int(row["session_count"]),
+            tokens=int(row["tokens"]),
+        )
+        for row in rows
+    ]
+    return TeamProjectsResponse(projects=projects, prefs=dict(read_settings().team_export_prefs))
+
+
+def _current_team_bundle(conn: Connection, payload: TeamExportRequest, *, persist_seq: bool):
     salt, member_id = contributor_identity()
     settings = read_settings()
     # export-preview must show the NEXT seq without burning it; export persists it.
     seq = settings.team_bundle_seq + 1
+    member_name = (payload.member_name or "").strip() or None
+    if payload.privacy_level == "team" and member_name is None and not persist_seq:
+        member_name = "Unnamed member"  # preview-only placeholder; export requires a real name
+    try:
+        bundle = build_team_bundle(
+            conn,
+            salt=salt,
+            member_id=member_id,
+            app_version=config.app_version(),
+            generated_on=date.today(),
+            generated_seq=seq,
+            privacy_level=payload.privacy_level,
+            member_name=member_name,
+            projects=[{"export_name": item.export_name, "label": item.label} for item in payload.projects],
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if persist_seq:
-        write_settings(replace(settings, team_bundle_seq=seq))
-    return build_team_bundle(
-        conn,
-        salt=salt,
-        member_id=member_id,
-        app_version=config.app_version(),
-        generated_on=date.today(),
-        generated_seq=seq,
-    )
+        selected = {item.export_name for item in payload.projects}
+        all_names = [
+            str(row["export_name"])
+            for row in conn.execute("SELECT export_name FROM projects ORDER BY export_name")
+        ]
+        prefs = {
+            "member_name": (payload.member_name or "").strip(),
+            "privacy_level": payload.privacy_level,
+            "project_labels": {
+                item.export_name: item.label.strip()
+                for item in payload.projects
+                if item.label and item.label.strip()
+            },
+            "deselected": [name for name in all_names if name not in selected],
+        }
+        write_settings(replace(settings, team_bundle_seq=seq, team_export_prefs=prefs))
+    return bundle
 
 
 @router.get("/contribution/preview", response_model=ContributionPreviewResponse)
@@ -201,15 +257,15 @@ def contribution_export(conn: Connection = Depends(get_db)) -> ContributionExpor
     return ContributionExportResponse(path=str(path), session_count=len(bundle.sessions))
 
 
-@router.get("/team/export-preview", response_model=TeamExportPreviewResponse)
-def team_export_preview(conn: Connection = Depends(get_db)) -> TeamExportPreviewResponse:
-    bundle = _current_team_bundle(conn, persist_seq=False)
+@router.post("/team/export-preview", response_model=TeamExportPreviewResponse)
+def team_export_preview(payload: TeamExportRequest, conn: Connection = Depends(get_db)) -> TeamExportPreviewResponse:
+    bundle = _current_team_bundle(conn, payload, persist_seq=False)
     return TeamExportPreviewResponse(manifest=team_bundle_manifest(bundle), bundle=bundle.to_dict())
 
 
 @router.post("/team/export", response_model=TeamExportResponse)
-def team_export(conn: Connection = Depends(get_db)) -> TeamExportResponse:
-    bundle = _current_team_bundle(conn, persist_seq=True)
+def team_export(payload: TeamExportRequest, conn: Connection = Depends(get_db)) -> TeamExportResponse:
+    bundle = _current_team_bundle(conn, payload, persist_seq=True)
     out_dir = team_bundle_root() / "exports"
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S_%fZ")
