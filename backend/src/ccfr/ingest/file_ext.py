@@ -13,7 +13,7 @@ from typing import Any
 # Tools whose input names a single file the assistant touched.
 FILE_ARG_TOOLS = frozenset({"Read", "Edit", "Write", "MultiEdit", "NotebookEdit"})
 
-_EXT_RE = re.compile(r"^[a-z0-9_+-]{1,12}$")
+_EXT_RE = re.compile(r"^[a-z0-9_+-]{1,12}\Z")
 
 
 def file_ext_from_tool_input(tool_name: Any, input_obj: Any) -> str | None:

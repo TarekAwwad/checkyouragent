@@ -348,6 +348,21 @@ def test_team_level_export_writes_names_and_persists_prefs(client):
     assert prefs["deselected"] == ["d--Beta"]
 
 
+def test_structural_export_preserves_prior_saved_member_name(client):
+    c, _conn, _bundle_root = client
+    team_resp = c.post("/api/team/export", json=_export_body(level="team", member_name="Avery"))
+    assert team_resp.status_code == 200
+    assert c.get("/api/team/projects").json()["prefs"]["member_name"] == "Avery"
+
+    # A later structural export carries no name -- it must not blank out the
+    # name saved by the earlier team-level export.
+    structural_resp = c.post("/api/team/export", json=_export_body())
+    assert structural_resp.status_code == 200
+
+    prefs = c.get("/api/team/projects").json()["prefs"]
+    assert prefs["member_name"] == "Avery"
+
+
 def test_team_export_level_violations_return_400(client):
     c, _conn, _root = client
     # Team export without a name.

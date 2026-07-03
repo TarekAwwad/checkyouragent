@@ -37,7 +37,7 @@ BUILD_LEVELS = (LEVEL_STRUCTURAL, LEVEL_TEAM)
 # Ladder rungs reserved for raw-session sharing (separate sub-project).
 RESERVED_LEVELS = ("sessions", "raw")
 
-_EXT_RE = re.compile(r"^[a-z0-9_+-]{1,12}$")
+_EXT_RE = re.compile(r"^[a-z0-9_+-]{1,12}\Z")
 _MAX_TOOLS_PER_SESSION = 300
 _MAX_FILE_TYPES_PER_SESSION = 100
 

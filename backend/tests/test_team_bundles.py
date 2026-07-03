@@ -618,6 +618,13 @@ def test_validate_rejects_bad_tools_and_file_types(tmp_path):
     with pytest.raises(ValueError, match="extension"):
         team_bundles.validate_team_bundle(bad_ext)
 
+    # `$` (unlike `\Z`) matches just before a trailing newline, so a naive
+    # regex would let "py\n" slip through as a valid extension.
+    bad_ext_trailing_newline = copy.deepcopy(bundle)
+    bad_ext_trailing_newline["sessions"][0]["file_types"] = [{"ext": "py\n", "count": 1}]
+    with pytest.raises(ValueError, match="extension"):
+        team_bundles.validate_team_bundle(bad_ext_trailing_newline)
+
 
 def test_normalize_project_key():
     assert team_bundles.normalize_project_key("Agent-Dashboard") == "agent-dashboard"

@@ -68,6 +68,11 @@ describe("TeamBundleExport", () => {
     expect(screen.getByRole("button", { name: /Raw/ })).toBeDisabled();
   });
 
+  it("documents the snapshot-replace and deselection behavior in the project picker", async () => {
+    renderExport();
+    expect(await screen.findByText(/replaces your entire previous bundle/i)).toBeInTheDocument();
+  });
+
   it("defaults every project to selected and exports a structural bundle without a name", async () => {
     renderExport();
     const exportBtn = await screen.findByRole("button", { name: /Export bundle/i });

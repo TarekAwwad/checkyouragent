@@ -224,8 +224,14 @@ def _current_team_bundle(conn: Connection, payload: TeamExportRequest, *, persis
             str(row["export_name"])
             for row in conn.execute("SELECT export_name FROM projects ORDER BY export_name")
         ]
+        # A structural export carries no name; without this, it would blank out
+        # a name previously saved from a team-level export, degrading the next
+        # team-export prefill.
+        prior_name = settings.team_export_prefs.get("member_name", "")
+        if not isinstance(prior_name, str):
+            prior_name = ""
         prefs = {
-            "member_name": (payload.member_name or "").strip(),
+            "member_name": (payload.member_name or "").strip() or prior_name,
             "privacy_level": payload.privacy_level,
             "project_labels": {
                 item.export_name: item.label.strip()

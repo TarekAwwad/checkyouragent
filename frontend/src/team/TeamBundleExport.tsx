@@ -157,6 +157,10 @@ export default function TeamBundleExport() {
               {selected.length}/{entries.length}
             </strong>
           </div>
+          <p className="team-picker-note">
+            Each export replaces your entire previous bundle for teammates who import it. Unchecked
+            projects are removed from their dashboards — deselection is remembered for next time.
+          </p>
           {projectsQuery.isError ? (
             <p className="flow-error">Could not read the local project list.</p>
           ) : (

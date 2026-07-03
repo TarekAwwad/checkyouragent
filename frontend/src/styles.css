@@ -3883,6 +3883,11 @@ html:has(.specimen-dialog[open]) {
 .team-project-picker {
   margin-top: 14px;
 }
+.team-picker-note {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
 .team-project-picker ul {
   list-style: none;
   margin: 8px 0 0;
