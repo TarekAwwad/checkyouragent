@@ -61,10 +61,10 @@ export default function Sidebar({
     <aside className={`app-sidebar ${collapsed ? "is-collapsed" : ""}`} aria-label="Primary">
       <div className="sb-brand">
         <div className="sb-brand-text">
-          <strong className="sb-wordmark">Session Analytics</strong>
+          <strong className="sb-wordmark">Check Your Agent</strong>
           <span className="sb-tagline">local, read-only session data</span>
         </div>
-        <strong className="sb-monogram" aria-hidden="true">SA</strong>
+        <strong className="sb-monogram" aria-hidden="true">CYA!</strong>
       </div>
 
       <nav className="sb-nav">

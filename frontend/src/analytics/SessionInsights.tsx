@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getSessionTurnCosts } from "../api/client";
+import LoadingBar from "../components/LoadingBar";
 import type { CostAnalyticsResponse, SessionCostEntry, TurnCostBreakdown, TurnCostDetail } from "../api/types";
 import {
   buildTurnBubblePlot,
@@ -376,7 +377,7 @@ function TurnOutlierInspector({
       </div>
 
       {detailQuery.isLoading ? (
-        <p className="turn-detail-empty">Loading turn-level cost breakdown...</p>
+        <div className="turn-detail-empty"><LoadingBar caption="Loading turn-level cost breakdown…" /></div>
       ) : detailQuery.isError ? (
         <p className="turn-detail-empty">{detailQuery.error instanceof Error ? detailQuery.error.message : "Unable to load turn costs."}</p>
       ) : !detail || !focusTurn || !plot ? (

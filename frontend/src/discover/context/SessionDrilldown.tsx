@@ -8,6 +8,7 @@ import { formatTokens, formatUsd } from "./ContextEconomics";
 import ContextStream from "./ContextStream";
 import BallastLanes from "./BallastLanes";
 import { Blurred } from "../../shell/Blurred";
+import LoadingBar from "../../components/LoadingBar";
 
 export default function SessionDrilldown({
   sessionId,
@@ -34,7 +35,7 @@ export default function SessionDrilldown({
 
   const renderBody = () => {
     if (query.isPending) {
-      return <div className="empty-state" style={{ minHeight: 120 }}>Loading session economics…</div>;
+      return <div className="empty-state" style={{ minHeight: 120 }}><LoadingBar caption="Loading session economics…" /></div>;
     }
     if (query.isError) {
       return <div className="empty-state" style={{ minHeight: 120 }}>Failed to load session economics.</div>;

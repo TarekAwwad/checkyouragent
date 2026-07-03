@@ -2,6 +2,7 @@ import React from "react";
 import { X } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { getUsageCharacteristics } from "../../api/client";
+import LoadingBar from "../../components/LoadingBar";
 
 interface Props {
   open: boolean;
@@ -91,7 +92,7 @@ export default function UsageCharacteristicsDialog({ open, onClose, projectId }:
         </p>
 
         <div className="uc-body">
-          {query.isPending && <p className="uc-note">Loading…</p>}
+          {query.isPending && <div className="uc-note"><LoadingBar caption="Loading…" /></div>}
           {query.isError && (
             <p className="uc-note">Could not load usage characteristics.</p>
           )}

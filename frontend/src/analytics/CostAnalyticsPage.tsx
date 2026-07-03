@@ -10,6 +10,7 @@ import SpendOverTime from "./SpendOverTime";
 import TokenCategories from "./TokenCategories";
 import CostByModel from "./CostByModel";
 import InsightStrip from "./InsightStrip";
+import LoadingBar from "../components/LoadingBar";
 import SessionInsights, { TurnDistributionSection } from "./SessionInsights";
 import { Blurred } from "../shell/Blurred";
 
@@ -121,7 +122,7 @@ export default function CostAnalyticsPage({ onOpenSession, historical = true, sc
             <span>{errorMessage}</span>
           </div>
         ) : query.isLoading || !payload ? (
-          <div className="empty-state">Loading cost analytics...</div>
+          <div className="empty-state"><LoadingBar caption="Loading cost analytics…" /></div>
         ) : (
           <>
             <InsightStrip

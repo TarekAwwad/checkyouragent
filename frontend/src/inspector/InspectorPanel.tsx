@@ -1,9 +1,10 @@
 import React from "react";
-import { AlertTriangle, Braces, Link2, Loader2, Repeat } from "lucide-react";
+import { AlertTriangle, Braces, Link2, Repeat } from "lucide-react";
 import type { EventDetail, RiskFinding, SessionCard, Subagent } from "../api/types";
 import type { LoopContext } from "../trace/loopContext";
 import { loopExplanation } from "../trace/loopContext";
 import { Blurred } from "../shell/Blurred";
+import LoadingBar from "../components/LoadingBar";
 
 interface Props {
   session: SessionCard;
@@ -33,7 +34,7 @@ function InspectorPanel({ event, loopContext, subagents, findings = [], loading,
         <button className={tab === "event" ? "on" : ""} onClick={() => setTab("event")}>Event</button>
         <button className={tab === "subagents" ? "on" : ""} onClick={() => setTab("subagents")}>Subagents</button>
         <button className={tab === "findings" ? "on" : ""} onClick={() => setTab("findings")}>Findings</button>
-        {loading && <Loader2 size={15} className="spin" />}
+        {loading && <span className="inspector-tabs-loading"><LoadingBar size="inline" /></span>}
       </div>
 
       <Blurred as="div">

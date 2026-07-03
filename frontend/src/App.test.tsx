@@ -218,7 +218,7 @@ describe("App", () => {
   it("renders the import screen shell", async () => {
     renderApp();
 
-    expect(await screen.findByText("Session Analytics")).toBeInTheDocument();
+    expect(await screen.findByText("Check Your Agent")).toBeInTheDocument();
     expect(await screen.findByText("Mounted source")).toBeInTheDocument();
   });
 

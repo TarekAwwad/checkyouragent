@@ -664,6 +664,7 @@ h3 {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 .inspector-tabs .spin { margin-left: auto; color: var(--muted); }
+.inspector-tabs .inspector-tabs-loading { margin-left: auto; display: inline-flex; align-items: center; }
 
 .inspect-section { padding: 13px; flex: 1; min-height: 0; overflow-y: auto; }
 .inspect-section h3 { margin: 0 0 9px; font-size: 10px; font-weight: 700; text-transform: uppercase;
@@ -796,6 +797,75 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
 .risk-seg.seg-fanout { background: var(--fan); }
 .risk-seg.seg-cost { background: var(--accent); }
 .risk-seg.seg-patterns { background: var(--info); }
+
+/* ---------------------------------------------------------------------------
+   LoadingBar — the app's one loading indicator. Reuses the risk-bar track and
+   its segment colours. Motion adapts to size: panel/tile sweep a gradient band
+   across; inline fills and resets. Theme-aware via the risk CSS vars.
+--------------------------------------------------------------------------- */
+.loading-bar {
+  position: relative; display: block;
+  border-radius: 999px; background: var(--track); overflow: hidden;
+}
+.loading-bar.panel { width: 160px; height: 5px; }
+.loading-bar.tile { width: 120px; height: 4px; }
+.loading-bar.inline { display: inline-block; vertical-align: middle; width: 34px; height: 3px; }
+
+.loading-bar::before {
+  content: ""; position: absolute; top: 0; bottom: 0; border-radius: 999px;
+  background: linear-gradient(90deg, var(--err), var(--loop), var(--fan), var(--accent), var(--info));
+}
+/* Wide bars (panel, tile): a gradient band sweeps across and loops. */
+.loading-bar.panel::before,
+.loading-bar.tile::before {
+  left: 0; width: 42%;
+  animation: loading-sweep 1.25s cubic-bezier(.45, 0, .25, 1) infinite;
+}
+@keyframes loading-sweep {
+  0%   { transform: translateX(-118%); }
+  100% { transform: translateX(258%); }
+}
+/* Small bar (inline): the gradient fills L→R, fades at full, then resets. */
+.loading-bar.inline::before {
+  inset: 0; transform-origin: left center;
+  animation: loading-fill 1.55s ease-in-out infinite;
+}
+@keyframes loading-fill {
+  0%   { transform: scaleX(0); opacity: 1; }
+  55%  { transform: scaleX(1); opacity: 1; }
+  80%  { transform: scaleX(1); opacity: 0; }
+  100% { transform: scaleX(0); opacity: 0; }
+}
+
+.loading-bar-block { display: inline-flex; flex-direction: column; align-items: center; gap: 9px; }
+.loading-bar-caption { color: var(--muted); font-size: 12px; line-height: 1; }
+
+/* Reduced motion: no travel — a static gradient with a gentle pulse. */
+@media (prefers-reduced-motion: reduce) {
+  .loading-bar::before {
+    left: 0; inset: 0; width: 100%; transform: none;
+    animation: loading-pulse 1.8s ease-in-out infinite;
+  }
+  @keyframes loading-pulse {
+    0%, 100% { opacity: .5; }
+    50%      { opacity: 1; }
+  }
+}
+
+/* Full-view loading: sits in the middle of the screen. Grows to fill flex
+   parents; a viewport floor keeps it centred in block/scroll parents too. */
+.loading-view {
+  flex: 1 1 auto; min-height: 60vh; width: 100%;
+  display: flex; align-items: center; justify-content: center;
+}
+/* Neutral (non-success) variant of .flow-result while an action is in progress. */
+.flow-result-loading {
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--muted);
+}
+/* In-progress import status line: the bar sits beside the status text. */
+.team-import-progress-loading { display: inline-flex; align-items: center; gap: 8px; }
 
 .tr-name { font-weight: 700; color: var(--text); }
 .tr-sub { font-size: 11px; color: var(--faint); margin-top: 3px; }

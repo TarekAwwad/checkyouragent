@@ -10,6 +10,7 @@ import {
 } from "../api/client";
 import type { TeamImportRecord } from "../api/types";
 import { Blurred } from "../shell/Blurred";
+import LoadingBar from "../components/LoadingBar";
 import { compactInt } from "../contribute/specimen";
 
 function importRecordId(record: TeamImportRecord, index: number): string {
@@ -220,9 +221,12 @@ export default function TeamBundleImport() {
                 </span>
               ) : null}
 
-              {importer.isPending && progress ? (
-                <span className="team-import-progress" role="status">
-                  Importing {Math.min(progress.done + 1, progress.total)} of {progress.total}…
+              {importer.isPending ? (
+                <span className="team-import-progress team-import-progress-loading" role="status">
+                  <LoadingBar size="inline" label="Importing" />
+                  {progress
+                    ? `Importing ${Math.min(progress.done + 1, progress.total)} of ${progress.total}…`
+                    : "Importing…"}
                 </span>
               ) : null}
 

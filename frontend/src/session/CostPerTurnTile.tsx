@@ -2,6 +2,7 @@ import React from "react";
 import type { TimelineItem, TraceSpan } from "../api/types";
 import { ACCENT_COLOR, DANGER_COLOR, formatTokens, formatUsd } from "../analytics/chartGeometry";
 import { buildTurnCosts } from "./sessionAnalytics";
+import LoadingBar from "../components/LoadingBar";
 
 interface Props {
   items: TimelineItem[];
@@ -27,7 +28,7 @@ export default function CostPerTurnTile({ items, spans, costUsd, costAvailable, 
     <section className="tile session-tile">
       <h2>Cost per turn</h2>
       {loading ? (
-        <div className="session-tile-empty">Loading…</div>
+        <div className="session-tile-empty"><LoadingBar size="tile" /></div>
       ) : !hasData ? (
         <div className="session-tile-empty">No turn data</div>
       ) : (

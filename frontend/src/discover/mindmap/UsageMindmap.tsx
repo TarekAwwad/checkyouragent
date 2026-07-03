@@ -8,6 +8,7 @@ import { exportJson, exportPng } from "./exportMap";
 import { phaseNode, deriveOriginPhases, type LeafMode, type MapNode, type OriginFilter } from "./forceModel";
 import UsageCharacteristicsDialog from "./UsageCharacteristicsDialog";
 import MindmapCanvas from "./MindmapCanvas";
+import LoadingBar from "../../components/LoadingBar";
 
 interface Props {
   projects: Project[];
@@ -77,7 +78,7 @@ export default function UsageMindmap({ projects }: Props) {
   if (query.isPending) {
     return (
       <main className="discover-page"><div className="discover-page-inner">
-        <div className="empty-state">Building your usage map…</div>
+        <div className="loading-view"><LoadingBar caption="Building your usage map…" /></div>
       </div></main>
     );
   }

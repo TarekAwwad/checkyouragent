@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FolderInput, RefreshCw, RotateCcw, Search, Trash2 } from "lucide-react";
+import { FolderInput, RotateCcw, Search, Trash2 } from "lucide-react";
 import { createImport, discoverSourceProjects, getCacheStats, getImportProgress, getRuntimeConfig, resetImports } from "../api/client";
 import type { DiscoveredProject } from "../api/types";
 import { useImportRoot } from "./useImportRoot";
+import LoadingBar from "../components/LoadingBar";
 
 function ImportPage() {
   const queryClient = useQueryClient();
@@ -82,7 +83,7 @@ function ImportPage() {
           }}
         >
           <span className="scan-glyph" aria-hidden>
-            {projects.isFetching ? <RefreshCw size={15} className="spin" /> : <FolderInput size={15} />}
+            {projects.isFetching ? <LoadingBar size="inline" label="Scanning" /> : <FolderInput size={15} />}
           </span>
           <input
             aria-label="Import source root"
@@ -118,7 +119,7 @@ function ImportPage() {
               onClick={() => importAll.mutate()}
               disabled={mutationPending || root.length === 0}
             >
-              {importAll.isPending ? <RefreshCw size={15} className="spin" /> : <FolderInput size={15} />}
+              {importAll.isPending ? <LoadingBar size="inline" label="Importing" /> : <FolderInput size={15} />}
               <span>{importAll.isPending ? "Importing…" : "Import all new"}</span>
             </button>
             <button
@@ -128,7 +129,7 @@ function ImportPage() {
               }}
               disabled={mutationPending}
             >
-              {reset.isPending ? <RefreshCw size={15} className="spin" /> : <Trash2 size={15} />}
+              {reset.isPending ? <LoadingBar size="inline" label="Resetting" /> : <Trash2 size={15} />}
               <span>Reset cache</span>
             </button>
           </div>
@@ -182,7 +183,7 @@ function ImportPage() {
                 disabled={mutationPending}
                 aria-label={`${project.imported ? "Re-import" : "Import"} ${project.name}`}
               >
-                {busy ? <RefreshCw size={14} className="spin" /> : project.imported ? <RotateCcw size={14} /> : <FolderInput size={14} />}
+                {busy ? <LoadingBar size="inline" label="Importing" /> : project.imported ? <RotateCcw size={14} /> : <FolderInput size={14} />}
                 <span>{busy ? "Importing…" : project.imported ? "Re-import" : "Import"}</span>
               </button>
             </div>
