@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
@@ -104,6 +105,7 @@ CREATE TABLE IF NOT EXISTS tool_calls (
     tool_use_id TEXT,
     tool_name TEXT,
     input_preview TEXT,
+    file_ext TEXT,
     raw_json TEXT NOT NULL
 );
 
@@ -283,6 +285,7 @@ CREATE TABLE IF NOT EXISTS team_bundles (
     profile TEXT NOT NULL,
     schema_version INTEGER NOT NULL,
     member_id TEXT NOT NULL,
+    member_name TEXT,
     generated_at TEXT NOT NULL,
     generated_seq INTEGER NOT NULL DEFAULT 0,
     app_version TEXT,
@@ -299,6 +302,7 @@ CREATE TABLE IF NOT EXISTS team_bundle_sessions (
     team_bundle_id INTEGER NOT NULL REFERENCES team_bundles(id) ON DELETE CASCADE,
     member_id TEXT NOT NULL,
     project_id TEXT NOT NULL,
+    project_name TEXT,
     session_id TEXT NOT NULL,
     provider TEXT NOT NULL,
     first_date TEXT,
@@ -311,6 +315,8 @@ CREATE TABLE IF NOT EXISTS team_bundle_sessions (
     stop_reasons_json TEXT NOT NULL DEFAULT '{}',
     risk_categories_json TEXT NOT NULL DEFAULT '[]',
     subagents_json TEXT NOT NULL DEFAULT '[]',
+    tools_json TEXT NOT NULL DEFAULT '[]',
+    file_types_json TEXT NOT NULL DEFAULT '[]',
     sequence_json TEXT NOT NULL DEFAULT '[]',
     UNIQUE(team_bundle_id, session_id)
 );
@@ -403,6 +409,54 @@ def migrate_db(conn: sqlite3.Connection) -> None:
     team_bundle_columns = _column_names(conn, "team_bundles")
     if team_bundle_columns and "generated_seq" not in team_bundle_columns:
         conn.execute("ALTER TABLE team_bundles ADD COLUMN generated_seq INTEGER NOT NULL DEFAULT 0")
+
+    # Team privacy levels (L2): member display name on bundles; cleartext project
+    # name, tool mix, and file-type mix on imported sessions; extension-only file
+    # types on local tool calls (derive-then-drop at ingest, never at export).
+    team_bundle_columns = _column_names(conn, "team_bundles")
+    if team_bundle_columns and "member_name" not in team_bundle_columns:
+        conn.execute("ALTER TABLE team_bundles ADD COLUMN member_name TEXT")
+
+    team_session_columns = _column_names(conn, "team_bundle_sessions")
+    if team_session_columns and "project_name" not in team_session_columns:
+        conn.execute("ALTER TABLE team_bundle_sessions ADD COLUMN project_name TEXT")
+    if team_session_columns and "tools_json" not in team_session_columns:
+        conn.execute("ALTER TABLE team_bundle_sessions ADD COLUMN tools_json TEXT NOT NULL DEFAULT '[]'")
+    if team_session_columns and "file_types_json" not in team_session_columns:
+        conn.execute("ALTER TABLE team_bundle_sessions ADD COLUMN file_types_json TEXT NOT NULL DEFAULT '[]'")
+
+    tool_call_columns = _column_names(conn, "tool_calls")
+    if tool_call_columns and "file_ext" not in tool_call_columns:
+        conn.execute("ALTER TABLE tool_calls ADD COLUMN file_ext TEXT")
+        _backfill_tool_call_file_ext(conn)
+
+
+def _backfill_tool_call_file_ext(conn: sqlite3.Connection) -> None:
+    """One-time backfill after adding tool_calls.file_ext.
+
+    Parses raw_json in the LOCAL index only (never at export time) to derive the
+    extension-only file type for rows imported before the column existed.
+    """
+    # Imported lazily: at call time both modules are fully loaded, so the
+    # storage <- ingest import cannot bite during package initialization.
+    from ccfr.ingest.file_ext import FILE_ARG_TOOLS, file_ext_from_tool_input
+
+    placeholders = ",".join("?" * len(FILE_ARG_TOOLS))
+    rows = conn.execute(
+        f"SELECT id, tool_name, raw_json FROM tool_calls WHERE tool_name IN ({placeholders})",
+        sorted(FILE_ARG_TOOLS),
+    ).fetchall()
+    updates: list[tuple[str, int]] = []
+    for row in rows:
+        try:
+            block = json.loads(row["raw_json"] or "{}")
+        except json.JSONDecodeError:
+            continue
+        input_obj = block.get("input") if isinstance(block, dict) else None
+        ext = file_ext_from_tool_input(row["tool_name"], input_obj)
+        if ext:
+            updates.append((ext, int(row["id"])))
+    conn.executemany("UPDATE tool_calls SET file_ext = ? WHERE id = ?", updates)
 
 
 def connect(path: Path) -> sqlite3.Connection:

@@ -712,3 +712,16 @@ def test_failed_rebuild_marks_import_failed_and_next_run_retries(tmp_path: Path,
     import_all_new(conn, tmp_path)  # incremental run must NOT skip the stranded project
     assert conn.execute("SELECT status FROM imports ORDER BY id DESC LIMIT 1").fetchone()[0] == "completed"
     assert conn.execute("SELECT COUNT(*) FROM session_stats").fetchone()[0] > 0
+
+
+def test_import_populates_file_ext_for_file_arg_tools(tmp_path):
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    init_db(conn)
+    import_export(conn, sanitized_export(tmp_path))
+
+    rows = conn.execute("SELECT tool_name, file_ext FROM tool_calls ORDER BY id").fetchall()
+    read_exts = [row["file_ext"] for row in rows if row["tool_name"] == "Read"]
+    assert read_exts == ["py", "py", "py"]  # alpha fixture reads three .py files
+    other = {row["file_ext"] for row in rows if row["tool_name"] != "Read"}
+    assert other == {None}  # Bash / Agent calls carry no file extension

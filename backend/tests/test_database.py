@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 
 from ccfr.storage import init_db, reset_db
@@ -119,3 +120,41 @@ def test_migrate_db_adds_tokens_by_model_to_legacy_team_table() -> None:
 
     columns = {row[1] for row in conn.execute("PRAGMA table_info(team_bundle_sessions)").fetchall()}
     assert "tokens_by_model_json" in columns
+
+
+def test_migrate_adds_and_backfills_file_ext_on_legacy_tool_calls():
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    # Legacy shape: tool_calls without file_ext, holding an already-imported Read call.
+    conn.execute(
+        """
+        CREATE TABLE tool_calls (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id INTEGER NOT NULL,
+            session_id INTEGER NOT NULL,
+            tool_use_id TEXT,
+            tool_name TEXT,
+            input_preview TEXT,
+            raw_json TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "INSERT INTO tool_calls(event_id, session_id, tool_use_id, tool_name, input_preview, raw_json)"
+        " VALUES (1, 1, 't1', 'Read', 'preview', ?)",
+        (json.dumps({"type": "tool_use", "name": "Read", "input": {"file_path": "src/App.TSX"}}),),
+    )
+    init_db(conn)
+
+    row = conn.execute("SELECT file_ext FROM tool_calls").fetchone()
+    assert row["file_ext"] == "tsx"
+
+
+def test_migrate_adds_team_privacy_level_columns():
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    init_db(conn)
+    bundle_cols = {r[1] for r in conn.execute("PRAGMA table_info(team_bundles)")}
+    session_cols = {r[1] for r in conn.execute("PRAGMA table_info(team_bundle_sessions)")}
+    assert "member_name" in bundle_cols
+    assert {"project_name", "tools_json", "file_types_json"} <= session_cols

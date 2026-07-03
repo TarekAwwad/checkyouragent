@@ -11,6 +11,7 @@ from typing import Any, Callable
 
 from ccfr.analysis.metrics import compute_loop_stats
 from ccfr.analysis.risk_patterns import clear_risk_pattern_tables, rebuild_risk_patterns
+from ccfr.ingest.file_ext import file_ext_from_tool_input
 from ccfr.storage.database import init_db
 
 
@@ -737,10 +738,18 @@ def _insert_content_block(
     if block_type == "tool_use":
         conn.execute(
             """
-            INSERT INTO tool_calls(event_id, session_id, tool_use_id, tool_name, input_preview, raw_json)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO tool_calls(event_id, session_id, tool_use_id, tool_name, input_preview, file_ext, raw_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             """,
-            (event_id, session_pk, tool_use_id, tool_name, _shorten(block_obj.get("input")), _json(_compact_for_storage(block_obj))),
+            (
+                event_id,
+                session_pk,
+                tool_use_id,
+                tool_name,
+                _shorten(block_obj.get("input")),
+                file_ext_from_tool_input(tool_name, block_obj.get("input")),
+                _json(_compact_for_storage(block_obj)),
+            ),
         )
     elif block_type == "tool_result":
         persisted_id = _find_persisted_id(str(block_obj.get("content") or ""), persisted_by_export_path)
