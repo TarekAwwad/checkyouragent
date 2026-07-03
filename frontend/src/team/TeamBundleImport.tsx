@@ -141,8 +141,9 @@ export default function TeamBundleImport() {
                 <li key={importRecordId(record, index)}>
                   <div>
                     <strong>
-                      <Blurred>{record.member_id ?? record.bundle_id ?? "team bundle"}</Blurred>
+                      <Blurred>{record.member_name ?? record.member_id ?? record.bundle_id ?? "team bundle"}</Blurred>
                     </strong>
+                    <span className="team-level-tag">{record.privacy_level ?? "structural"}</span>
                     <span>
                       {compactInt(record.session_count)} sessions
                       {record.generated_at ? ` · generated ${record.generated_at}` : ""}
@@ -156,10 +157,11 @@ export default function TeamBundleImport() {
                   <button
                     type="button"
                     className="team-remove-member"
-                    aria-label={`Remove ${record.member_id ?? "member"}`}
+                    aria-label={`Remove ${record.member_name ?? record.member_id ?? "member"}`}
                     disabled={removeMember.isPending}
                     onClick={() => {
-                      if (record.member_id && window.confirm(`Remove all imported bundles from ${record.member_id}?`)) {
+                      const display = record.member_name ?? record.member_id;
+                      if (record.member_id && window.confirm(`Remove all imported bundles from ${display}?`)) {
                         removeMember.mutate(record.member_id);
                       }
                     }}

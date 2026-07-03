@@ -63,6 +63,16 @@ export default function TeamOverview({ onGoToImport }: Props) {
   const stats = summary.stats;
   const risks = summary.risk_categories ?? [];
   const models = summary.models ?? [];
+  const members = summary.members ?? [];
+  const projects = summary.projects ?? [];
+  const tools = summary.tools ?? [];
+  const fileTypes = summary.file_types ?? [];
+  const memberRows = [...members].sort((a, b) => b.tokens - a.tokens).slice(0, 8);
+  const projectRows = [...projects].slice(0, 8); // backend already sorts by tokens desc
+  const memberMax = Math.max(...memberRows.map((m) => m.tokens), 1);
+  const projectMax = Math.max(...projectRows.map((p) => p.tokens), 1);
+  const toolMax = Math.max(...tools.slice(0, 8).map((t) => t.call_count), 1);
+  const fileTypeMax = Math.max(...fileTypes.slice(0, 8).map((f) => f.count), 1);
   const symbols = (summary.sequence ?? []).slice(0, 8);
   const overTime = summary.over_time ?? [];
   const activity = buildAreaChart(overTime.map((p) => ({ label: p.date, value: p.tokens })), CHART_W, CHART_H);
@@ -136,6 +146,43 @@ export default function TeamOverview({ onGoToImport }: Props) {
           empty="No models recorded."
         />
       </div>
+
+      {(members.length > 0 || projectRows.length > 0) && (
+        <div className="team-breakdowns">
+          <TeamBars
+            title="Tokens by member"
+            ariaLabel="Tokens by member"
+            rows={memberRows.map((m) => ({ label: m.member_name, value: m.tokens }))}
+            max={memberMax}
+            empty="No members yet."
+          />
+          <TeamBars
+            title="Tokens by project"
+            ariaLabel="Tokens by project"
+            rows={projectRows.map((p) => ({ label: p.project_name, value: p.tokens }))}
+            max={projectMax}
+            empty="No projects yet."
+          />
+        </div>
+      )}
+      {(tools.length > 0 || fileTypes.length > 0) && (
+        <div className="team-breakdowns">
+          <TeamBars
+            title="Toolchain"
+            ariaLabel="Team toolchain"
+            rows={tools.slice(0, 8).map((t) => ({ label: t.name, value: t.call_count }))}
+            max={toolMax}
+            empty="Tool names appear once team-level bundles are imported."
+          />
+          <TeamBars
+            title="File types"
+            ariaLabel="Team file types"
+            rows={fileTypes.slice(0, 8).map((f) => ({ label: `.${f.ext}`, value: f.count }))}
+            max={fileTypeMax}
+            empty="File types appear once team-level bundles are imported."
+          />
+        </div>
+      )}
 
       <section className="team-symbols" aria-labelledby="team-symbols-title">
         <div className="team-symbols-head">

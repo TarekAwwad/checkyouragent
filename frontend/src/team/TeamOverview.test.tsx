@@ -24,6 +24,9 @@ const dashboard = {
   subagents: [],
   sequence: [{ sym: "CALL:inspect:Read", count: 4 }],
   members: [],
+  projects: [],
+  tools: [],
+  file_types: [],
   over_time: [
     { date: "2026-06-01", session_count: 4, tokens: 12_000 },
     { date: "2026-06-05", session_count: 5, tokens: 15_000 },
@@ -88,5 +91,43 @@ describe("TeamOverview", () => {
     expect(within(modelMix).getByText("sonnet")).toBeInTheDocument();
 
     expect(screen.getByText(/Read/)).toHaveTextContent("x4");
+  });
+
+  it("renders member, project, toolchain, and file-type breakdowns", async () => {
+    vi.mocked(getTeamDashboard).mockResolvedValue({
+      ...dashboard,
+      members: [
+        { member_name: "Avery", member_ids: ["1111"], bundle_count: 1, project_count: 1, session_count: 3, tokens: 900 },
+        { member_name: "member-2222abcd", member_ids: ["2222abcd"], bundle_count: 1, project_count: 1, session_count: 1, tokens: 100 },
+      ],
+      projects: [
+        { project_key: "alpha", project_name: "alpha", member_count: 2, session_count: 4, tokens: 1000 },
+      ],
+      tools: [{ name: "Read", call_count: 12, session_count: 3 }],
+      file_types: [{ ext: "py", count: 9, session_count: 3 }],
+    } as never);
+    renderOverview();
+
+    expect(await screen.findByText("Tokens by member")).toBeInTheDocument();
+    expect(screen.getByText("Avery")).toBeInTheDocument();
+    expect(screen.getByText("Tokens by project")).toBeInTheDocument();
+    expect(screen.getByText("Toolchain")).toBeInTheDocument();
+    expect(screen.getByText(".py")).toBeInTheDocument();
+  });
+
+  it("hides the toolchain row when no team-level bundles exist", async () => {
+    vi.mocked(getTeamDashboard).mockResolvedValue({
+      ...dashboard,
+      members: [
+        { member_name: "member-1111abcd", member_ids: ["1111abcd"], bundle_count: 1, project_count: 1, session_count: 3, tokens: 900 },
+      ],
+      projects: [{ project_key: "a1b2c3d4", project_name: "a1b2c3d4", member_count: 1, session_count: 3, tokens: 900 }],
+      tools: [],
+      file_types: [],
+    } as never);
+    renderOverview();
+
+    expect(await screen.findByText("Tokens by member")).toBeInTheDocument();
+    expect(screen.queryByText("Toolchain")).not.toBeInTheDocument();
   });
 });

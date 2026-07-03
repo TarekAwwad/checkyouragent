@@ -115,6 +115,29 @@ describe("TeamBundleImport", () => {
     expect(screen.getByText(/9 sessions/)).toBeInTheDocument();
   });
 
+  it("shows the member name and privacy level for imported bundles", async () => {
+    vi.mocked(listTeamImports).mockResolvedValue([
+      {
+        id: 1,
+        bundle_id: "b-1",
+        profile: "team",
+        schema_version: 2,
+        member_id: "1111",
+        member_name: "Avery",
+        privacy_level: "team",
+        generated_at: "2026-07-03",
+        imported_at: "2026-07-03T10:00:00Z",
+        source_path: "D:\\TeamBundles\\a.json",
+        session_count: 3,
+      },
+    ] as never);
+    renderImport();
+
+    expect(await screen.findByText("Avery")).toBeInTheDocument();
+    expect(screen.getByText("team")).toBeInTheDocument(); // level tag
+    expect(screen.getByRole("button", { name: "Remove Avery" })).toBeInTheDocument();
+  });
+
   it("removes a member's bundles via the row button after confirming", async () => {
     vi.spyOn(window, "confirm").mockReturnValue(true);
     vi.mocked(listTeamImports).mockResolvedValue([
