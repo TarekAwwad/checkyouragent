@@ -31,7 +31,7 @@ function setup(overrides: Partial<React.ComponentProps<typeof Sidebar>> = {}) {
 describe("Sidebar", () => {
   it("renders the brand and the local-scope nav", () => {
     setup();
-    expect(screen.getByText("Session Analytics")).toBeInTheDocument();
+    expect(screen.getByText("Check Your Agent")).toBeInTheDocument();
     expect(screen.getByText("local, read-only session data")).toBeInTheDocument();
     for (const name of ["Import", "Export", "Overview", "Cost", "Explore"]) {
       expect(screen.getByRole("button", { name })).toBeInTheDocument();
