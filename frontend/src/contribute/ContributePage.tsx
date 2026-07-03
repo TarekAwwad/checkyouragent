@@ -6,6 +6,7 @@ import { Blurred } from "../shell/Blurred";
 import { type ContributionSession, compactInt } from "./specimen";
 import SpecimenModal from "./SpecimenModal";
 import PrivacyLedger from "./PrivacyLedger";
+import LoadingBar from "../components/LoadingBar";
 
 // Contributions go to an open, public dataset repo. Step 2 deep-links to GitHub's
 // file-upload page for the contributions/ folder; for anyone without write access
@@ -28,7 +29,7 @@ export default function ContributePage() {
   if (preview.isLoading) {
     return (
       <main className="page contribute-page">
-        <div className="contribute-state">Building privacy-preserving preview...</div>
+        <div className="loading-view"><LoadingBar caption="Building privacy-preserving preview…" /></div>
       </main>
     );
   }
@@ -89,7 +90,12 @@ export default function ContributePage() {
               <Download size={15} aria-hidden="true" />
               {exporter.isPending ? "Exporting..." : "Export bundle"}
             </button>
-            {exported ? (
+            {exporter.isPending ? (
+              <div className="flow-result flow-result-loading" role="status">
+                <LoadingBar size="inline" label="Exporting" />
+                <span>Writing bundle…</span>
+              </div>
+            ) : exported ? (
               <div className="flow-result">
                 <FileJson size={14} aria-hidden="true" />
                 <code><Blurred>{exportedPath}</Blurred></code>

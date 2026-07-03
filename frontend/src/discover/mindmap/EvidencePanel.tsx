@@ -4,6 +4,7 @@ import { getUsageMapEvidence, type UsageMapFilters } from "../../api/client";
 import type { UsagePhase } from "../../api/types";
 import { formatTokens, formatUsd } from "../formatting";
 import type { MapNode } from "./forceModel";
+import LoadingBar from "../../components/LoadingBar";
 
 interface Props {
   node: MapNode;
@@ -53,7 +54,7 @@ export default function EvidencePanel({
     );
   }
   if (query.isPending) {
-    return <aside className={cardClass}><p className="mindmap-evidence-rule">Loading evidence…</p></aside>;
+    return <aside className={cardClass}><div className="mindmap-evidence-rule"><LoadingBar caption="Loading evidence…" /></div></aside>;
   }
   if (query.isError || !query.data) {
     return <aside className={`${cardClass} panel-error`}><p className="mindmap-evidence-rule">Evidence could not be loaded.</p></aside>;

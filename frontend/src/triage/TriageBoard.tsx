@@ -4,6 +4,7 @@ import type { Project, SessionCard } from "../api/types";
 import { riskScore } from "./riskScore";
 import RiskCell from "./RiskCell";
 import { Blurred } from "../shell/Blurred";
+import LoadingBar from "../components/LoadingBar";
 
 interface Props {
   projects: Project[];
@@ -157,7 +158,7 @@ function TriageBoard({ projects, sessions, loading, onOpenSession }: Props) {
         </div>
         <div className="triage-table-wrap">
           {loading ? (
-            <div className="empty-state">Loading sessions...</div>
+            <div className="empty-state"><LoadingBar caption="Loading sessions…" /></div>
           ) : rows.length === 0 ? (
             <div className="empty-state">No sessions match the current filters.</div>
           ) : (

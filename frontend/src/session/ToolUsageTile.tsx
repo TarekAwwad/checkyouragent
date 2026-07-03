@@ -2,6 +2,7 @@ import React from "react";
 import type { TimelineItem } from "../api/types";
 import { ACCENT_COLOR } from "../analytics/chartGeometry";
 import { buildToolUsage } from "./sessionAnalytics";
+import LoadingBar from "../components/LoadingBar";
 
 interface Props {
   items: TimelineItem[];
@@ -18,7 +19,7 @@ export default function ToolUsageTile({ items, loading }: Props) {
     <section className="tile session-tile">
       <h2>Tool usage</h2>
       {loading ? (
-        <div className="session-tile-empty">Loading…</div>
+        <div className="session-tile-empty"><LoadingBar size="tile" /></div>
       ) : rows.length === 0 ? (
         <div className="session-tile-empty">No tool calls</div>
       ) : (

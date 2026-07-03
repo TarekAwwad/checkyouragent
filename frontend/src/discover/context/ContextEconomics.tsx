@@ -6,6 +6,7 @@ import TaxMeterHero from "./TaxMeterHero";
 import ArchetypeBrief from "./ArchetypeBrief";
 import FindingsPanel from "./FindingsPanel";
 import SessionDrilldown from "./SessionDrilldown";
+import LoadingBar from "../../components/LoadingBar";
 
 interface Props {
   projects: Project[];
@@ -40,7 +41,7 @@ export default function ContextEconomics({ projects, onOpenSession }: Props) {
     return (
       <main className="discover-page">
         <div className="discover-page-inner">
-          <div className="empty-state">Analyzing context economics…</div>
+          <div className="loading-view"><LoadingBar caption="Analyzing context economics…" /></div>
         </div>
       </main>
     );

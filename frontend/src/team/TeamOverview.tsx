@@ -3,6 +3,7 @@ import { ArrowRight } from "lucide-react";
 import { getTeamDashboard } from "../api/client";
 import { compactInt, prettySymbol } from "../contribute/specimen";
 import { buildAreaChart } from "./teamCharts";
+import LoadingBar from "../components/LoadingBar";
 
 const CHART_W = 600;
 const CHART_H = 130;
@@ -24,7 +25,7 @@ export default function TeamOverview({ onGoToImport }: Props) {
   if (dashboard.isLoading) {
     return (
       <main className="page team-flow-page team-overview-page">
-        <div className="contribute-state">Loading team overview…</div>
+        <div className="loading-view"><LoadingBar caption="Loading team overview…" /></div>
       </main>
     );
   }

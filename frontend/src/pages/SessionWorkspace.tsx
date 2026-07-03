@@ -12,6 +12,7 @@ import SessionInsightStrip from "../session/SessionInsightStrip";
 import EventDensityTile from "../session/EventDensityTile";
 import ToolUsageTile from "../session/ToolUsageTile";
 import SubagentHeatTile from "../session/SubagentHeatTile";
+import LoadingBar from "../components/LoadingBar";
 
 interface Props {
   session: SessionCard;
@@ -183,7 +184,7 @@ function SessionWorkspace({ session, initialEventId = null, backLabel, onBack }:
               </div>
               <div className="session-trace-body event-graph">
                 {trace.isLoading ? (
-                  <div className="empty-state">Loading session trace...</div>
+                  <div className="empty-state"><LoadingBar caption="Loading session trace…" /></div>
                 ) : trace.isError || !trace.data ? (
                   <div className="empty-state">Could not load the session trace.</div>
                 ) : (

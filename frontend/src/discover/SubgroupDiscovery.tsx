@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ExternalLink, Target, TrendingUp } from "lucide-react";
 import { getDiscoveryAnalytics } from "../api/client";
 import InsightStat from "../components/InsightStat";
+import LoadingBar from "../components/LoadingBar";
 import type { DiscoveryDriver, DiscoveryExample, DiscoverySection, Project } from "../api/types";
 import { Blurred } from "../shell/Blurred";
 
@@ -326,6 +327,19 @@ export default function SubgroupDiscovery({ projects, onOpenSession }: Props) {
       ? Math.max(...section.results.map((result) => result.lift))
       : null;
 
+  // Match the other discovery views: on the initial load, show only a centred
+  // loader — the toolbar and summary appear once results are ready. `placeholderData`
+  // keeps `isPending` false on later filter changes, so this never flashes back.
+  if (query.isPending) {
+    return (
+      <main className="discover-page">
+        <div className="discover-page-inner">
+          <div className="loading-view"><LoadingBar caption="Loading discovery results…" /></div>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className={`discover-page discover-section-${activeSection}`}>
       <div className="discover-page-inner">
@@ -399,8 +413,6 @@ export default function SubgroupDiscovery({ projects, onOpenSession }: Props) {
                 <strong>Discovery failed.</strong>
                 <span>{errorMessage}</span>
               </div>
-            ) : query.isLoading || !payload ? (
-              <div className="empty-state">Loading discovery results...</div>
             ) : (
               <SectionResults section={section} isRefetching={isRefetching} onOpenSession={onOpenSession} />
             )}

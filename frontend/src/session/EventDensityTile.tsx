@@ -3,6 +3,7 @@ import type { TimelineItem } from "../api/types";
 import { ACCENT_COLOR, WARNING_COLOR, DANGER_COLOR, INFO_COLOR } from "../analytics/chartGeometry";
 import type { LoopContext } from "../trace/loopContext";
 import { buildDensity } from "./sessionAnalytics";
+import LoadingBar from "../components/LoadingBar";
 
 interface Props {
   items: TimelineItem[];
@@ -69,7 +70,7 @@ export default function EventDensityTile({ items, loopContexts, loading }: Props
     <section className="tile session-tile">
       <h2>Event density</h2>
       {loading ? (
-        <div className="session-tile-empty">Loading...</div>
+        <div className="session-tile-empty"><LoadingBar size="tile" /></div>
       ) : model.total === 0 ? (
         <div className="session-tile-empty">No events</div>
       ) : (

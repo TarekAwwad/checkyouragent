@@ -8,6 +8,7 @@ import { compactInt } from "../contribute/specimen";
 import { Blurred } from "../shell/Blurred";
 import PrivacyLedger from "../contribute/PrivacyLedger";
 import SpecimenModal from "../contribute/SpecimenModal";
+import LoadingBar from "../components/LoadingBar";
 
 const LEVELS: { id: TeamPrivacyLevel; label: string; hint: string }[] = [
   {
@@ -189,7 +190,11 @@ export default function TeamBundleExport() {
                 onClick={() => exporter.mutate()}
                 disabled={exporter.isPending || selected.length === 0 || sessionCount === 0 || needsName}
               >
-                {exporter.isSuccess ? <Check size={15} strokeWidth={3} aria-hidden="true" /> : <Download size={15} aria-hidden="true" />}
+                {exporter.isSuccess ? (
+                  <Check size={15} strokeWidth={3} aria-hidden="true" />
+                ) : (
+                  <Download size={15} aria-hidden="true" />
+                )}
                 {exporter.isPending ? "Exporting…" : "Export bundle"}
               </button>
               <div className="team-flow-errors" aria-live="polite">
@@ -202,7 +207,12 @@ export default function TeamBundleExport() {
                   <span className="flow-error">Export failed: {errorMessage(exporter.error)}. No local team bundle was written.</span>
                 )}
               </div>
-              {exportedPath ? (
+              {exporter.isPending ? (
+                <div className="flow-result flow-result-loading" role="status">
+                  <LoadingBar size="inline" label="Exporting" />
+                  <span>Writing bundle…</span>
+                </div>
+              ) : exportedPath ? (
                 <div className="flow-result">
                   <FileJson size={14} aria-hidden="true" />
                   <code>
