@@ -133,18 +133,22 @@ def _team_conn() -> sqlite3.Connection:
     return conn
 
 
-def _team_level_bundle_for_cost(tmp_path: Path) -> dict:
-    return _team_level_bundle(tmp_path).to_dict()
+def _team_level_bundle_for_cost(tmp_path: Path, label: str | None = None) -> dict:
+    return _team_level_bundle(tmp_path, label=label).to_dict()
 
 
 def test_team_cost_uses_project_names_for_named_bundles(tmp_path):
     conn = _team_conn()
-    bundle = _team_level_bundle_for_cost(tmp_path)
+    # A label longer than 8 chars whose display form ("Payments API") differs
+    # from its normalized grouping key ("payments-api") makes this test
+    # discriminate: the old pid[:8] fallback could only ever surface
+    # "payments", never the real display name.
+    bundle = _team_level_bundle_for_cost(tmp_path, label="Payments API")
     team_bundles.import_team_bundle(conn, bundle, source_path=Path("a.json"))
 
     result = team_cost_analytics(conn)
     names = {project["name"] for project in result["meta"]["available_projects"]}
-    assert "alpha" in names
-    assert all(len(name) != 8 or name == "alpha" for name in names)
+    assert "Payments API" in names
+    assert "payments" not in names  # the old pid[:8]-style prefix must not appear
     if result["treemap"]:
-        assert result["treemap"][0]["project_name"] == "alpha"
+        assert result["treemap"][0]["project_name"] == "Payments API"

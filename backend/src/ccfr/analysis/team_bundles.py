@@ -634,7 +634,7 @@ def import_team_bundle(
         team_bundle_id = int(cur.lastrowid)
         session_rows = []
         for session in bundle["sessions"]:
-            if bundle["profile"] == LEVEL_TEAM:
+            if bundle["privacy_level"] == LEVEL_TEAM:
                 project_key = normalize_project_key(session["project_name"])
                 project_name = session["project_name"]
             else:
