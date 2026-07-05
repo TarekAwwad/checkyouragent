@@ -49,3 +49,18 @@ def test_demo_dir_defaults_to_repo_demo_export(monkeypatch):
 def test_demo_dir_honors_env_override(monkeypatch, tmp_path):
     monkeypatch.setenv("CCFR_DEMO_DIR", str(tmp_path / "custom-demo"))
     assert config.demo_dir() == tmp_path / "custom-demo"
+
+
+def test_app_version_reads_from_package_metadata(monkeypatch):
+    monkeypatch.setattr(config, "_pkg_version", lambda _name: "9.9.9-test")
+    assert config.app_version() == "9.9.9-test"
+
+
+def test_app_version_falls_back_when_package_missing(monkeypatch):
+    from importlib.metadata import PackageNotFoundError
+
+    def _raise(_name):
+        raise PackageNotFoundError("check-your-agent")
+
+    monkeypatch.setattr(config, "_pkg_version", _raise)
+    assert config.app_version() == "0.1.0"

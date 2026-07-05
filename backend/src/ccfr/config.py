@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from importlib.metadata import PackageNotFoundError, version as _pkg_version
 from pathlib import Path
 
 
@@ -93,5 +94,14 @@ def is_docker() -> bool:
 
 
 def app_version() -> str:
-    """App release version for contribution bundles. Keep in sync with pyproject."""
-    return "0.1.0"
+    """App release version for contribution bundles.
+
+    Resolves from the installed ``check-your-agent`` package metadata so the
+    version has a single source (``pyproject.toml``). Falls back to the pinned
+    baseline when the package is not installed, e.g. a bare source checkout
+    without an editable install.
+    """
+    try:
+        return _pkg_version("check-your-agent")
+    except PackageNotFoundError:
+        return "0.1.0"
