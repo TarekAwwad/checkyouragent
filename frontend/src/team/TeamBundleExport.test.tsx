@@ -59,13 +59,14 @@ describe("TeamBundleExport", () => {
     } as never);
   });
 
-  it("renders the level ladder with structural active and future rungs disabled", async () => {
+  it("renders only the structural and team rungs, with structural active", async () => {
     renderExport();
     const structural = await screen.findByRole("radio", { name: "Structural" });
     expect(structural).toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("radio", { name: "Team" })).toHaveAttribute("aria-checked", "false");
-    expect(screen.getByRole("button", { name: /Sessions/ })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /Raw/ })).toBeDisabled();
+    // The reserved raw-sharing rungs are no longer surfaced in the UI.
+    expect(screen.queryByRole("button", { name: /Sessions/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Raw/ })).not.toBeInTheDocument();
   });
 
   it("documents the snapshot-replace and deselection behavior in the project picker", async () => {
