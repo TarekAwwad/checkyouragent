@@ -1,67 +1,136 @@
-# Claude Analytics
+# Check Your Agent
 
-Offline forensic explorer for Claude Code `.claude/projects` exports.
+Local analytics for Claude Code `.claude/projects` exports.
 
-The app mounts raw exports read-only, indexes them into a rebuildable SQLite database, and provides a graph-first UI for inspecting sessions, tool cycles, subagents, errors, and event trails. It does not call external services and does not mutate the raw export.
+Check Your Agent indexes Claude Code JSONL history into a local SQLite cache and
+serves a FastAPI backend plus a React UI for inspecting sessions, spend,
+tool-use patterns, subagents, and context waste. The app is for developers or
+teams who want to understand how Claude Code is being used in real projects
+without sending raw exports to an external service.
 
 > [!NOTE]
-> **Work in progress.** This project is under active development, and the tooling it analyzes is a moving target: Claude Code's export format, pricing, and agent behavior evolve quickly, and the heuristics and cost models here may lag behind. Findings are estimates derived from local data; treat them as leads to investigate, not ground truth, and expect occasional inaccuracies while both the tool and the ecosystem keep changing.
+> This is early-stage software. Cost, risk, discovery, and context-economics
+> results are estimates derived from local export data and the bundled pricing
+> tables. Use findings as leads to investigate, not as ground truth.
 
-## At a Glance
+## What It Does Today
 
-Claude Analytics is built around high-signal views: a triage board for finding the sessions that deserve attention, cost analytics for understanding where Claude Code spend comes from, subgroup discovery for surfacing the conditions that drive outcomes like high-cost sessions, and context economics for separating the share of spend that avoidable context waste is responsible for.
+Implemented local workflows:
 
-| Triage suspicious sessions | Understand cost and token behavior |
-| --- | --- |
-| ![Triage board showing session risk, findings, activity, fanout, volume, and cost](docs/screenshots/triage-board.png) | ![Cost analytics dashboard showing project spend, cache savings, model mix, and spend over time](docs/screenshots/cost-analytics-1.png) |
-| **Discover subgroups that drive outcomes** | **Put a price on avoidable context** |
-| ![Subgroup discovery view showing which session conditions most increase the rate of high-cost sessions, ranked by lift over baseline](docs/screenshots/subgroup.png) | ![Context economics view showing avoidable versus necessary spend, waste archetypes with estimated savings, and a per-session investigator with context stream and contributor lanes](docs/screenshots/context-economics.png) |
+- Imports Claude Code project folders from a configured export root.
+- Stores a rebuildable SQLite index of projects, sessions, events, messages,
+  content blocks, tool calls/results, subagents, memory markdown, persisted
+  large outputs, search rows, risk findings, and derived sequence features.
+- Shows an **Import** screen for discovering project folders, importing all new
+  projects, re-importing a project, and resetting the local cache.
+- Shows a local **Overview** triage board with search, project filtering, error
+  filtering, and sorting by risk, findings, errors, loops, subagent fanout,
+  event volume, and estimated cost.
+- Opens a **Session workspace** with session summary tiles, event timeline,
+  trace lanes, loop context, subagent heat, search within the session, findings,
+  and raw event inspection.
+- Shows **Cost** analytics by project, model, token category, spend over time,
+  spend spikes, turn distribution, and session outliers.
+- Supports historical pricing: session cost can use rates effective on each
+  session date or current rates for every session.
+- Shows **Explore** techniques for subgroup discovery, context economics, and a
+  usage mindmap with JSON/PNG export.
+- Exports content-free **team bundles** from local data at structural or team
+  privacy levels.
+- Imports team bundles from browser-selected JSON files or backend-visible paths
+  and shows team aggregate Overview and Cost views.
+- Provides a privacy mode that blurs sensitive UI text.
 
-Context economics reconstructs how each session's context window filled up, attributes the carry cost to the content that caused it, and runs detectors for recurring waste patterns — redundant re-reads, oversized tool results, late compaction, and stale session continuation. Each finding comes with a counterfactual savings estimate, and the savings claims are kept disjoint so the avoidable total never double-counts.
+Implemented backend APIs include `/api/imports`, `/api/source/projects`,
+`/api/projects`, `/api/sessions`, `/api/search`, `/api/analytics/cost`,
+`/api/analytics/discovery`, `/api/analytics/context-economics`,
+`/api/analytics/usage-map`, `/api/analytics/usage-characteristics`,
+`/api/team/*`, `/api/settings`, and `/api/config`.
 
-## Research Foundation
+## Screenshots
 
-The current UI is the first layer of a broader research tool for understanding how coding agents behave in real projects. Claude Analytics turns local Claude Code history into inspectable evidence: what tools were used, where loops appeared, how subagents were orchestrated, which sessions became expensive, and which workflows repeatedly produced friction.
+These screenshots are static repository assets. They are examples of implemented
+screens, not live demos.
 
-That makes it a base for deeper work on coding-agent usage patterns, optimization techniques, cost control, prompt and workflow design, failure-mode analysis, and human-in-the-loop review. The project deliberately keeps raw exports read-only and rebuilds its own local cache, so experiments can be repeated without mutating the source data.
-
-## Usage Flow
-
-1. Import Claude Code exports from the mounted read-only source.
-2. Use the triage board to sort sessions by risk, errors, loops, fanout, volume, or cost.
-3. Open a session to inspect the event trace, timeline, subagents, tool usage, and raw evidence.
-4. Review cost analytics to spot expensive projects, model mix, cache savings, and costly turns.
-5. Open context economics to see how much spend was avoidable, which waste archetypes drive it, and the exact events behind each finding.
-
-| Import exports | Inspect a session | Investigate cost outliers |
+| Import | Overview | Session workspace |
 | --- | --- | --- |
-| ![Import page showing mounted source, cache totals, and project import controls](docs/screenshots/import.png) | ![Session workspace showing event density, subagents, tool usage, trace lanes, loops, and token chart](docs/screenshots/session-workspace.png) | ![Cost outlier view showing turn distribution and the selected expensive turn drivers](docs/screenshots/cost-analytics-2.png) |
+| ![Import page showing mounted source, cache totals, and project import controls](docs/screenshots/import.png) | ![Triage board showing session risk, findings, activity, fanout, volume, and cost](docs/screenshots/triage-board.png) | ![Session workspace showing event density, subagents, tool usage, trace lanes, loops, and token chart](docs/screenshots/session-workspace.png) |
 
-## Historical (time-aware) pricing
+| Cost analytics | Subgroup discovery | Context economics |
+| --- | --- | --- |
+| ![Cost analytics dashboard showing project spend, cache savings, model mix, and spend over time](docs/screenshots/cost-analytics-1.png) | ![Subgroup discovery view showing session conditions ranked by lift over baseline](docs/screenshots/subgroup.png) | ![Context economics view showing avoidable versus necessary spend and session evidence](docs/screenshots/context-economics.png) |
 
-Model prices change over time, so the cost views can value each session either at the rate in effect on its date or at today's rate. A **Historical pricing** toggle in the sidebar flips between the two:
+| Cost outlier drilldown |
+| --- |
+| ![Cost outlier view showing turn distribution and selected expensive turn drivers](docs/screenshots/cost-analytics-2.png) |
 
-- **On** (default) — each session's spend is priced at the rates effective on its own date.
-- **Off** — every session is valued at the current rate.
+## What It Does Not Do Yet
 
-Prices come from CSVs of US dollars per million tokens:
+- It does not ingest Codex, OpenAI, or other agent histories. Current ingestion
+  is Claude Code `.claude/projects` JSONL only.
+- It is not a live Claude Code integration. It reads files from the configured
+  import root when you run an import.
+- It does not preserve a durable archive of sessions that disappear from the
+  source export. Re-importing a changed project rebuilds that project in the
+  SQLite cache from the current files on disk.
+- `Reset cache` calls `/api/imports/reset`, which drops the SQLite cache tables,
+  including imported team bundle records. Exported team bundle JSON files on
+  disk are not deleted by that endpoint.
+- Team aggregate views do not include per-session drilldowns because team
+  bundles intentionally omit raw session detail.
+- Sequence mining and anomaly detection are present only as planned technique
+  entries in code; they are not exposed as working Explore views.
+- A contribution export page and contribution APIs exist in the codebase, but
+  the page is not mounted in the main app navigation and its public dataset URL
+  is still marked with a TODO in code.
+- The backend is unauthenticated and intended for loopback-only use.
 
-- `pricing.csv` (repo root) is the **undated baseline**, effective from the beginning of time.
-- Each `pricing/pricing-YYYY-MM-DD.csv` is a full price snapshot that takes effect on the date in its filename. A session is priced by the baseline overlaid with every snapshot whose date is on or before the session's date (later snapshots win per model).
+## Input Data
 
-To record a price change, drop a new `pricing/pricing-YYYY-MM-DD.csv` with the same columns as `pricing.csv` — never edit old snapshots. Both `pricing.csv` and the `pricing/` directory are mounted read-only into the Docker backend and reloaded per request, so price edits take effect on the next request without a rebuild. With no `pricing/` directory the app prices everything at the baseline.
+The app expects a directory shaped like Claude Code's project export root:
 
-## Project Docs
+```text
+Data/
+  <encoded-project-folder>/
+    <session-id>.jsonl
+    <session-id>/
+      subagents/
+        agent-<id>.jsonl
+        agent-<id>.meta.json
+      tool-results/
+        *.txt
+    memory/
+      *.md
+```
 
-- [Contributing](CONTRIBUTING.md)
-- [Security](SECURITY.md)
-- [Privacy and Data Handling](PRIVACY.md)
-- [Code of Conduct](CODE_OF_CONDUCT.md)
+Claude Code usually stores this under `~/.claude/projects`. You can copy or
+mount that directory as the app's import root. The importer reads JSONL,
+subagent metadata, `tool-results/*.txt`, and `memory/*.md`. It records malformed
+JSONL or metadata as import errors and continues where possible.
+
+## Output Data
+
+Local runs write rebuildable state under the data directory:
+
+```text
+.ccfr-data/
+  ccfr.sqlite3
+  settings.json
+  contributions/
+  team-bundles/
+```
+
+Docker uses a named volume for `/app/data` and mounts `./TeamBundles` at
+`/team-bundles`. Team bundle export writes JSON files under
+`CCFR_TEAM_BUNDLE_ROOT/exports`.
 
 ## Run With Docker
 
+Prerequisite: Docker with Compose.
+
+Put or mount Claude Code project folders under `Data/`, then run:
+
 ```powershell
-docker compose down --remove-orphans
 docker compose up --build
 ```
 
@@ -72,9 +141,26 @@ Frontend: http://localhost:5173
 Backend API docs: http://localhost:8000/docs
 ```
 
-By default `docker-compose.yml` mounts the local `Data/` folder as `/imports` for the backend service and `TeamBundles/` as `/team-bundles` for team bundle exports and optional server-path imports. Team managers can also import a team bundle by choosing the JSON file in the browser, which does not require the file path to exist inside the container. Both containers bind to host loopback only; the backend serves API routes and the frontend is served by a separate container.
+`docker-compose.yml` binds both services to host loopback. It mounts:
 
-## Local Backend
+- `./Data` as `/imports` read-only.
+- `./TeamBundles` as `/team-bundles`.
+- `pricing.csv` and `pricing/` read-only for cost estimation.
+- A named `ccfr-data` volume for the backend SQLite cache and settings.
+
+Use `docker compose down --remove-orphans` when you need to stop and remove old
+containers. Do not use `docker compose down -v` unless you are comfortable
+deleting the named backend data volume.
+
+## Run Locally
+
+Prerequisites:
+
+- Python 3.11 or newer.
+- `uv`.
+- Node.js 20 or newer.
+
+Backend:
 
 ```powershell
 cd backend
@@ -82,38 +168,68 @@ uv run --extra dev pytest
 uv run uvicorn ccfr.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-When run outside Docker, the backend defaults to:
-
-```text
-CCFR_IMPORT_ROOT=../Data
-CCFR_DB_PATH=../.ccfr-data/ccfr.sqlite3
-CCFR_TEAM_BUNDLE_ROOT=../.ccfr-data/team-bundles
-```
-
-Set those environment variables before starting `uvicorn` if you want to index a different export root or store the rebuildable SQLite cache elsewhere.
-
-Restarting the backend does not clear the local SQLite cache. Use **Run Import** in the UI to rebuild it from `CCFR_IMPORT_ROOT`, or delete `../.ccfr-data/ccfr.sqlite3` while the backend is stopped.
-
-To verify that the running backend is the current local code:
-
-```powershell
-Invoke-RestMethod http://127.0.0.1:8000/api/config
-```
-
-If that returns `404`, an older backend process is still serving port `8000`. The backend no longer serves the React frontend at `/`; use `http://127.0.0.1:8000/docs` for browser-based API inspection.
-
-## Local Frontend
+Frontend:
 
 ```powershell
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
-Open:
+Open the Vite dev server:
 
 ```text
-http://localhost:5173
+http://localhost:5174
 ```
 
-The dev server proxies `/api` to the backend (`http://localhost:8000`), so the frontend talks to it same-origin — no CORS setup, and the dev port doesn't matter. `VITE_API_BASE` is unset by default (relative `/api`); set it only when the backend isn't reachable via the dev proxy (a remote host, or a built/Docker frontend). If you previously exported `VITE_API_BASE`, unset it so the proxy is used.
+The local dev server proxies `/api` to `http://localhost:8000`, so
+`VITE_API_BASE` should usually be unset during local development. Set
+`VITE_API_BASE` only for a built frontend or a backend that is not reachable
+through the dev proxy.
+
+Default backend paths resolve from the repository root:
+
+```text
+CCFR_IMPORT_ROOT=<repo>/Data
+CCFR_DB_PATH=<repo>/.ccfr-data/ccfr.sqlite3
+CCFR_TEAM_BUNDLE_ROOT=<repo>/.ccfr-data/team-bundles
+CCFR_PRICING_PATH=<repo>/pricing.csv
+CCFR_PRICING_DIR=<repo>/pricing
+```
+
+If you want to import from somewhere else, set `CCFR_IMPORT_ROOT` before
+starting the backend. The UI path field can select the configured import root or
+a descendant; backend requests outside `CCFR_IMPORT_ROOT` are rejected.
+
+## Main Workflow
+
+1. Copy or mount Claude Code project folders into `Data/`, or set
+   `CCFR_IMPORT_ROOT` to the export root.
+2. Start the backend and frontend.
+3. Open **Import** and choose **Import all new** or import a single project.
+4. Use **Overview** to sort and filter sessions worth inspecting.
+5. Open a session to inspect the timeline, trace, subagents, findings, search
+   results, and raw event details.
+6. Use **Cost** for spend and token analysis.
+7. Use **Explore** for subgroup discovery, context economics, or usage mindmap.
+8. For team aggregate views, export a team bundle from local scope, switch to
+   team scope, import one or more bundle JSON files, then open team Overview or
+   Cost.
+
+## Pricing Data
+
+`pricing.csv` is the baseline price table in US dollars per million tokens. The
+optional `pricing/` directory can contain full snapshots named
+`pricing-YYYY-MM-DD.csv`. A historical-pricing request overlays every snapshot
+whose date is on or before a session's date; later snapshots win for the same
+model. If a model has no price row, cost views show partial or unavailable
+costs.
+
+## Project Docs
+
+- [Architecture](docs/architecture.md)
+- [Documentation audit](docs/documentation-audit.md)
+- [Privacy and Data Handling](PRIVACY.md)
+- [Security](SECURITY.md)
+- [Contributing](CONTRIBUTING.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)

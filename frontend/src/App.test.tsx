@@ -158,7 +158,7 @@ function appSession(id: number): SessionCard {
   return {
     id,
     project_id: 1,
-    project_name: "Claude Analytics",
+    project_name: "Example Project",
     session_id: "session-7",
     title: "App test session",
     first_ts: "2026-06-03T10:00:00Z",

@@ -1,7 +1,7 @@
 [project]
-name = "claude-code-flight-recorder"
+name = "check-your-agent"
 version = "0.1.0"
-description = "Offline forensic explorer for Claude Code project exports"
+description = "Local analytics for Claude Code project exports"
 license = { text = "BUSL-1.1" }
 requires-python = ">=3.11"
 dependencies = [

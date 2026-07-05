@@ -1,4 +1,7 @@
 Data/
+TeamBundles/
+.ccfr-data/
+.claude/
 frontend/node_modules/
 frontend/dist/
 frontend/.dev-server*.log
@@ -13,4 +16,4 @@ backend/src/ccfr/static/
 **/*.tsbuildinfo
 .git/
 .env
-
+*.log
