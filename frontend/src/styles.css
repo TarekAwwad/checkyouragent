@@ -4338,3 +4338,18 @@ html:has(.specimen-dialog[open]) {
   background: color-mix(in srgb, var(--success) 8%, var(--surface));
   color: color-mix(in srgb, var(--success) 55%, var(--text));
 }
+
+/* ship-kit:P09 — Usage drivers Explore page (shares the panel body with the mindmap dialog). */
+.usage-drivers-body { display: flex; flex-direction: column; gap: 12px; }
+.usage-drivers-body .segmented-control { align-self: flex-start; }
+.usage-drivers-body .uc-subtitle { margin: 0; color: var(--muted); font-size: 12px; }
+.usage-drivers-body .uc-body { display: flex; flex-direction: column; gap: 14px; }
+.usage-drivers-body .uc-row { border-left: 2px solid var(--border-2); padding-left: 10px; }
+.usage-drivers-body .uc-headline { margin: 0; font-size: 14px; color: var(--text); }
+.usage-drivers-body .uc-headline strong { font-variant-numeric: tabular-nums; }
+.usage-drivers-body .uc-guidance { margin: 3px 0 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.usage-drivers-body .uc-note { color: var(--muted); font-size: 13px; }
+.usage-drivers-body .uc-caveat {
+  margin: 6px 0 0; padding-top: 12px; border-top: 1px solid var(--border);
+  color: var(--faint); font-size: 11px; font-style: italic;
+}
