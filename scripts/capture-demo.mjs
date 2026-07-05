@@ -39,6 +39,14 @@ async function record() {
     viewport: VIEWPORT,
     recordVideo: { dir: RAW_DIR, size: VIEWPORT },
   });
+  // Hint suppression: pre-seed the "seen" flag for the first-run glossary
+  // coachmark (frontend/src/shell/useGlossaryHint.ts, key
+  // "ccfr-glossary-hint-seen") so it never renders. Left undismissed, it
+  // clips into the left edge of the recording — this runs before any app
+  // script so useGlossaryHint's initial read already sees it as seen.
+  await context.addInitScript(() => {
+    window.localStorage.setItem("ccfr-glossary-hint-seen", "1");
+  });
   const page = await context.newPage();
   const video = page.video();
 
