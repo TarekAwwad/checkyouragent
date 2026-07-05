@@ -1,37 +1,83 @@
 # Privacy and Data Handling
 
-Claude Analytics is intended to run locally against Claude Code `.claude/projects` exports. It does not need external services to index or inspect exports.
+Check Your Agent is intended to run locally against Claude Code
+`.claude/projects` exports. It does not need external services to index,
+inspect, or analyze exports.
 
 ## What Data May Be Present
 
-Claude Code exports and raw JSON can contain:
+Claude Code exports and the derived SQLite cache can contain:
 
 - Prompts and conversation text.
-- Local file paths and project names.
+- Assistant responses and reasoning text when present in the export.
+- Local file paths, project names, branch names, and working directories.
 - Tool inputs and outputs.
-- Code snippets and diffs.
-- Error messages, logs, and command output.
+- Shell commands and command output.
+- Code snippets, diffs, logs, and error messages.
 - Credentials or tokens accidentally pasted by users.
 
-Treat both raw exports and derived SQLite databases as private data.
+Treat raw exports, `.ccfr-data/`, SQLite files, screenshots, logs, and raw event
+inspector output as private data.
 
 ## Local Storage
 
-By default, local runs use:
+Default local paths resolve from the repository root:
 
 ```text
-CCFR_IMPORT_ROOT=../Data
-CCFR_DB_PATH=../.ccfr-data/ccfr.sqlite3
-CCFR_TEAM_BUNDLE_ROOT=../.ccfr-data/team-bundles
+CCFR_IMPORT_ROOT=<repo>/Data
+CCFR_DB_PATH=<repo>/.ccfr-data/ccfr.sqlite3
+CCFR_TEAM_BUNDLE_ROOT=<repo>/.ccfr-data/team-bundles
 ```
 
-The app reads raw exports from the import root and stores rebuildable index data in SQLite. Team bundle exports are written under the configured team bundle root. Deleting the SQLite file removes the cache, but it does not delete the original export or exported team bundles.
+Additional local files may be created under:
+
+```text
+.ccfr-data/settings.json
+.ccfr-data/contributions/
+.ccfr-data/team-bundles/
+TeamBundles/
+```
+
+The app reads raw exports from `CCFR_IMPORT_ROOT` and stores a rebuildable index
+in SQLite. The index includes compacted raw JSON and previews for local
+inspection, so it is not content-free.
+
+`settings.json` stores UI settings, historical-pricing mode, privacy mode,
+contributor identity, and team export preferences.
+
+Deleting the SQLite file removes the derived cache, but it does not delete the
+original Claude Code export, contribution JSON files, or exported team bundle
+JSON files. The current `Reset cache` endpoint drops SQLite tables, including
+imported team bundle records, but it does not delete team bundle JSON files on
+disk.
+
+## Team Bundles
+
+Team bundles are designed for sharing aggregate usage without conversation
+content.
+
+Structural bundles include pseudonymous member/project/session identifiers,
+date-only timing, token counts, bucketed models, counts, stop reasons, risk
+categories, bucketed subagents, and structural tool/result sequences.
+
+Team-level bundles additionally include the member name, editable project
+labels, real tool names, real subagent type names, and extension-only file type
+mix. They still omit prompts, assistant text, raw JSON, paths, file names,
+commands, and tool input/output.
+
+Even structural bundles can be distinctive because token counts, timing deltas,
+and tool sequences are fingerprints. Share them only through channels where
+that level of disclosure is acceptable.
 
 ## Network Behavior
 
-The backend is an unauthenticated local FastAPI service for the frontend. Keep it bound to `127.0.0.1` for normal use. Do not expose it to a LAN or the public internet unless you add separate authentication and access controls.
+The backend is an unauthenticated local FastAPI service for the frontend. Keep
+it bound to `127.0.0.1` for normal use. Do not expose it to a LAN or the public
+internet unless you add separate authentication and access controls.
 
-The project is intended to avoid telemetry and external API calls. If a future change adds any outbound network behavior, document it clearly and make the privacy impact explicit.
+The project is intended to avoid telemetry and external API calls. The
+unmounted contribution page contains a GitHub upload link, but the app does not
+upload contribution bundles itself.
 
 ## Do Not Commit
 
@@ -54,7 +100,11 @@ build/
 
 Before sharing issues, pull requests, logs, screenshots, or sample data:
 
-- Remove prompts, credentials, private file paths, project names, and code that is not yours to share.
+- Remove prompts, credentials, private file paths, project names, branch names,
+  shell commands, and code that is not yours to share.
 - Prefer minimal synthetic examples.
-- Redact raw JSON carefully; tool outputs and nested fields can contain sensitive values.
-- Avoid screenshots of the raw JSON inspector unless every visible value is safe to publish.
+- Redact raw JSON carefully; nested tool fields can contain sensitive values.
+- Avoid screenshots of the raw JSON inspector unless every visible value is
+  safe to publish.
+- Remember that privacy mode blurs UI text for display. It does not sanitize
+  exported screenshots automatically.

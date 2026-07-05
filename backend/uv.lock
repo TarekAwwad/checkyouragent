@@ -43,7 +43,7 @@ wheels = [
 ]
 
 [[package]]
-name = "claude-code-flight-recorder"
+name = "check-your-agent"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

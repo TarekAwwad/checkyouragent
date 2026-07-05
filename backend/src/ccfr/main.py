@@ -22,7 +22,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Claude Analytics", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Check Your Agent", version="0.1.0", lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins(),

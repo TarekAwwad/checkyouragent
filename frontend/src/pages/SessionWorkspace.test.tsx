@@ -44,7 +44,7 @@ function baseSession(id: number): SessionCard {
   return {
     id,
     project_id: 1,
-    project_name: "Claude Analytics",
+    project_name: "Example Project",
     session_id: "session-1",
     title: "Balanced layout pass",
     first_ts: "2026-06-03T10:00:00Z",
