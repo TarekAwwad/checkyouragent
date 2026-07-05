@@ -30,7 +30,8 @@ and what to change.
   detection; turn distribution; and session outliers. Optional date-aware
   historical pricing.
 - **Explore** — subgroup discovery, Context Economics (avoidable vs necessary
-  spend), and a usage mindmap with JSON/PNG export.
+  spend), a usage mindmap with JSON/PNG export, and a usage-drivers view of
+  what's behind your token footprint.
 - **Team bundles** — export content-free aggregates at structural or team
   privacy levels, then import them for team Overview and Cost views.
 - **Privacy mode** blurs sensitive UI text for safe screenshots.
@@ -97,11 +98,9 @@ what to change.
   disk are not deleted by that endpoint.
 - Team aggregate views do not include per-session drilldowns because team
   bundles intentionally omit raw session detail.
-- Sequence mining and anomaly detection are present only as planned technique
-  entries in code; they are not exposed as working Explore views.
-- A contribution export page and contribution APIs exist in the codebase, but
-  the page is not mounted in the main app navigation and its public dataset URL
-  is still marked with a TODO in code.
+- Sequence mining and anomaly detection are not available yet.
+- Backend contribution APIs exist, but no contribution UI is exposed in the
+  app.
 - The backend is unauthenticated and intended for loopback-only use.
 
 ## Input Data
