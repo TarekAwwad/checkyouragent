@@ -84,6 +84,74 @@ async function main() {
   await page.locator("tbody tr").first().click();
   await shot("session.png", ".session-workspace", 600);
 
+  // --- README screenshots (docs/screenshots/*.png) — Task 5b ---------------
+  // Same synthetic dataset, 1x scale (README renders these small; 1x keeps
+  // the repo size flat). Filename-matched so README.md needs no edit.
+  const readmeCtx = await browser.newContext({ viewport: VIEWPORT, deviceScaleFactor: 1 });
+  const rp = await readmeCtx.newPage();
+  await rp.goto(DEMO_URL, { waitUntil: "domcontentloaded" });
+
+  const README_DIR = join(REPO_ROOT, "docs", "screenshots");
+  mkdirSync(README_DIR, { recursive: true });
+  const rshotPage = async (file, pre = 400) => {
+    await settle(pre);
+    await rp.screenshot({ path: join(README_DIR, file) });
+    console.log(`readme shot: ${file}`);
+  };
+  const rshotEl = async (file, selector, pre = 400) => {
+    const el = rp.locator(selector).first();
+    await el.waitFor(WAIT);
+    await el.scrollIntoViewIfNeeded();
+    await settle(pre);
+    await el.screenshot({ path: join(README_DIR, file) });
+    console.log(`readme shot: ${file}`);
+  };
+
+  // import.png — Import screen with populated cache totals.
+  // exact: true — the page also has an "Import all new" action button whose
+  // accessible name would otherwise substring-match the sidebar nav button.
+  await rp.getByRole("button", { name: "Import", exact: true }).click();
+  await rp.getByPlaceholder("Path to the Claude Code export root").waitFor(WAIT);
+  await rshotPage("import.png", 600);
+
+  // triage-board.png — Overview with demo sessions.
+  await rp.getByRole("button", { name: "Overview" }).click();
+  await rp.getByPlaceholder("Search sessions").waitFor(WAIT);
+  await rp.locator("tbody tr").first().waitFor(WAIT);
+  await rshotPage("triage-board.png", 600);
+
+  // session-workspace.png — first session opened.
+  await rp.locator("tbody tr").first().click();
+  await rshotEl("session-workspace.png", ".session-workspace", 800);
+
+  // cost-analytics-1.png — Cost dashboard.
+  await rp.getByRole("button", { name: "Cost" }).click();
+  await rshotEl("cost-analytics-1.png", ".cost-bento", 600);
+
+  // cost-analytics-2.png — turn distribution / outlier tile.
+  const rTurnTile = rp
+    .locator("section.tile")
+    .filter({ has: rp.getByRole("heading", { name: "Turn distribution" }) })
+    .first();
+  await rTurnTile.waitFor(WAIT);
+  await rTurnTile.scrollIntoViewIfNeeded();
+  await settle(400);
+  await rTurnTile.screenshot({ path: join(README_DIR, "cost-analytics-2.png") });
+  console.log("readme shot: cost-analytics-2.png");
+
+  // subgroup.png — Subgroups on its DEFAULT tab (README caption says
+  // "session conditions ranked by lift over baseline" — no tab click).
+  await rp.getByRole("button", { name: "Explore" }).click();
+  await rp.getByRole("button", { name: "Subgroups" }).click();
+  await rshotEl("subgroup.png", ".driver-board", 500);
+
+  // context-economics.png — avoidable vs necessary spend.
+  await rp.getByRole("button", { name: "Context economics" }).click();
+  await rp.locator(".tax-meter-hero").first().waitFor(WAIT);
+  await rshotEl("context-economics.png", ".discover-page-inner", 500);
+
+  await readmeCtx.close();
+
   await context.close();
   await browser.close();
   console.log(`Saved 6 stills to ${SHOTS_DIR}`);
