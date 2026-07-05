@@ -75,6 +75,7 @@ from ccfr.api.schemas import (
 )
 from ccfr.config import (
     database_path,
+    demo_dir,
     import_root,
     is_docker,
     resolve_within_import_root,
@@ -372,6 +373,30 @@ def create_import(payload: ImportRequest, conn: Connection = Depends(get_db)) ->
             summary = import_project(conn, source, payload.project, progress_callback=progress_callback)
         else:
             summary = import_all_new(conn, source, progress_callback=progress_callback)
+    except (FileNotFoundError, NotADirectoryError) as exc:
+        import_progress_store.clear()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception:
+        import_progress_store.clear()
+        raise
+    import_progress_store.clear()
+    return ImportSummaryResponse(**summary.__dict__)
+
+
+@router.post("/imports/demo", response_model=ImportSummaryResponse)
+def create_demo_import(conn: Connection = Depends(get_db)) -> ImportSummaryResponse:
+    # The demo dataset ships at a fixed path outside the import root, so it is
+    # imported directly rather than through resolve_within_import_root().
+    source = demo_dir()
+    if not source.is_dir():
+        raise HTTPException(
+            status_code=400,
+            detail=(f"Demo dataset not found at {source}. "
+                    "Generate it with `python demo/generate_demo_data.py`."),
+        )
+    progress_callback = _progress_callback(conn, source, None)
+    try:
+        summary = import_all_new(conn, source, progress_callback=progress_callback)
     except (FileNotFoundError, NotADirectoryError) as exc:
         import_progress_store.clear()
         raise HTTPException(status_code=400, detail=str(exc)) from exc

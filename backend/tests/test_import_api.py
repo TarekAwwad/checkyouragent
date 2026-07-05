@@ -261,3 +261,28 @@ def test_progress_callback_throttles_db_stat_queries(monkeypatch):
 
     cb(summary, "completed")              # terminal always publishes
     assert calls["stats"] == 4
+
+
+def test_import_demo_endpoint_imports_bundled_projects(client, monkeypatch, tmp_path_factory) -> None:
+    c, _root = client
+    demo = tmp_path_factory.mktemp("demo_export")
+    _write_project(demo, "demo-web-shop", "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+    _write_project(demo, "demo-mobile-app", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb")
+    monkeypatch.setattr(routes, "demo_dir", lambda: demo)
+
+    resp = c.post("/api/imports/demo")
+    assert resp.status_code == 200
+    assert resp.json()["project_count"] == 2
+
+    names = {p["export_name"] for p in c.get("/api/projects").json()}
+    assert names == {"demo-web-shop", "demo-mobile-app"}
+
+
+def test_import_demo_endpoint_404s_when_dataset_missing(client, monkeypatch, tmp_path_factory) -> None:
+    c, _root = client
+    missing = tmp_path_factory.mktemp("demo_root") / "not-generated"
+    monkeypatch.setattr(routes, "demo_dir", lambda: missing)
+
+    resp = c.post("/api/imports/demo")
+    assert resp.status_code == 400
+    assert "demo" in resp.json()["detail"].lower()
