@@ -68,6 +68,9 @@ export default function TaxMeterHero({
   const supportedSum = supported.reduce((acc, a) => acc + a.savings_usd, 0);
   const segmentScale = supportedSum > 0 ? meta.avoidable_usd / supportedSum : 0;
   const avoidableTokens = supported.reduce((acc, a) => acc + a.savings_tokens, 0);
+  // Honest usage share: avoidable footprint over the user's own total tokens —
+  // never a % of an unknown plan limit.
+  const usagePct = meta.total_tokens > 0 ? Math.round(meta.avoidable_token_share * 100) : 0;
 
   return (
     <section className="tax-meter-hero">
@@ -80,6 +83,9 @@ export default function TaxMeterHero({
                 {formatUsd(meta.avoidable_usd)}{" "}
                 <em>({pct}%)</em>
               </strong>
+              <small className="tax-meter-usage">
+                ≈ {formatTokens(meta.avoidable_tokens)} · {usagePct}% of your usage
+              </small>
             </div>
             <div className="tax-meter-stat">
               <span>Total spend</span>
@@ -122,7 +128,8 @@ export default function TaxMeterHero({
           <div className="tax-meter-stats">
             <div className="tax-meter-stat is-avoidable">
               <span>Avoidable context</span>
-              <strong>{formatTokens(avoidableTokens)}</strong>
+              <strong>{formatTokens(meta.avoidable_tokens)}</strong>
+              <small className="tax-meter-usage">{usagePct}% of your usage</small>
             </div>
           </div>
           {avoidableTokens > 0 && (

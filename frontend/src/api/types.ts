@@ -499,6 +499,9 @@ export interface ContextEconomicsMeta {
   necessary_usd: number;
   avoidable_usd: number;
   unattributed_tokens: number;
+  total_tokens: number;
+  avoidable_tokens: number;
+  avoidable_token_share: number;
   cost_available: boolean;
   sessions_analyzed: number;
   sessions_skipped: number;
