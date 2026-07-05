@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FolderInput, RotateCcw, Search, Trash2 } from "lucide-react";
-import { createImport, discoverSourceProjects, getCacheStats, getImportProgress, getRuntimeConfig, resetImports } from "../api/client";
+import { createImport, discoverSourceProjects, getCacheStats, getImportProgress, getRuntimeConfig, loadDemoData, resetImports } from "../api/client";
 import type { DiscoveredProject } from "../api/types";
 import { useImportRoot } from "./useImportRoot";
 import LoadingBar from "../components/LoadingBar";
@@ -44,9 +44,13 @@ function ImportPage() {
     mutationFn: () => resetImports(),
     onSuccess: invalidateAll,
   });
+  const loadDemo = useMutation({
+    mutationFn: () => loadDemoData(),
+    onSuccess: invalidateAll,
+  });
 
   const importPending = importOne.isPending || importAll.isPending;
-  const mutationPending = importPending || reset.isPending;
+  const mutationPending = importPending || reset.isPending || loadDemo.isPending;
   const progress = useQuery({
     queryKey: ["import-progress"],
     queryFn: getImportProgress,
@@ -59,6 +63,8 @@ function ImportPage() {
   const importedCount = discovered.filter((p) => p.imported).length;
   const liveTotals = importPending && progress.data?.active ? progress.data.totals : null;
   const metricTotals = liveTotals ?? stats.data;
+  const cacheEmpty = (stats.data?.project_count ?? 0) === 0;
+  const showDemoCard = projects.isSuccess && discovered.length === 0 && cacheEmpty;
 
   return (
     <main className="page import-page">
@@ -145,6 +151,28 @@ function ImportPage() {
         <Metric label="Large outputs" value={metricTotals?.persisted_output_count ?? 0} />
       </section>
 
+      {showDemoCard && (
+        <section className="card demo-card">
+          <div className="card-head">
+            <h2>No data yet</h2>
+          </div>
+          <div className="card-pad demo-cta">
+            <p className="muted">
+              No projects were found in the source and the cache is empty. Load a synthetic
+              sample to explore every screen with realistic (but entirely fake) data.
+            </p>
+            <button
+              className="primary-action"
+              onClick={() => loadDemo.mutate()}
+              disabled={mutationPending}
+            >
+              {loadDemo.isPending ? <LoadingBar size="inline" label="Loading demo" /> : <FolderInput size={15} />}
+              <span>{loadDemo.isPending ? "Loading demo…" : "Load demo data"}</span>
+            </button>
+          </div>
+        </section>
+      )}
+
       <section className="card history-card">
         <div className="card-head">
           <h2>Projects in source</h2>
@@ -189,8 +217,8 @@ function ImportPage() {
             </div>
           );
         })}
-        {(importOne.error || importAll.error || reset.error) && (
-          <p className="error-text card-pad">{((importOne.error || importAll.error || reset.error) as Error).message}</p>
+        {(importOne.error || importAll.error || reset.error || loadDemo.error) && (
+          <p className="error-text card-pad">{((importOne.error || importAll.error || reset.error || loadDemo.error) as Error).message}</p>
         )}
       </section>
     </main>

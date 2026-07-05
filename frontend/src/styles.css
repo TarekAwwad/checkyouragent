@@ -529,6 +529,10 @@ h3 {
 .import-row .row-meta b { color: var(--text); }
 .import-row .row-time { color: var(--faint); }
 
+.demo-card { margin-bottom: 18px; }
+.demo-cta { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+.demo-cta .muted { margin: 0; max-width: 520px; line-height: 1.45; }
+
 
 .searchbox, .selectbox { display: flex; align-items: center; gap: 8px; min-height: 36px;
   padding: 0 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); color: var(--muted); }
