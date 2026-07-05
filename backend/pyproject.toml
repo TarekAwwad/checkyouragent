@@ -10,6 +10,9 @@ dependencies = [
     "pydantic>=2.8.0",
 ]
 
+[project.scripts]
+check-your-agent = "ccfr.cli:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.2.0",
@@ -23,6 +26,11 @@ build-backend = "hatchling.build"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.hatch.build]
+# webui/ is git-ignored (built, not source); force it into the sdist/wheel so the
+# packaged app can serve the SPA. Without this, hatch's VCS file discovery drops it.
+artifacts = ["src/ccfr/webui/**"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ccfr"]

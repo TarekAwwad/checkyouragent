@@ -51,6 +51,17 @@ def test_demo_dir_honors_env_override(monkeypatch, tmp_path):
     assert config.demo_dir() == tmp_path / "custom-demo"
 
 
+def test_webui_dir_defaults_to_package_webui(monkeypatch):
+    monkeypatch.delenv("CCFR_WEBUI_DIR", raising=False)
+    expected = Path(config.__file__).resolve().parent / "webui"
+    assert config.webui_dir() == expected
+
+
+def test_webui_dir_honors_env_override(monkeypatch, tmp_path):
+    monkeypatch.setenv("CCFR_WEBUI_DIR", str(tmp_path / "ui"))
+    assert config.webui_dir() == tmp_path / "ui"
+
+
 def test_app_version_reads_from_package_metadata(monkeypatch):
     monkeypatch.setattr(config, "_pkg_version", lambda _name: "9.9.9-test")
     assert config.app_version() == "9.9.9-test"
