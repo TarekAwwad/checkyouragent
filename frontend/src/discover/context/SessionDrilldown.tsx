@@ -53,7 +53,9 @@ export default function SessionDrilldown({
           <p className="drilldown-inspecting">
             <span className="drilldown-inspecting-label" title={finding.label}><Blurred>{finding.label}</Blurred></span>
             <strong>
-              saves {costAvailable ? formatUsd(finding.savings_usd) : formatTokens(finding.savings_tokens)}
+              saves {costAvailable
+                ? `${formatUsd(finding.savings_usd)} · ${formatTokens(finding.savings_tokens)}`
+                : formatTokens(finding.savings_tokens)}
             </strong>
           </p>
         )}
