@@ -16,6 +16,11 @@ def import_root() -> Path:
     return Path(os.getenv("CCFR_IMPORT_ROOT", str(repository_root() / "Data")))
 
 
+def demo_dir() -> Path:
+    """Bundled synthetic demo export (Load-demo button and `serve --demo`)."""
+    return Path(os.getenv("CCFR_DEMO_DIR", str(repository_root() / "demo" / "claude-export")))
+
+
 def team_bundle_root() -> Path:
     return Path(os.getenv("CCFR_TEAM_BUNDLE_ROOT", str(data_dir() / "team-bundles")))
 
