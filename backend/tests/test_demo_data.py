@@ -59,3 +59,41 @@ def test_generation_is_deterministic(tmp_path):
         }
 
     assert snapshot(a) == snapshot(b)
+
+
+def _priced_conn(tmp_path, monkeypatch):
+    monkeypatch.setenv("CCFR_PRICING_PATH", str(REPO / "pricing.csv"))
+    monkeypatch.setenv("CCFR_PRICING_DIR", str(tmp_path / "no-snapshots"))
+    conn, _summary = _import(_generate(tmp_path))
+    return conn
+
+
+def test_all_four_context_archetypes_meet_support(tmp_path, monkeypatch):
+    from ccfr.analysis.context_economics import context_economics_analytics
+
+    conn = _priced_conn(tmp_path, monkeypatch)
+    payload = context_economics_analytics(conn, min_support=3)
+
+    assert payload["meta"]["cost_available"] is True
+    assert payload["meta"]["avoidable_usd"] > 0
+    by_key = {a["key"]: a for a in payload["archetypes"]}
+    for key in ("rereads", "oversized", "late_compaction", "stale_continuation"):
+        assert by_key[key]["meets_support"] is True, key
+        assert by_key[key]["findings_count"] >= 3, key
+
+
+def test_discovery_finds_a_significant_subgroup(tmp_path, monkeypatch):
+    from ccfr.analysis.discovery import discovery_analytics
+
+    conn = _priced_conn(tmp_path, monkeypatch)
+    payload = discovery_analytics(conn, min_support=5)
+
+    assert payload["meta"]["cost_available"] is True
+    assert any(section["results"] for section in payload["sections"].values())
+
+
+def test_triage_signals_present(tmp_path, monkeypatch):
+    conn = _priced_conn(tmp_path, monkeypatch)
+    assert conn.execute("SELECT MAX(loop_count) FROM session_stats").fetchone()[0] >= 1
+    assert conn.execute("SELECT MAX(error_count) FROM session_stats").fetchone()[0] >= 1
+    assert conn.execute("SELECT COUNT(*) FROM subagents").fetchone()[0] >= 24
