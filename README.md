@@ -52,6 +52,10 @@ projects are named `demo-*`; **Reset cache** removes them like any other import.
 
 ## Screenshots
 
+[![Check Your Agent — demo screencast](docs/media/demo.gif)](docs/media/demo.gif)
+
+*Loading the built-in demo data, scanning the Overview triage board, and opening Context Economics. [Full-resolution recording](docs/media/demo.webm).*
+
 These screenshots are static repository assets. They are examples of implemented
 screens, not live demos.
 
