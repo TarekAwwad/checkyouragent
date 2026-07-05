@@ -497,6 +497,9 @@ class ContextEconomicsMeta(BaseModel):
     necessary_usd: float = 0
     avoidable_usd: float = 0
     unattributed_tokens: int = 0
+    total_tokens: int = 0
+    avoidable_tokens: int = 0
+    avoidable_token_share: float = 0
     cost_available: bool = False
     sessions_analyzed: int = 0
     sessions_skipped: int = 0

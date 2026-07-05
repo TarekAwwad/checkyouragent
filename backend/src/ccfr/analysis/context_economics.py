@@ -273,6 +273,18 @@ def _carry_usd(thread: ThreadRec, tokens: int, entry_call: int, end_call: int) -
     return tokens * sum(thread.read_prices[entry_call + 1: end_call + 1])
 
 
+def _has_price_signal(thread: ThreadRec) -> bool:
+    """True when at least one call in this thread has a price row.
+
+    The MIN_FINDING_USD noise floor is only meaningful when a cost signal
+    exists; without prices every finding accrues $0 and the floor would
+    silently discard the token-only findings that unpriced (subscription)
+    corpora rely on. Each detector's structural thresholds still gate
+    token-level noise on their own.
+    """
+    return any(thread.write_prices) or any(thread.read_prices)
+
+
 _SYNTHETIC_MODELS = {"<synthetic>"}
 
 
@@ -494,7 +506,7 @@ def detect_rereads(threads: list[ThreadRec], claims: Claims) -> list[FindingRec]
             duplicates = [thread.contributors[i] for i in duplicate_indexes]
             savings_tokens = sum(d.est_tokens for d in duplicates)
             savings_usd = sum(d.accrued_usd for d in duplicates)
-            if savings_usd < MIN_FINDING_USD:
+            if _has_price_signal(thread) and savings_usd < MIN_FINDING_USD:
                 continue
             for i in duplicate_indexes:
                 claims.claim_contributor(thread_index, i, thread.contributors[i],
@@ -560,7 +572,7 @@ def detect_oversized(
                 _carry_usd(thread, saved_tokens, contributor.entry_call, contributor.end_call)
                 + saved_tokens * thread.write_prices[contributor.entry_call]
             )
-            if savings_usd < MIN_FINDING_USD:
+            if _has_price_signal(thread) and savings_usd < MIN_FINDING_USD:
                 continue
             claims.claim_contributor(thread_index, contributor_index, contributor, saved_tokens)
             findings.append(FindingRec(
@@ -639,7 +651,7 @@ def detect_late_compaction(
                     # turn (streamGeometry counterfactual), so report it once.
                     savings_tokens = max(savings_tokens, int(residual))
                     covered.append(k)
-            if savings_usd < MIN_FINDING_USD:
+            if _has_price_signal(thread) and savings_usd < MIN_FINDING_USD:
                 continue
             for k in covered:
                 claims.calls[thread_index].add(k)
@@ -742,7 +754,7 @@ def detect_stale_continuation(
                 if residual > 0:
                     savings_usd += residual * thread.read_prices[k]
                     savings_tokens = max(savings_tokens, int(residual))
-            if savings_usd < MIN_FINDING_USD:
+            if _has_price_signal(thread) and savings_usd < MIN_FINDING_USD:
                 continue
             claims.calls[thread_index].update(tail_calls)
             gap_minutes = int(_gap_seconds(thread.calls[i - 1].ts, thread.calls[i].ts) // 60)
@@ -816,6 +828,33 @@ def _thumbnail(thread: ThreadRec, finding: FindingRec) -> dict[str, Any]:
             "highlight_tokens": highlight_tokens if alive else 0,
         })
     return {"session_id": thread.session_db_id, "series": series}
+
+
+def _corpus_total_tokens(conn: sqlite3.Connection, project_id: int | None) -> int:
+    """Total billed tokens across the scoped corpus.
+
+    Sums the five priced token buckets (base input, 5m/1h cache writes, cache
+    read, output), matching the Cost page's ``total_tokens`` definition. This is
+    price-independent on purpose: the token currency must exist even when no
+    price table is loaded.
+    """
+    where, params = "", []
+    if project_id is not None:
+        where = "WHERE s.project_id = ?"
+        params.append(project_id)
+    row = conn.execute(
+        f"""
+        SELECT COALESCE(SUM(
+            m.base_input_tokens + m.cache_5m_tokens + m.cache_1h_tokens
+            + m.cache_read_tokens + m.output_tokens), 0) AS total
+        FROM messages m
+        JOIN events e ON e.id = m.event_id
+        JOIN sessions s ON s.id = e.session_id
+        {where}
+        """,
+        params,
+    ).fetchone()
+    return int(row["total"] or 0)
 
 
 def _corpus_total_usd(conn: sqlite3.Connection, project_id: int | None,
@@ -1021,6 +1060,15 @@ def context_economics_analytics(
             }
             for week in weeks
         ]
+    total_tokens = _corpus_total_tokens(conn, project_id)
+    # avoidable_tokens is the token analogue of the avoidable_usd headline: the
+    # supported archetypes' one-time footprint savings, clamped so it can never
+    # exceed the corpus's own throughput (mirrors the avoidable_usd <= total_usd
+    # clamp above).
+    avoidable_tokens = min(
+        sum(a["savings_tokens"] for a in archetypes), total_tokens
+    )
+    avoidable_token_share = (avoidable_tokens / total_tokens) if total_tokens else 0.0
     return {
         "meta": {
             "project_id": project_id,
@@ -1029,6 +1077,9 @@ def context_economics_analytics(
             "necessary_usd": round(max(0.0, total_usd - avoidable), 6),
             "avoidable_usd": round(avoidable, 6),
             "unattributed_tokens": unattributed,
+            "total_tokens": total_tokens,
+            "avoidable_tokens": avoidable_tokens,
+            "avoidable_token_share": round(avoidable_token_share, 6),
             "cost_available": cost_available,
             "sessions_analyzed": len({t.session_db_id for t in threads}),
             "sessions_skipped": skipped,
