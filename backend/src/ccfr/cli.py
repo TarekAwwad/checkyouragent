@@ -8,6 +8,8 @@ import webbrowser
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+from ccfr.cli_export import add_export_bundle_parser
+
 
 def default_import_root(env: Mapping[str, str] | None = None, home: Path | None = None) -> str:
     """Resolve the default import root for `serve`.
@@ -46,11 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Use the bundled synthetic demo dataset as the import root.")
     serve.set_defaults(func=_serve)
 
-    # Extension point: P10 adds ONE line here -- `add_export_bundle_parser(subparsers)`
-    # (plus its import at the top of this module). Any handler it registers must have
-    # signature (args) -> int and call `set_defaults(func=...)`; main() dispatches via
-    # args.func(args). Known-command detection (below) is derived from the parser, so
-    # no other edit is needed for bare-invocation defaulting.
+    add_export_bundle_parser(subparsers)
     return parser
 
 
