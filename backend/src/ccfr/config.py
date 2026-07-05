@@ -76,6 +76,11 @@ def pricing_dir() -> Path:
     return Path(os.getenv("CCFR_PRICING_DIR", str(repository_root() / "pricing")))
 
 
+def webui_dir() -> Path:
+    """Directory of built SPA assets bundled into the package (see scripts/build_webui.py)."""
+    return Path(os.getenv("CCFR_WEBUI_DIR", str(Path(__file__).resolve().parent / "webui")))
+
+
 def allowed_origins() -> list[str]:
     """CORS origins permitted to call the API.
 
