@@ -59,10 +59,10 @@ describe("DiscoverPage", () => {
     expect(await screen.findByRole("heading", { name: "What drives high-cost sessions?" })).toBeInTheDocument();
   });
 
-  it("renders a coming-soon placeholder for a soon technique", () => {
+  it("falls back to the default technique for an unregistered key", async () => {
     renderPage("sequence");
-    expect(screen.getByText("Sequence mining")).toBeInTheDocument();
-    expect(screen.getByText("This discovery technique isn't available yet.")).toBeInTheDocument();
-    expect(getDiscoveryAnalytics).not.toHaveBeenCalled();
+    expect(
+      await screen.findByRole("heading", { name: "What drives high-cost sessions?" }),
+    ).toBeInTheDocument();
   });
 });
