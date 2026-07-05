@@ -1,0 +1,6 @@
+{
+  "agentType": "Explore",
+  "description": "Synthetic demo subagent.",
+  "name": "agent-02",
+  "toolUseId": "demo-agent-00000005-0000-4000-8000-00000000002b-02"
+}

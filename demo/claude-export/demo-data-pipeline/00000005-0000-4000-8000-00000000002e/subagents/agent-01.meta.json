@@ -1,0 +1,6 @@
+{
+  "agentType": "general-purpose",
+  "description": "Synthetic demo subagent.",
+  "name": "agent-01",
+  "toolUseId": "demo-agent-00000005-0000-4000-8000-00000000002e-01"
+}
