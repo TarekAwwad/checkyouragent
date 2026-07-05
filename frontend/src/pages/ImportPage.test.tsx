@@ -160,4 +160,36 @@ describe("ImportPage", () => {
     expect(band).toHaveTextContent("Sessions");
     expect(band).toHaveTextContent("13");
   });
+
+  it("offers demo data when the source and cache are both empty", async () => {
+    vi.spyOn(client, "discoverSourceProjects").mockResolvedValue([]);
+    const loadDemo = vi.spyOn(client, "loadDemoData").mockResolvedValue({
+      import_id: 1, source_path: "/demo", project_count: 3, session_count: 46,
+      event_count: 900, subagent_count: 26, memory_count: 6, persisted_output_count: 4,
+      file_count: 120, error_count: 0, errors: [],
+    });
+
+    renderPage();
+
+    const button = await screen.findByRole("button", { name: /Load demo data/i });
+    fireEvent.click(button);
+
+    await waitFor(() => expect(loadDemo).toHaveBeenCalledTimes(1));
+  });
+
+  it("hides the demo card once projects exist in the source", async () => {
+    vi.spyOn(client, "discoverSourceProjects").mockResolvedValue([
+      { name: "d--Alpha", imported: false, session_count: 0, last_imported_at: null },
+    ]);
+    vi.spyOn(client, "loadDemoData").mockResolvedValue({
+      import_id: 1, source_path: "/demo", project_count: 3, session_count: 46,
+      event_count: 900, subagent_count: 26, memory_count: 6, persisted_output_count: 4,
+      file_count: 120, error_count: 0, errors: [],
+    });
+
+    renderPage();
+
+    expect(await screen.findByText("d--Alpha")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Load demo data/i })).not.toBeInTheDocument();
+  });
 });

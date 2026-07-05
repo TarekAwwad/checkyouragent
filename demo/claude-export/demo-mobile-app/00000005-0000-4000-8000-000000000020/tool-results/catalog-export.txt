@@ -1,0 +1,2 @@
+[demo] Full synthetic tool output -- content omitted.
+This stands in for a large captured result.

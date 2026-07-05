@@ -82,6 +82,10 @@ export function createImport(sourcePath?: string | null, project?: string | null
   });
 }
 
+export function loadDemoData() {
+  return request<ImportSummary>("/imports/demo", { method: "POST" });
+}
+
 export function discoverSourceProjects(sourcePath?: string | null) {
   const query = sourcePath ? `?source_path=${encodeURIComponent(sourcePath)}` : "";
   return request<DiscoveredProject[]>(`/source/projects${query}`);

@@ -39,3 +39,13 @@ def test_resolve_within_team_bundle_root_rejects_escape(tmp_path: Path):
         assert "team bundle root" in str(exc)
     else:
         raise AssertionError("expected path escape to fail")
+
+
+def test_demo_dir_defaults_to_repo_demo_export(monkeypatch):
+    monkeypatch.delenv("CCFR_DEMO_DIR", raising=False)
+    assert config.demo_dir() == config.repository_root() / "demo" / "claude-export"
+
+
+def test_demo_dir_honors_env_override(monkeypatch, tmp_path):
+    monkeypatch.setenv("CCFR_DEMO_DIR", str(tmp_path / "custom-demo"))
+    assert config.demo_dir() == tmp_path / "custom-demo"
