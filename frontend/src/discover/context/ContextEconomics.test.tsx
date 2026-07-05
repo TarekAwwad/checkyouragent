@@ -10,6 +10,7 @@ const corpusPayload: ContextEconomicsResponse = {
     project_id: null, min_support: 3,
     total_usd: 660, necessary_usd: 457, avoidable_usd: 203,
     unattributed_tokens: 1200, cost_available: true,
+    total_tokens: 8_000_000, avoidable_tokens: 1_000_000, avoidable_token_share: 0.125,
     sessions_analyzed: 64, sessions_skipped: 2,
     trend: [
       { week_start: "2026-05-25", total_usd: 320, avoidable_usd: 110 },

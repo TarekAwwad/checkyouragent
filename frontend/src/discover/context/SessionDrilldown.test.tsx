@@ -60,5 +60,7 @@ describe("SessionDrilldown", () => {
     expect(screen.getByText(/if fixed/i)).toBeInTheDocument();
     // inspected-finding ribbon shows the claimed savings
     expect(screen.getByText(/saves \$0\.04/i)).toBeInTheDocument();
+    // ...paired with the token equivalent so Max users get a real signal
+    expect(screen.getByText(/47k tok/)).toBeInTheDocument();
   });
 });

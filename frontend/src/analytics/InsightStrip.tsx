@@ -3,6 +3,7 @@ import {
   chartModels,
   displayModelName,
   formatSignedUsd,
+  formatTokens,
   formatUsd,
   largestSpike,
   topModelSpendSharePct,
@@ -39,7 +40,7 @@ export default function InsightStrip({ payload, selectedSpikeBucket = null, onSe
           {!payload.meta.available
             ? "price table missing"
             : cache.cache_read_tokens > 0
-              ? "vs uncached input"
+              ? `${formatTokens(cache.cache_read_tokens)} reused vs uncached input`
               : "no cache reuse"}
         </small>
       </div>

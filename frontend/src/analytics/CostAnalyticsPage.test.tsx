@@ -180,6 +180,8 @@ describe("CostAnalyticsPage", () => {
     expect(await screen.findAllByText("alpha")).not.toHaveLength(0);
     expect(await screen.findAllByText("Session One")).not.toHaveLength(0);
     expect(await screen.findAllByText("Cache saved")).not.toHaveLength(0);
+    // the cache-savings tile now carries a token equivalent for Max users
+    expect(await screen.findByText(/1M reused vs uncached input/)).toBeInTheDocument();
     expect(await screen.findByText("Session insights")).toBeInTheDocument();
     expect(await screen.findAllByText("Turn distribution")).not.toHaveLength(0);
     expect(screen.queryByRole("button", { name: "Review" })).not.toBeInTheDocument();
