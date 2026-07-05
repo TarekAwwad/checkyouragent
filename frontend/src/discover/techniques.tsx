@@ -3,6 +3,7 @@ import type { Project } from "../api/types";
 import SubgroupDiscovery from "./SubgroupDiscovery";
 import ContextEconomics from "./context/ContextEconomics";
 import UsageMindmap from "./mindmap/UsageMindmap";
+import UsageDrivers from "./drivers/UsageDrivers";
 
 export interface TechniqueProps {
   projects: Project[];
@@ -24,6 +25,7 @@ export const TECHNIQUES: Technique[] = [
   { key: "subgroup", label: "Subgroups", status: "ready", component: SubgroupDiscovery },
   { key: "context", label: "Context economics", status: "ready", component: ContextEconomics },
   { key: "mindmap", label: "Usage Mindmap", status: "ready", component: UsageMindmap },
+  { key: "drivers", label: "Usage drivers", status: "ready", component: UsageDrivers },
 ];
 
 export const DEFAULT_TECHNIQUE = "subgroup";
