@@ -297,7 +297,7 @@ export default function TeamBundleExport() {
           {manifest ? (
             <section className="card team-flow-card team-ledger-card">
               <PrivacyLedger
-                title="What stays vs. what goes into the team bundle"
+                title="What stays vs. what travels"
                 caveat={manifest.fingerprint_caveat}
                 excluded={manifest.excluded}
                 included={manifest.included_fields}

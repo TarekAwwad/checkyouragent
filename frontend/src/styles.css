@@ -2925,15 +2925,19 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
   display: flex;
   justify-content: space-between;
   gap: 18px;
-  align-items: flex-start;
-  padding: 14px 16px;
+  align-items: center;
+  padding: 13px 16px;
   border-bottom: 1px solid var(--border);
 }
 
 .privacy-ledger-head h2 {
   margin: 0;
-  color: var(--text-strong);
-  font-size: 15.5px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  white-space: nowrap;
+  color: var(--muted);
 }
 
 .privacy-note {
@@ -3386,6 +3390,12 @@ html:has(.specimen-dialog[open]) {
 .team-flow-metrics .contribute-metric strong.team-metric-text {
   font-family: inherit;
   letter-spacing: 0;
+}
+
+.team-flow-metrics .contribute-metric span {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
 }
 
 .team-flow-body {
@@ -3896,6 +3906,7 @@ html:has(.specimen-dialog[open]) {
 
   .privacy-ledger-head {
     flex-direction: column;
+    align-items: flex-start;
     gap: 10px;
   }
 
