@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from ccfr import config
 
 
@@ -60,6 +62,65 @@ def test_webui_dir_defaults_to_package_webui(monkeypatch):
 def test_webui_dir_honors_env_override(monkeypatch, tmp_path):
     monkeypatch.setenv("CCFR_WEBUI_DIR", str(tmp_path / "ui"))
     assert config.webui_dir() == tmp_path / "ui"
+
+
+def _installed_mode(monkeypatch, tmp_path: Path) -> None:
+    """Simulate running from an installed wheel: repository_root() resolves to a
+    directory that is not a source checkout (no backend/pyproject.toml)."""
+    monkeypatch.setattr(config, "repository_root", lambda: tmp_path / "not-a-checkout")
+
+
+def _packaged_assets() -> Path:
+    return Path(config.__file__).resolve().parent / "_assets"
+
+
+def test_pricing_path_defaults_to_repo_csv_in_checkout(monkeypatch):
+    monkeypatch.delenv("CCFR_PRICING_PATH", raising=False)
+    assert config.pricing_path() == config.repository_root() / "pricing.csv"
+
+
+def test_pricing_path_falls_back_to_packaged_asset_when_installed(monkeypatch, tmp_path):
+    monkeypatch.delenv("CCFR_PRICING_PATH", raising=False)
+    _installed_mode(monkeypatch, tmp_path)
+    assert config.pricing_path() == _packaged_assets() / "pricing.csv"
+
+
+def test_pricing_dir_falls_back_to_data_dir_when_installed(monkeypatch, tmp_path):
+    monkeypatch.delenv("CCFR_PRICING_DIR", raising=False)
+    monkeypatch.delenv("CCFR_DATA_DIR", raising=False)
+    _installed_mode(monkeypatch, tmp_path)
+    monkeypatch.setattr(config.Path, "home", staticmethod(lambda: tmp_path / "home"))
+    assert config.pricing_dir() == tmp_path / "home" / ".check-your-agent" / "pricing"
+
+
+def test_demo_dir_falls_back_to_packaged_assets_when_installed(monkeypatch, tmp_path):
+    monkeypatch.delenv("CCFR_DEMO_DIR", raising=False)
+    _installed_mode(monkeypatch, tmp_path)
+    assert config.demo_dir() == _packaged_assets() / "claude-export"
+
+
+def test_data_dir_defaults_to_repo_dir_in_checkout(monkeypatch):
+    monkeypatch.delenv("CCFR_DATA_DIR", raising=False)
+    assert config.data_dir() == config.repository_root() / ".ccfr-data"
+
+
+def test_data_dir_defaults_to_home_dir_when_installed(monkeypatch, tmp_path):
+    monkeypatch.delenv("CCFR_DATA_DIR", raising=False)
+    _installed_mode(monkeypatch, tmp_path)
+    monkeypatch.setattr(config.Path, "home", staticmethod(lambda: tmp_path / "home"))
+    assert config.data_dir() == tmp_path / "home" / ".check-your-agent"
+
+
+def test_data_dir_reports_clear_error_when_home_is_unresolvable(monkeypatch, tmp_path):
+    monkeypatch.delenv("CCFR_DATA_DIR", raising=False)
+    _installed_mode(monkeypatch, tmp_path)
+
+    def _no_home() -> Path:
+        raise RuntimeError("Could not determine home directory.")
+
+    monkeypatch.setattr(config.Path, "home", staticmethod(_no_home))
+    with pytest.raises(RuntimeError, match="CCFR_DATA_DIR"):
+        config.data_dir()
 
 
 def test_app_version_reads_from_package_metadata(monkeypatch):

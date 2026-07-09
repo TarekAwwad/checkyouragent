@@ -15,7 +15,12 @@ from ccfr.storage import connect, init_db
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    conn = connect(database_path())
+    db_path = database_path()
+    # The default DB location differs between a source checkout (.ccfr-data/)
+    # and an installed wheel (~/.check-your-agent), so say which one was
+    # picked -- otherwise switching run modes looks like vanished data.
+    print(f"check-your-agent: database at {db_path}")
+    conn = connect(db_path)
     try:
         init_db(conn)
     finally:
