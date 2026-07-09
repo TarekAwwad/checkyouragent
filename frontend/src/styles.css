@@ -1365,6 +1365,12 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
   overflow: hidden; display: flex; flex-direction: column;
 }
 .discover-subtitle { margin: 4px 0 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
+/* Toolbar lead block: page title + subtitle on the left. When present, the
+   range tabs shrink to content so the lead owns the remaining width. */
+.discover-toolbar-lead { flex: 1 1 300px; min-width: 240px; }
+.discover-toolbar-lead h1 { margin: 0; font-size: 16px; font-weight: 700; line-height: 1.2; }
+.discover-toolbar-lead .discover-subtitle { max-width: 62ch; }
+.discover-toolbar-lead ~ .discover-tabs { flex: 0 1 auto; }
 
 /* Outcome segmented control (was the in-panel tab row) */
 .discover-tabs {
@@ -4339,17 +4345,18 @@ html:has(.specimen-dialog[open]) {
   color: color-mix(in srgb, var(--success) 55%, var(--text));
 }
 
-/* ship-kit:P09 — Usage drivers Explore page (shares the panel body with the mindmap dialog). */
-.usage-drivers-body { display: flex; flex-direction: column; gap: 12px; }
-.usage-drivers-body .segmented-control { align-self: flex-start; }
-.usage-drivers-body .uc-subtitle { margin: 0; color: var(--muted); font-size: 12px; }
+/* ship-kit:P09/P13 — Usage drivers Explore page. The characteristic rows are
+   shared with the mindmap dialog (.uc-* classes, styled per context); on the
+   page they live inside a .card body, so only row typography is scoped here —
+   the shell chrome comes from the .discover-* / .card grammar. */
 .usage-drivers-body .uc-body { display: flex; flex-direction: column; gap: 14px; }
 .usage-drivers-body .uc-row { border-left: 2px solid var(--border-2); padding-left: 10px; }
 .usage-drivers-body .uc-headline { margin: 0; font-size: 14px; color: var(--text); }
 .usage-drivers-body .uc-headline strong { font-variant-numeric: tabular-nums; }
 .usage-drivers-body .uc-guidance { margin: 3px 0 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
 .usage-drivers-body .uc-note { color: var(--muted); font-size: 13px; }
-.usage-drivers-body .uc-caveat {
-  margin: 6px 0 0; padding-top: 12px; border-top: 1px solid var(--border);
-  color: var(--faint); font-size: 11px; font-style: italic;
+/* Basis footnote as the card's muted footer (replaces the stranded divider). */
+.usage-drivers-footnote {
+  margin: 0; padding: 10px 16px; border-top: 1px solid var(--border);
+  color: var(--faint); font-size: 11px;
 }
