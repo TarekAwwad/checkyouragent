@@ -6,6 +6,13 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- Installed wheels (`uvx` / `pipx` / `pip`) now bundle `pricing.csv` and the
+  demo dataset, default their data directory to `~/.check-your-agent`, and read
+  optional dated pricing snapshots from `~/.check-your-agent/pricing`, so cost
+  analytics and Load demo data work outside a source checkout. The server also
+  logs the resolved database path at startup.
+
 ### Added
 - Synthetic demo dataset and a "Load demo data" action on the Import page, so the
   product's value is visible before importing real logs.
