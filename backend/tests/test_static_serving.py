@@ -19,6 +19,8 @@ def _make_webui(directory: Path) -> None:
 def spa_client(tmp_path, monkeypatch):
     webui = tmp_path / "webui"
     _make_webui(webui)
+    # A file sitting just outside the webui root -- a traversal must not reach it.
+    (tmp_path / "secret.txt").write_text("TOP-SECRET", encoding="utf-8")
     monkeypatch.setenv("CCFR_WEBUI_DIR", str(webui))
     monkeypatch.setenv("CCFR_DB_PATH", str(tmp_path / "static.sqlite3"))
     monkeypatch.setenv("CCFR_DATA_DIR", str(tmp_path / "data"))
@@ -50,6 +52,16 @@ def test_api_is_not_shadowed(spa_client):
     resp = spa_client.get("/api/config")
     assert resp.status_code == 200
     assert "import_root" in resp.json()
+
+
+def test_encoded_traversal_does_not_escape_webui_root(spa_client):
+    # Percent-encoded ``..`` segments survive httpx normalization and reach the
+    # handler as ``../secret.txt``; the containment check must fall back to the
+    # SPA shell instead of serving the file above the webui root.
+    resp = spa_client.get("/%2e%2e/secret.txt")
+    assert resp.status_code == 200
+    assert "TOP-SECRET" not in resp.text
+    assert "Demo SPA" in resp.text
 
 
 def test_api_only_when_webui_absent(tmp_path, monkeypatch):

@@ -38,12 +38,15 @@ def _mount_webui(app: FastAPI) -> None:
     if assets.is_dir():
         app.mount("/assets", StaticFiles(directory=assets), name="assets")
 
+    root_resolved = root.resolve()
+
     @app.get("/{full_path:path}", include_in_schema=False)
     def spa_fallback(full_path: str) -> FileResponse:
         if full_path.startswith(("api", "assets")):
             raise HTTPException(status_code=404, detail="Not found")
-        candidate = root / full_path
-        if full_path and candidate.is_file():
+        candidate = (root / full_path).resolve()
+        within_root = candidate == root_resolved or root_resolved in candidate.parents
+        if full_path and within_root and candidate.is_file():
             return FileResponse(candidate)
         return FileResponse(index)
 
