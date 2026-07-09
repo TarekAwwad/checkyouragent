@@ -14,11 +14,18 @@ The corpus is engineered so every analytics surface lights up:
   * subgroup discovery -- at least one significant high-cost subgroup
   * triage board (errors, loops, subagent fanout), usage map / characteristics
 
-Run:  python demo/generate_demo_data.py [output_dir]
+Run:  python demo/generate_demo_data.py [output_dir] [scale]
+
+`scale` (also read from $CCFR_DEMO_SCALE; default 1) is a sessions-only density
+multiplier: `scale=4` writes ~4x the sessions per project so the demo dashboards
+and landing "shots" read denser. Token sizes and the ~8-week window are held
+fixed, so every detector still fires and `scale=1` stays byte-identical to the
+committed export.
 """
 from __future__ import annotations
 
 import json
+import os
 import random
 import shutil
 import sys
@@ -54,7 +61,22 @@ _COMPACTION_SEQ = [
 ]
 _STALE_SEQ = [5_000, 20_000, 40_000, 62_000, 80_000, 92_000, 93_000, 94_000]
 _POWER_FILES = ["etl/extract.py", "etl/transform.py", "etl/load.py", "etl/validate.py"]
-_POWER_DAYS = [3, 3, 17, 17, 38, 38]   # cluster expensive work into 3 spend spikes
+# Cluster expensive `power` work into 3 spend spikes. The per-spike session
+# count grows with the demo SCALE factor, so the day list is derived from the
+# actual power-session total (see `_power_days`) rather than hardcoded.
+_SPIKE_DAYS = [3, 17, 38]
+
+
+def _power_days(total: int) -> list[int]:
+    """Spread `total` power sessions across _SPIKE_DAYS, keeping spikes even.
+
+    At the default scale (6 power sessions) this reproduces the original
+    [3, 3, 17, 17, 38, 38] byte-for-byte."""
+    base, extra = divmod(total, len(_SPIKE_DAYS))
+    days: list[int] = []
+    for i, day in enumerate(_SPIKE_DAYS):
+        days.extend([day] * (base + (1 if i < extra else 0)))
+    return days
 
 
 @dataclass
@@ -341,11 +363,19 @@ _SCHEDULE = [
 ]
 
 
-def generate(out_dir: Path) -> None:
+def generate(out_dir: Path, scale: int = 1) -> None:
     out_dir = Path(out_dir)
     if out_dir.exists():
         shutil.rmtree(out_dir)
     out_dir.mkdir(parents=True)
+
+    scale = max(1, int(scale))
+    # Sessions-only density knob: replicate each archetype `scale` times. Token
+    # magnitudes and the ~55-day window are untouched, so every detector still
+    # fires -- there are just proportionally more sessions per project and day.
+    schedule = [(f, cwd, br, arch, count * scale) for f, cwd, br, arch, count in _SCHEDULE]
+    power_total = sum(count for *_, arch, count in schedule if arch == "power")
+    power_days = _power_days(power_total)
 
     rng = random.Random(SEED)
     b = Builder(rng=rng)
@@ -354,7 +384,7 @@ def generate(out_dir: Path) -> None:
     day = 55
     first_session: dict[str, str] = {}
 
-    for folder, cwd, branch, archetype, count in _SCHEDULE:
+    for folder, cwd, branch, archetype, count in schedule:
         project_dir = out_dir / folder
         project_dir.mkdir(exist_ok=True)
         for _ in range(count):
@@ -363,7 +393,7 @@ def generate(out_dir: Path) -> None:
             first_session.setdefault(folder, session_uuid)
             calls = _FACTORIES[archetype](b, folder, session_uuid)
             if archetype == "power":
-                offset = _POWER_DAYS[power_i]
+                offset = power_days[power_i]
                 power_i += 1
             else:
                 offset = max(1, day)
@@ -397,8 +427,14 @@ def generate(out_dir: Path) -> None:
 
 def main() -> None:
     out = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).resolve().parent / "claude-export"
-    generate(out)
-    print(f"Wrote synthetic demo export to {out}")
+    raw_scale = sys.argv[2] if len(sys.argv) > 2 else os.environ.get("CCFR_DEMO_SCALE", "1")
+    try:
+        scale = max(1, int(raw_scale))
+    except ValueError:
+        sys.exit(f"invalid scale {raw_scale!r}: expected a positive integer")
+    generate(out, scale)
+    suffix = f" (scale x{scale})" if scale > 1 else ""
+    print(f"Wrote synthetic demo export to {out}{suffix}")
 
 
 if __name__ == "__main__":
