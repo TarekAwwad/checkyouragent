@@ -1,4 +1,3 @@
-import React from "react";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { getUsageCharacteristics } from "../../api/client";
 import type { UsageCharacteristicsResponse } from "../../api/types";
@@ -12,8 +11,7 @@ export const PRESET_LABELS: Record<Preset, string> = {
   day: "Day", week: "Week", month: "Month", all: "All",
 };
 
-// The /usage-style subtitle, shared verbatim between the dialog body and the
-// Explore page toolbar so the copy can't drift.
+// The /usage-style subtitle shown in the Explore page toolbar.
 export const UC_SUBTITLE =
   "Independent characteristics of your usage — not a breakdown. Day and Week " +
   "mirror Claude Code's /usage; Month and All draw on your full history.";
@@ -31,8 +29,8 @@ function windowFor(preset: Preset): { dateFrom: string | null; dateTo: string | 
   return { dateFrom: iso(from), dateTo: iso(today) };
 }
 
-// Single home of the usage-characteristics fetch — the Explore "Usage drivers"
-// page and the mindmap dialog both call this, so neither duplicates the query.
+// Single home of the usage-characteristics fetch, consumed by the Explore
+// "Usage drivers" page.
 export function useUsageCharacteristics(
   projectId: number | null,
   preset: Preset,
@@ -51,8 +49,8 @@ export function useUsageCharacteristics(
 }
 
 // The independent-characteristic rows plus their loading / error / empty
-// states. Shared between the dialog (inside .glossary-panel) and the Explore
-// page (inside a .card body) — each context styles the .uc-* classes itself.
+// states, rendered by the Explore page inside a .card body (the
+// .usage-drivers-body rules style the .uc-* classes).
 export function UsageCharacteristicsRows({
   query,
 }: {
@@ -80,38 +78,3 @@ export function UsageCharacteristicsRows({
   );
 }
 
-interface Props {
-  projectId: number | null;
-  /** Gate the query: the dialog passes its open state. */
-  enabled: boolean;
-}
-
-// The modal body of the "What's driving your usage" dialog: the segmented
-// range pill, the /usage-style subtitle, the shared rows, and the basis
-// caveat. Only the mindmap dialog renders this — the Explore "Usage drivers"
-// page composes useUsageCharacteristics + UsageCharacteristicsRows into the
-// Explore page shell instead (the dialog keeps its modal chrome; the page
-// wears the page shell). Returns a fragment (no wrapper element) so the
-// dialog's flex layout and CSS are unchanged.
-export default function UsageCharacteristicsPanel({ projectId, enabled }: Props) {
-  const [preset, setPreset] = React.useState<Preset>("week");
-  const query = useUsageCharacteristics(projectId, preset, enabled);
-  const data = query.data;
-
-  return (
-    <>
-      <div className="segmented-control" role="group" aria-label="Window">
-        {PRESETS.map((p) => (
-          <button key={p} type="button" aria-pressed={preset === p}
-                  className={preset === p ? "active" : ""}
-                  onClick={() => setPreset(p)}>
-            {PRESET_LABELS[p]}
-          </button>
-        ))}
-      </div>
-      <p className="uc-subtitle">{UC_SUBTITLE}</p>
-      <UsageCharacteristicsRows query={query} />
-      {data && <p className="uc-caveat">{data.meta.basis_note}</p>}
-    </>
-  );
-}

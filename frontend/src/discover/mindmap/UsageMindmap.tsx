@@ -1,12 +1,11 @@
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { FileJson, ImageDown, Gauge } from "lucide-react";
+import { FileJson, ImageDown } from "lucide-react";
 import { getUsageMap, type UsageMapFilters } from "../../api/client";
 import type { Project } from "../../api/types";
 import EvidencePanel from "./EvidencePanel";
 import { exportJson, exportPng } from "./exportMap";
 import { phaseNode, deriveOriginPhases, type LeafMode, type MapNode, type OriginFilter } from "./forceModel";
-import UsageCharacteristicsDialog from "./UsageCharacteristicsDialog";
 import MindmapCanvas from "./MindmapCanvas";
 import LoadingBar from "../../components/LoadingBar";
 
@@ -25,7 +24,6 @@ export default function UsageMindmap({ projects }: Props) {
   const [compare, setCompare] = React.useState(false);
   const [leafMode, setLeafMode] = React.useState<LeafMode>("habits");
   const [origin, setOrigin] = React.useState<OriginFilter>("all");
-  const [usageOpen, setUsageOpen] = React.useState(false);
   const boardRef = React.useRef<HTMLDivElement>(null);
 
   // A selection from the previous filter window may not exist in the new data;
@@ -175,11 +173,6 @@ export default function UsageMindmap({ projects }: Props) {
               <ImageDown size={14} />
               <span>Export PNG</span>
             </button>
-            <button type="button" className="ghost-action"
-                    onClick={() => setUsageOpen(true)}>
-              <Gauge size={14} />
-              <span>Usage drivers</span>
-            </button>
           </div>
         </div>
 
@@ -218,11 +211,6 @@ export default function UsageMindmap({ projects }: Props) {
             </>
           )}
         </div>
-        <UsageCharacteristicsDialog
-          open={usageOpen}
-          onClose={() => setUsageOpen(false)}
-          projectId={projectId}
-        />
       </div>
     </main>
   );

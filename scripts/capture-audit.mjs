@@ -9,7 +9,7 @@
 //
 // Wave-1 screen map (derived from `git diff --name-only main...ship/integration`):
 //   usage-drivers     Explore > Usage drivers            (P09 UsageDrivers.tsx + UsageCharacteristicsPanel.tsx)
-//   uc-dialog         Explore > Usage Mindmap > "Usage drivers" button (P09 UsageCharacteristicsDialog.tsx)
+//   mindmap           Explore > Usage Mindmap            (P13 removed its redundant "Usage drivers" dialog)
 //   context           Explore > Context economics        (P08 TaxMeterHero.tsx; also a REFERENCE screen)
 //   context-drilldown Context economics with a finding open (P08 SessionDrilldown.tsx)
 //   cost              Cost                               (P08 InsightStrip.tsx; also a REFERENCE screen)
@@ -100,24 +100,15 @@ const SCREENS = [
     pre: 400,
   },
   {
-    name: "uc-dialog",
+    // The mindmap page itself (its "Usage drivers" dialog was removed once the
+    // technique became a first-class Explore page).
+    name: "mindmap",
     go: async (page) => {
       await nav(page, "Explore");
       await page.getByRole("button", { name: "Usage Mindmap" }).click();
-      await page.locator(".mindmap-stage").waitFor(WAIT);
-      // The mindmap-toolbar button that opens the characteristics dialog —
-      // scoped to .ghost-action to avoid the Explore rail's technique button
-      // of the same name.
-      await page.locator("button.ghost-action", { hasText: "Usage drivers" }).click();
     },
-    ready: ".uc-body .uc-row",
-    pre: 400,
-    // Close the (native <dialog>) so it doesn't block the next screen's
-    // navigation. Escape triggers its onClose; wait until it's really gone.
-    after: async (page) => {
-      await page.keyboard.press("Escape");
-      await page.locator(".uc-body .uc-row").first().waitFor({ state: "hidden", timeout: 10_000 });
-    },
+    ready: ".mindmap-stage",
+    pre: 1600,
   },
   {
     name: "session",
