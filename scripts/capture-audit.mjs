@@ -90,6 +90,16 @@ const SCREENS = [
     pre: 400,
   },
   {
+    // Same page with the widest range selected — the demo corpus is weeks old,
+    // so Day/Week show 0% and only All exercises the rows with real numbers.
+    name: "usage-drivers-all",
+    go: async (page) => {
+      await page.getByRole("button", { name: "All", exact: true }).click();
+    },
+    ready: ".usage-drivers-body .uc-row",
+    pre: 400,
+  },
+  {
     name: "uc-dialog",
     go: async (page) => {
       await nav(page, "Explore");
@@ -118,6 +128,18 @@ const SCREENS = [
     },
     ready: ".session-workspace",
     pre: 600,
+    // The workspace auto-scrolls toward the selected event while loading; the
+    // P08 insight strip lives at the top, so pin the scroll back right before
+    // the shot (after the settle, when the auto-scroll has already happened).
+    beforeShot: async (page) => {
+      await page.evaluate(() => {
+        document.querySelectorAll("*").forEach((el) => {
+          if (el.scrollTop > 0) el.scrollTop = 0;
+        });
+        window.scrollTo(0, 0);
+      });
+      await new Promise((r) => setTimeout(r, 250));
+    },
   },
   {
     name: "import",
@@ -168,6 +190,7 @@ async function captureTheme(browser, theme) {
       await screen.go(page);
       await page.locator(screen.ready).first().waitFor(WAIT);
       await settle(screen.pre ?? 300);
+      if (screen.beforeShot) await screen.beforeShot(page);
       const file = `${screen.name}.${theme}.png`;
       await page.screenshot({ path: join(AUDIT_DIR, file) });
       console.log(`shot: ${file}`);
