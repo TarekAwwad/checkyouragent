@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""Build the frontend and copy it into the ccfr package for wheel packaging.
+"""Build the frontend and stage all packaged assets for wheel packaging.
 
 Runs `npm ci && npm run build` in frontend/, then replaces
-backend/src/ccfr/webui/ with the contents of frontend/dist/. The webui/ dir is
-git-ignored and force-included in the wheel (see backend/pyproject.toml).
+backend/src/ccfr/webui/ with the contents of frontend/dist/, and stages the
+runtime data assets (pricing.csv, demo/claude-export/) into
+backend/src/ccfr/_assets/. Both directories are git-ignored and force-included
+in the wheel (see backend/pyproject.toml); ccfr.config falls back to _assets/
+when not running from a source checkout.
 """
 from __future__ import annotations
 
@@ -16,6 +19,7 @@ REPO = Path(__file__).resolve().parent.parent
 FRONTEND = REPO / "frontend"
 DIST = FRONTEND / "dist"
 WEBUI = REPO / "backend" / "src" / "ccfr" / "webui"
+ASSETS = REPO / "backend" / "src" / "ccfr" / "_assets"
 
 
 def _npm(*args: str) -> None:
@@ -23,10 +27,25 @@ def _npm(*args: str) -> None:
     subprocess.run("npm " + " ".join(args), cwd=FRONTEND, check=True, shell=True)
 
 
+def stage_data_assets() -> None:
+    """Copy the repo-root data assets the installed app needs into the package.
+
+    Must stage every location ccfr.config falls back to under _assets/;
+    a missing source here means installed wheels silently lose that asset.
+    """
+    if ASSETS.exists():
+        shutil.rmtree(ASSETS)
+    ASSETS.mkdir(parents=True)
+    shutil.copy2(REPO / "pricing.csv", ASSETS / "pricing.csv")
+    shutil.copytree(REPO / "demo" / "claude-export", ASSETS / "claude-export")
+    print(f"Staged pricing.csv and demo/claude-export -> {ASSETS}")
+
+
 def main() -> int:
     if not FRONTEND.is_dir():
         print(f"frontend/ not found at {FRONTEND}", file=sys.stderr)
         return 1
+    stage_data_assets()
     _npm("ci")
     _npm("run", "build")
     if not (DIST / "index.html").is_file():

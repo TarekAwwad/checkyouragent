@@ -16,6 +16,7 @@ backend/.dev-server.log
 backend/.dev.sqlite3
 backend/src/ccfr/static/
 backend/src/ccfr/webui/
+backend/src/ccfr/_assets/
 frontend/.dev-server*.log
 frontend/vite.config.js
 frontend/vite.config.d.ts

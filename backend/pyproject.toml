@@ -28,9 +28,14 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 
 [tool.hatch.build]
-# webui/ is git-ignored (built, not source); force it into the sdist/wheel so the
-# packaged app can serve the SPA. Without this, hatch's VCS file discovery drops it.
-artifacts = ["src/ccfr/webui/**"]
+# webui/ and _assets/ are git-ignored (staged by scripts/build_webui.py, not
+# source); force them into the sdist/wheel so the packaged app can serve the
+# SPA and find pricing.csv + the demo export. Without this, hatch's VCS file
+# discovery drops them.
+artifacts = [
+    "src/ccfr/webui/**",
+    "src/ccfr/_assets/**",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ccfr"]
