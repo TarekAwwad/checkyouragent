@@ -7,6 +7,8 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Fixed
+- Privacy mode now blurs Context Economics "Heaviest contributors" labels, which
+  previously exposed raw file paths.
 - Installed wheels (`uvx` / `pipx` / `pip`) now bundle `pricing.csv` and the
   demo dataset, default their data directory to `~/.checkyouragent`, and read
   optional dated pricing snapshots from `~/.checkyouragent/pricing`, so cost
