@@ -98,3 +98,61 @@ def test_export_bundle_does_not_print_the_cya_banner(monkeypatch, capsys):
     monkeypatch.setattr(cli_export, "run_export_bundle", lambda args: 0)
     assert cli.main(["export-bundle"]) == 0
     assert "Cover Your Assets" not in capsys.readouterr().out
+
+
+class _FakeTty:
+    def __init__(self, tty: bool) -> None:
+        self._tty = tty
+
+    def isatty(self) -> bool:
+        return self._tty
+
+
+def _color_probe_env(monkeypatch, *, tty: bool, platform: str) -> None:
+    """Pin stdout/platform and clear every env var _supports_color() reads."""
+    import sys
+
+    monkeypatch.setattr(sys, "stdout", _FakeTty(tty))
+    monkeypatch.setattr(sys, "platform", platform)
+    for name in ("NO_COLOR", "WT_SESSION", "ANSICON", "TERM"):
+        monkeypatch.delenv(name, raising=False)
+
+
+def test_supports_color_requires_a_tty(monkeypatch):
+    from ccfr import cli
+
+    _color_probe_env(monkeypatch, tty=False, platform="linux")
+    assert cli._supports_color() is False
+
+
+def test_supports_color_honors_no_color_even_when_empty(monkeypatch):
+    from ccfr import cli
+
+    _color_probe_env(monkeypatch, tty=True, platform="linux")
+    monkeypatch.setenv("NO_COLOR", "")
+    assert cli._supports_color() is False
+
+
+def test_supports_color_survives_a_detached_stdout(monkeypatch):
+    import sys
+
+    from ccfr import cli
+
+    monkeypatch.setattr(sys, "stdout", None)
+    assert cli._supports_color() is False
+
+
+def test_supports_color_on_win32_needs_a_vt_terminal(monkeypatch):
+    from ccfr import cli
+
+    _color_probe_env(monkeypatch, tty=True, platform="win32")
+    assert cli._supports_color() is False
+    monkeypatch.setenv("WT_SESSION", "guid")
+    assert cli._supports_color() is True
+
+
+def test_supports_color_on_non_win32_needs_only_a_tty(monkeypatch):
+    from ccfr import cli
+
+    _color_probe_env(monkeypatch, tty=True, platform="linux")
+    assert cli._supports_color() is True

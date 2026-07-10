@@ -67,17 +67,22 @@ def _known_commands(parser: argparse.ArgumentParser) -> set[str]:
 def _supports_color() -> bool:
     """Whether stdout can safely render ANSI color escapes right now.
 
-    Conservative on purpose: a real TTY, no opt-out via NO_COLOR, and -- on
-    win32, where classic cmd.exe can't render escapes without extra setup --
-    a VT-capable terminal advertised through WT_SESSION/ANSICON/TERM.
+    Conservative on purpose: a real TTY, no opt-out via NO_COLOR (present at
+    all disables color, even empty), and -- on win32, where classic cmd.exe
+    can't render escapes without extra setup -- a VT-capable terminal
+    advertised through WT_SESSION/ANSICON/TERM. Any failure (e.g. a detached
+    sys.stdout) means "no color": the banner must never crash serve.
     """
-    if not sys.stdout.isatty():
+    try:
+        if not sys.stdout.isatty():
+            return False
+        if "NO_COLOR" in os.environ:
+            return False
+        if sys.platform == "win32":
+            return any(os.environ.get(name) for name in ("WT_SESSION", "ANSICON", "TERM"))
+        return True
+    except Exception:
         return False
-    if os.environ.get("NO_COLOR"):
-        return False
-    if sys.platform == "win32":
-        return any(os.environ.get(name) for name in ("WT_SESSION", "ANSICON", "TERM"))
-    return True
 
 
 def _cya_banner(color: bool) -> str:
