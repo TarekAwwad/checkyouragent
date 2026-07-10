@@ -2,13 +2,34 @@
 name = "checkyouragent"
 version = "0.1.0"
 description = "Local analytics for Claude Code project exports"
-license = { text = "BUSL-1.1" }
+readme = "README.md"
+license = "BUSL-1.1"
+license-files = ["LICENSE"]
+authors = [{ name = "Tarek Awwad" }]
 requires-python = ">=3.11"
+keywords = ["claude-code", "claude", "analytics", "token-usage", "cost", "ai-agents", "forensics"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development",
+]
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn[standard]>=0.30.0",
     "pydantic>=2.8.0",
 ]
+
+[project.urls]
+Homepage = "https://checkyouragent.dev"
+Repository = "https://github.com/TarekAwwad/checkyouragent"
+Changelog = "https://github.com/TarekAwwad/checkyouragent/blob/main/CHANGELOG.md"
+Issues = "https://github.com/TarekAwwad/checkyouragent/issues"
 
 [project.scripts]
 checkyouragent = "ccfr.cli:main"
