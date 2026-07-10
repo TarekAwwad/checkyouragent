@@ -1,0 +1,60 @@
+name: release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  publish:
+    name: Build and publish to PyPI
+    runs-on: ubuntu-latest
+    environment: pypi          # must match the PyPI publisher config from Task 1
+    permissions:
+      id-token: write          # REQUIRED: mints the OIDC token for Trusted Publishing
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Verify the release tag matches the package version
+        run: |
+          version="$(python -c "import tomllib; print(tomllib.load(open('backend/pyproject.toml','rb'))['project']['version'])")"
+          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
+            echo "Release tag ${GITHUB_REF_NAME} does not match backend/pyproject.toml version v${version}" >&2
+            exit 1
+          fi
+
+      - name: Build web UI and stage packaged assets
+        run: python scripts/build_webui.py
+
+      - name: Build sdist and wheel
+        run: uv build
+        working-directory: backend
+
+      - name: Verify the wheel bundles the UI and data assets
+        working-directory: backend
+        run: |
+          whl="$(ls dist/checkyouragent-*.whl)"
+          python -m zipfile -l "$whl" > /tmp/wheel-contents.txt
+          for path in "ccfr/webui/index.html" "ccfr/_assets/pricing.csv" "ccfr/_assets/claude-export/"; do
+            if ! grep -q "$path" /tmp/wheel-contents.txt; then
+              echo "wheel is missing $path — refusing to publish" >&2
+              exit 1
+            fi
+          done
+
+      - name: Publish to PyPI (Trusted Publishing)
+        run: uv publish
+        working-directory: backend
