@@ -1,4 +1,4 @@
-"""`check-your-agent export-bundle`: headless team-bundle export.
+"""`checkyouragent export-bundle`: headless team-bundle export.
 
 Imports the configured export root into a rebuildable SQLite cache, then reuses
 the exact privacy-controlled allowlist in ``analysis/team_bundles.build_team_bundle``

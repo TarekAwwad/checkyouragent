@@ -54,7 +54,7 @@ def data_dir() -> Path:
         raise RuntimeError(
             "cannot determine a home directory for the default data dir; set CCFR_DATA_DIR"
         ) from exc
-    return home / ".check-your-agent"
+    return home / ".checkyouragent"
 
 
 def import_root() -> Path:
@@ -152,12 +152,12 @@ def is_docker() -> bool:
 def app_version() -> str:
     """App release version for contribution bundles.
 
-    Resolves from the installed ``check-your-agent`` package metadata so the
+    Resolves from the installed ``checkyouragent`` package metadata so the
     version has a single source (``pyproject.toml``). Falls back to the pinned
     baseline when the package is not installed, e.g. a bare source checkout
     without an editable install.
     """
     try:
-        return _pkg_version("check-your-agent")
+        return _pkg_version("checkyouragent")
     except PackageNotFoundError:
         return "0.1.0"

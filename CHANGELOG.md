@@ -8,8 +8,8 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 - Installed wheels (`uvx` / `pipx` / `pip`) now bundle `pricing.csv` and the
-  demo dataset, default their data directory to `~/.check-your-agent`, and read
-  optional dated pricing snapshots from `~/.check-your-agent/pricing`, so cost
+  demo dataset, default their data directory to `~/.checkyouragent`, and read
+  optional dated pricing snapshots from `~/.checkyouragent/pricing`, so cost
   analytics and Load demo data work outside a source checkout. The server also
   logs the resolved database path at startup.
 
@@ -18,7 +18,7 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   product's value is visible before importing real logs.
 
 ### Changed
-- Renamed the GitHub repository to `check-your-agent` (old
+- Renamed the GitHub repository to `checkyouragent` (old
   `authrty-claude-code-analytics` URLs redirect automatically).
 - Clarified licensing: the Business Source License 1.1 now carries an Additional
   Use Grant permitting free personal and internal use.

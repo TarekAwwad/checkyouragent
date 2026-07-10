@@ -90,7 +90,7 @@ def test_pricing_dir_falls_back_to_data_dir_when_installed(monkeypatch, tmp_path
     monkeypatch.delenv("CCFR_DATA_DIR", raising=False)
     _installed_mode(monkeypatch, tmp_path)
     monkeypatch.setattr(config.Path, "home", staticmethod(lambda: tmp_path / "home"))
-    assert config.pricing_dir() == tmp_path / "home" / ".check-your-agent" / "pricing"
+    assert config.pricing_dir() == tmp_path / "home" / ".checkyouragent" / "pricing"
 
 
 def test_demo_dir_falls_back_to_packaged_assets_when_installed(monkeypatch, tmp_path):
@@ -108,7 +108,7 @@ def test_data_dir_defaults_to_home_dir_when_installed(monkeypatch, tmp_path):
     monkeypatch.delenv("CCFR_DATA_DIR", raising=False)
     _installed_mode(monkeypatch, tmp_path)
     monkeypatch.setattr(config.Path, "home", staticmethod(lambda: tmp_path / "home"))
-    assert config.data_dir() == tmp_path / "home" / ".check-your-agent"
+    assert config.data_dir() == tmp_path / "home" / ".checkyouragent"
 
 
 def test_data_dir_reports_clear_error_when_home_is_unresolvable(monkeypatch, tmp_path):
@@ -132,7 +132,7 @@ def test_app_version_falls_back_when_package_missing(monkeypatch):
     from importlib.metadata import PackageNotFoundError
 
     def _raise(_name):
-        raise PackageNotFoundError("check-your-agent")
+        raise PackageNotFoundError("checkyouragent")
 
     monkeypatch.setattr(config, "_pkg_version", _raise)
     assert config.app_version() == "0.1.0"

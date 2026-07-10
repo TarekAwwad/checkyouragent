@@ -30,7 +30,7 @@ def default_import_root(env: Mapping[str, str] | None = None, home: Path | None 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="check-your-agent",
+        prog="checkyouragent",
         description="Local analytics for Claude Code project exports.",
     )
     subparsers = parser.add_subparsers(dest="command")

@@ -1,5 +1,5 @@
 [project]
-name = "check-your-agent"
+name = "checkyouragent"
 version = "0.1.0"
 description = "Local analytics for Claude Code project exports"
 license = { text = "BUSL-1.1" }
@@ -11,7 +11,8 @@ dependencies = [
 ]
 
 [project.scripts]
-check-your-agent = "ccfr.cli:main"
+checkyouragent = "ccfr.cli:main"
+cya = "ccfr.cli:main"
 
 [project.optional-dependencies]
 dev = [

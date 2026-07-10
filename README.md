@@ -152,17 +152,20 @@ Docker uses a named volume for `/app/data` and mounts `./TeamBundles` at
 With `uv` (or `pipx`) installed, run the app without cloning or building anything:
 
 ```bash
-uvx check-your-agent          # or: pipx run check-your-agent
+uvx checkyouragent          # or: pipx run checkyouragent
 ```
 
 This serves the app on `http://127.0.0.1:8000`, opens your browser, and defaults
 the import root to `~/.claude/projects`. Useful flags:
 
 ```bash
-check-your-agent serve --import-root /path/to/exports
-check-your-agent serve --port 8123 --no-browser
-check-your-agent serve --demo        # explore with the bundled synthetic dataset
+checkyouragent serve --import-root /path/to/exports
+checkyouragent serve --port 8123 --no-browser
+checkyouragent serve --demo        # explore with the bundled synthetic dataset
 ```
+
+The shorter `cya` alias is installed alongside `checkyouragent` and behaves
+identically — e.g. `cya serve --demo`.
 
 Building from source? Compile and bundle the UI first with
 `python scripts/build_webui.py`; without it the command still serves the API
@@ -176,16 +179,16 @@ Prerequisite: Docker with Compose.
 Clone the repo, put or mount Claude Code project folders under `Data/`, then run:
 
 ```bash
-git clone https://github.com/TarekAwwad/check-your-agent
-cd check-your-agent
+git clone https://github.com/TarekAwwad/checkyouragent
+cd checkyouragent
 docker compose up --build
 ```
 
 On Windows PowerShell the same commands work unchanged:
 
 ```powershell
-git clone https://github.com/TarekAwwad/check-your-agent
-cd check-your-agent
+git clone https://github.com/TarekAwwad/checkyouragent
+cd checkyouragent
 docker compose up --build
 ```
 
