@@ -10,6 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: pypi          # must match the PyPI publisher config from Task 1
     permissions:
+      contents: read           # job-level permissions collapse all other scopes; checkout needs this back
       id-token: write          # REQUIRED: mints the OIDC token for Trusted Publishing
     steps:
       - name: Checkout
@@ -49,7 +50,7 @@ jobs:
           whl="$(ls dist/checkyouragent-*.whl)"
           python -m zipfile -l "$whl" > /tmp/wheel-contents.txt
           for path in "ccfr/webui/index.html" "ccfr/_assets/pricing.csv" "ccfr/_assets/claude-export/"; do
-            if ! grep -q "$path" /tmp/wheel-contents.txt; then
+            if ! grep -qF "$path" /tmp/wheel-contents.txt; then
               echo "wheel is missing $path — refusing to publish" >&2
               exit 1
             fi
