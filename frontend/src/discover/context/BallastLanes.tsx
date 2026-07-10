@@ -4,6 +4,7 @@ import { packLanes } from "./streamGeometry";
 import { formatTokens, formatUsd } from "./ContextEconomics";
 import { useChartTooltip } from "./chartTooltip";
 import { Blurred } from "../../shell/Blurred";
+import { usePrivacyMode } from "../../shell/PrivacyModeContext";
 
 const LANE_WIDTH = 360;
 const MIN_TOKENS_SHOWN = 100;
@@ -24,6 +25,7 @@ export default function BallastLanes({
 }) {
   const callCount = thread.calls.length;
   const [showAll, setShowAll] = React.useState(false);
+  const privacyMode = usePrivacyMode();
   const { ref, show, hide, tooltip } = useChartTooltip<HTMLDivElement>();
   const lanes = React.useMemo(
     () => packLanes(
@@ -89,7 +91,7 @@ export default function BallastLanes({
               onHover?.(null);
             }}
           >
-            <span className="ballast-label" title={lane.label}><Blurred>{lane.label}</Blurred></span>
+            <span className="ballast-label" title={privacyMode ? undefined : lane.label}><Blurred>{lane.label}</Blurred></span>
             <svg viewBox={`0 0 ${LANE_WIDTH} 24`} preserveAspectRatio="none">
               <rect x={0} width={LANE_WIDTH} y={10} height={4} rx={2} className="lane-track" />
               <rect

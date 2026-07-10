@@ -44,12 +44,15 @@ describe("BallastLanes privacy mode", () => {
     // in the Blurred treatment so raw paths never survive a screenshot.
     const label = screen.getByText(RAW_LABEL);
     expect(label.className).toMatch(/blurred/);
+    // The native title tooltip would pop the raw path over the blur; suppress it.
+    expect(label.closest(".ballast-label")).not.toHaveAttribute("title");
   });
 
   it("leaves the contributor label readable when privacy mode is off", () => {
     renderLanes(false);
     const label = screen.getByText(RAW_LABEL);
     expect(label.className).not.toMatch(/blurred/);
+    expect(label).toHaveAttribute("title", RAW_LABEL);
   });
 
   it("blurs the tooltip title when hovering a lane in privacy mode", () => {
