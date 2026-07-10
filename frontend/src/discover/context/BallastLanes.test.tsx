@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import BallastLanes from "./BallastLanes";
 import { PrivacyModeProvider } from "../../shell/PrivacyModeContext";
 import type { ContextThread } from "../../api/types";
@@ -50,5 +50,14 @@ describe("BallastLanes privacy mode", () => {
     renderLanes(false);
     const label = screen.getByText(RAW_LABEL);
     expect(label.className).not.toMatch(/blurred/);
+  });
+
+  it("blurs the tooltip title when hovering a lane in privacy mode", () => {
+    const { container } = renderLanes(true);
+    fireEvent.mouseMove(screen.getByRole("listitem"));
+    const title = container.querySelector(".chart-tooltip strong");
+    expect(title).not.toBeNull();
+    expect(title!.textContent).toBe(RAW_LABEL);
+    expect(title!.querySelector("span[class*='blurred']")).not.toBeNull();
   });
 });

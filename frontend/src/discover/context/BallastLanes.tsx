@@ -81,7 +81,7 @@ export default function BallastLanes({
             onMouseMove={(event) => {
               const lines = [`${formatTokens(lane.tokens)} · turns ${lane.x0}–${lane.x1}`];
               if (costAvailable) lines.push(`${formatUsd(lane.accruedUsd)} carry tax`);
-              show(event, lane.label, lines);
+              show(event, lane.label, lines, { blur: true });
               onHover?.(lane.id);
             }}
             onMouseLeave={() => {
