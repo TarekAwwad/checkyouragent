@@ -68,7 +68,9 @@ export default function ContextStream({
       lines.push(`${formatTokens(contributor.est_tokens)} · turns ${contributor.entry_turn}–${contributor.end_turn}`);
       if (costAvailable) lines.push(`${formatUsd(contributor.accrued_usd)} carry tax`);
     }
-    show(event, label, lines);
+    // Only real bands resolve to a contributor; their labels are content-derived.
+    // Aggregate bands ("Conversation baseline", "Other (N)") stay readable.
+    show(event, label, lines, { blur: contributor !== undefined });
   };
 
   const cfPath = React.useMemo(() => {

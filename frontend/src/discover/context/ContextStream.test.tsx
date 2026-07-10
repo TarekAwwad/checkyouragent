@@ -4,7 +4,9 @@ import ContextStream from "./ContextStream";
 import { PrivacyModeProvider } from "../../shell/PrivacyModeContext";
 import type { ContextThread } from "../../api/types";
 
-// 100% synthetic fixture.
+// 100% synthetic: a fabricated project path that never appears in real exports.
+const RAW_LABEL = "Read result: d:\\Code\\synthetic-project\\secret.ts";
+
 const thread: ContextThread = {
   agent_id: null,
   calls: [
@@ -16,7 +18,7 @@ const thread: ContextThread = {
     {
       id: "tool_result-1-1",
       kind: "tool_result",
-      label: "Read result: d:\\Code\\synthetic-project\\secret.ts",
+      label: RAW_LABEL,
       entry_turn: 1,
       end_turn: 1,
       est_tokens: 49_000,
@@ -44,5 +46,22 @@ describe("ContextStream privacy mode", () => {
     expect(title).not.toBeNull();
     expect(title!.textContent).toBe("Conversation baseline");
     expect(title!.querySelector("span[class*='blurred']")).toBeNull();
+  });
+
+  it("blurs real contributor band tooltip titles in privacy mode", () => {
+    // Real bands resolve to a contributor whose label is content-derived
+    // (file paths, tool labels), so the tooltip title must be blur-wrapped.
+    const { container } = render(
+      <PrivacyModeProvider value={true}>
+        <ContextStream thread={thread} highlightEventId={null} />
+      </PrivacyModeProvider>,
+    );
+    const band = container.querySelector("path.stream-tool");
+    expect(band).not.toBeNull();
+    fireEvent.mouseMove(band!);
+    const title = container.querySelector(".chart-tooltip strong");
+    expect(title).not.toBeNull();
+    expect(title!.textContent).toBe(RAW_LABEL);
+    expect(title!.querySelector("span[class*='blurred']")).not.toBeNull();
   });
 });
