@@ -64,7 +64,42 @@ def _known_commands(parser: argparse.ArgumentParser) -> set[str]:
     return set()
 
 
+def _supports_color() -> bool:
+    """Whether stdout can safely render ANSI color escapes right now.
+
+    Conservative on purpose: a real TTY, no opt-out via NO_COLOR, and -- on
+    win32, where classic cmd.exe can't render escapes without extra setup --
+    a VT-capable terminal advertised through WT_SESSION/ANSICON/TERM.
+    """
+    if not sys.stdout.isatty():
+        return False
+    if os.environ.get("NO_COLOR"):
+        return False
+    if sys.platform == "win32":
+        return any(os.environ.get(name) for name in ("WT_SESSION", "ANSICON", "TERM"))
+    return True
+
+
+def _cya_banner(color: bool) -> str:
+    """The startup wink printed once by `serve` -- never by export-bundle or --help.
+
+    Terminal twin of the landing page's browser-console easter egg. Plain text
+    is ASCII-only so no console codepage can crash it; color is optional
+    garnish, applied only to "CYA" and "Cover Your Assets".
+    """
+    green, reset = "\x1b[92m", "\x1b[0m"
+    cya = f"{green}CYA{reset}" if color else "CYA"
+    tagline = f"{green}Cover Your Assets{reset}" if color else "Cover Your Assets"
+    return "\n".join((
+        f"{cya} - Check Your Agent  //  {tagline}",
+        "Source-available forensics for AI coding-agent spend. Runs local; "
+        "nothing leaves this machine.",
+        "https://checkyouragent.dev",
+    ))
+
+
 def _serve(args: argparse.Namespace) -> int:
+    print(_cya_banner(_supports_color()))
     import_root = args.import_root or default_import_root()
     if args.demo:
         from ccfr.config import demo_dir  # lazy: keeps the CLI import cheap

@@ -16,6 +16,7 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 - Synthetic demo dataset and a "Load demo data" action on the Import page, so the
   product's value is visible before importing real logs.
+- The CLI now tips its hat on startup (CYA -- cover your assets).
 
 ### Changed
 - Renamed the GitHub repository to `checkyouragent` (old
