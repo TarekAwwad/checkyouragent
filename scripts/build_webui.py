@@ -46,7 +46,11 @@ def main() -> int:
         print(f"frontend/ not found at {FRONTEND}", file=sys.stderr)
         return 1
     stage_data_assets()
-    _npm("ci")
+    # --ignore-scripts: this build produces the published wheel's bundled UI, so
+    # don't run install-time lifecycle scripts from the npm dependency tree. The
+    # Vite/tsc build uses esbuild via its JS API and does not need them (verified
+    # against a clean install).
+    _npm("ci", "--ignore-scripts")
     _npm("run", "build")
     if not (DIST / "index.html").is_file():
         print(f"build produced no index.html at {DIST}", file=sys.stderr)
