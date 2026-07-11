@@ -1,12 +1,14 @@
 from fastapi.testclient import TestClient
 
 from ccfr import settings as settings_mod
-from ccfr.main import app
+from ccfr.main import create_app
 
 
 def test_settings_get_default_and_put_round_trip(monkeypatch, tmp_path):
     monkeypatch.setattr(settings_mod, "data_dir", lambda: tmp_path)
-    client = TestClient(app)
+    # Build the app fresh (not the import-time module singleton) so it reads the
+    # test Host allow-list from conftest rather than a frozen import-time value.
+    client = TestClient(create_app())
 
     got = client.get("/api/settings")
     assert got.status_code == 200

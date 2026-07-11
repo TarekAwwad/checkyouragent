@@ -92,6 +92,51 @@ def test_serve_prints_the_cya_banner(monkeypatch, tmp_path, capsys):
     assert "Cover Your Assets" in capsys.readouterr().out
 
 
+def test_serve_relaxes_host_guard_when_binding_non_loopback(monkeypatch, tmp_path, capsys):
+    import os
+
+    from ccfr import cli
+
+    monkeypatch.setenv("CCFR_IMPORT_ROOT", str(tmp_path / "imports"))
+    monkeypatch.setenv("CCFR_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.delenv("CCFR_ALLOWED_HOSTS", raising=False)  # override the conftest default
+    monkeypatch.setattr("uvicorn.run", lambda *a, **k: None)
+
+    assert cli.main(["serve", "--host", "0.0.0.0", "--no-browser"]) == 0
+    assert os.environ["CCFR_ALLOWED_HOSTS"] == "*"
+    assert "Host-header" in capsys.readouterr().out
+
+
+def test_serve_keeps_host_guard_on_loopback(monkeypatch, tmp_path):
+    import os
+
+    from ccfr import cli
+
+    monkeypatch.setenv("CCFR_IMPORT_ROOT", str(tmp_path / "imports"))
+    monkeypatch.setenv("CCFR_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.delenv("CCFR_ALLOWED_HOSTS", raising=False)  # override the conftest default
+    monkeypatch.setattr("uvicorn.run", lambda *a, **k: None)
+
+    assert cli.main(["serve", "--no-browser"]) == 0
+    # Default loopback bind leaves the allow-list untouched -> config default applies.
+    assert "CCFR_ALLOWED_HOSTS" not in os.environ
+
+
+def test_serve_respects_a_pinned_host_allow_list_when_exposed(monkeypatch, tmp_path):
+    import os
+
+    from ccfr import cli
+
+    monkeypatch.setenv("CCFR_IMPORT_ROOT", str(tmp_path / "imports"))
+    monkeypatch.setenv("CCFR_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("CCFR_ALLOWED_HOSTS", "app.internal")  # operator pinned it
+    monkeypatch.setattr("uvicorn.run", lambda *a, **k: None)
+
+    assert cli.main(["serve", "--host", "0.0.0.0", "--no-browser"]) == 0
+    # A pinned allow-list is never clobbered by the exposure widening.
+    assert os.environ["CCFR_ALLOWED_HOSTS"] == "app.internal"
+
+
 def test_export_bundle_does_not_print_the_cya_banner(monkeypatch, capsys):
     from ccfr import cli, cli_export
 

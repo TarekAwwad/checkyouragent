@@ -145,6 +145,23 @@ def allowed_origins() -> list[str]:
     return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
 
+def allowed_hosts() -> list[str]:
+    """Host header values the API will answer to (DNS-rebinding guard).
+
+    The API has no authentication, so binding to 127.0.0.1 is not by itself
+    enough to keep it private: a web page the user visits can rebind its own
+    domain to 127.0.0.1 and reach the API *same-origin* (CORS then does not
+    apply). Validating the Host header closes that path -- the browser still
+    sends the attacker's domain in Host, which is not on this list.
+
+    Defaults to the loopback names used by `serve` and the Docker port mapping.
+    Override with a comma-separated CCFR_ALLOWED_HOSTS; use "*" to disable the
+    check when deliberately exposing the app on a network.
+    """
+    raw = os.getenv("CCFR_ALLOWED_HOSTS", "localhost,127.0.0.1")
+    return [host.strip() for host in raw.split(",") if host.strip()]
+
+
 def is_docker() -> bool:
     return Path("/.dockerenv").exists()
 

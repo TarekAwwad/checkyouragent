@@ -5,11 +5,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from ccfr.api import router
-from ccfr.config import allowed_origins, app_version, database_path, webui_dir
+from ccfr.config import allowed_hosts, allowed_origins, app_version, database_path, webui_dir
 from ccfr.storage import connect, init_db
 
 
@@ -65,6 +66,12 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    # Reject requests carrying a foreign Host header. The API is unauthenticated,
+    # so this is what actually makes the 127.0.0.1 bind private: it defeats DNS
+    # rebinding (a page pointing its domain at 127.0.0.1 then talking to the API
+    # same-origin) and the no-preflight cross-origin POSTs that rebinding enables.
+    # Added after CORS so it wraps outermost and screens the Host first.
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts())
     app.include_router(router)
     _mount_webui(app)
     return app

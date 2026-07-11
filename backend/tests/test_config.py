@@ -123,6 +123,16 @@ def test_data_dir_reports_clear_error_when_home_is_unresolvable(monkeypatch, tmp
         config.data_dir()
 
 
+def test_allowed_hosts_defaults_to_loopback(monkeypatch):
+    monkeypatch.delenv("CCFR_ALLOWED_HOSTS", raising=False)
+    assert config.allowed_hosts() == ["localhost", "127.0.0.1"]
+
+
+def test_allowed_hosts_env_override_is_split_and_trimmed(monkeypatch):
+    monkeypatch.setenv("CCFR_ALLOWED_HOSTS", " app.local , *  , ")
+    assert config.allowed_hosts() == ["app.local", "*"]
+
+
 def test_app_version_reads_from_package_metadata(monkeypatch):
     monkeypatch.setattr(config, "_pkg_version", lambda _name: "9.9.9-test")
     assert config.app_version() == "9.9.9-test"

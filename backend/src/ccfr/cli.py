@@ -10,6 +10,10 @@ from pathlib import Path
 
 from ccfr.cli_export import add_export_bundle_parser
 
+# Hosts for which serve keeps the Host-header guard on by default. Anything else
+# is treated as a deliberate network exposure (see _serve).
+_LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
 
 def default_import_root(env: Mapping[str, str] | None = None, home: Path | None = None) -> str:
     """Resolve the default import root for `serve`.
@@ -112,6 +116,17 @@ def _serve(args: argparse.Namespace) -> int:
     os.environ["CCFR_IMPORT_ROOT"] = str(Path(import_root).expanduser())
     if args.data_dir:
         os.environ["CCFR_DATA_DIR"] = str(Path(args.data_dir).expanduser())
+
+    # Binding a non-loopback host is an explicit choice to expose the app on the
+    # network, where the Host header clients send is unknown to us. Relax the
+    # Host-header guard to match, unless the operator pinned an allow-list. The
+    # default (127.0.0.1) keeps the guard on. Set before create_app() reads it.
+    if args.host not in _LOOPBACK_HOSTS and "CCFR_ALLOWED_HOSTS" not in os.environ:
+        os.environ["CCFR_ALLOWED_HOSTS"] = "*"
+        print(
+            f"Note: serving on {args.host} (not loopback), so Host-header "
+            "checking is off. Set CCFR_ALLOWED_HOSTS to restrict it."
+        )
 
     # Import AFTER the env vars are set so config resolves the right paths.
     import uvicorn

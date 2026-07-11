@@ -18,3 +18,16 @@ def isolate_ambient_pricing_state(tmp_path, monkeypatch):
     """
     monkeypatch.setenv("CCFR_PRICING_DIR", str(tmp_path / "_ambient_no_pricing"))
     monkeypatch.setattr(settings_mod, "data_dir", lambda: tmp_path / "_ambient_data")
+
+
+@pytest.fixture(autouse=True)
+def allow_testclient_host(monkeypatch):
+    """Permit the Host that TestClient sends so the Host-header guard added in
+    create_app() does not 400 every request.
+
+    Starlette's TestClient talks to ``http://testserver`` by default, so its
+    requests carry ``Host: testserver``. Add it (plus the real loopback names)
+    to the allow-list for the whole suite; tests that exercise the guard itself
+    override CCFR_ALLOWED_HOSTS afterward, and the later monkeypatch wins.
+    """
+    monkeypatch.setenv("CCFR_ALLOWED_HOSTS", "testserver,localhost,127.0.0.1")

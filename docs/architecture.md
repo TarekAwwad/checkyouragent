@@ -148,17 +148,25 @@ CCFR_TEAM_BUNDLE_ROOT=<CCFR_DATA_DIR>/team-bundles
 CCFR_PRICING_PATH=<repo>/pricing.csv
 CCFR_PRICING_DIR=<repo>/pricing
 CCFR_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+CCFR_ALLOWED_HOSTS=localhost,127.0.0.1
 ```
 
 `CCFR_ALLOWED_ORIGINS` matters only when the browser calls the backend
 cross-origin. In local Vite development the frontend normally uses the `/api`
 proxy instead.
 
+`CCFR_ALLOWED_HOSTS` is the accepted `Host` header allow-list. It is what keeps
+the unauthenticated 127.0.0.1 bind private against DNS rebinding: a page that
+rebinds its domain to 127.0.0.1 reaches the app same-origin, but its forged
+`Host` is rejected. `serve --host <non-loopback>` sets it to `*` (guard off) so
+a deliberate network bind still works; set it explicitly to re-restrict.
+
 ## Current Security Boundary
 
 The app assumes local trust:
 
-- Backend is unauthenticated.
+- Backend is unauthenticated but validates the `Host` header (`CCFR_ALLOWED_HOSTS`)
+  so a foreign site cannot reach the loopback API via DNS rebinding.
 - Docker binds backend and frontend to `127.0.0.1`.
 - Raw exports and the derived SQLite cache may contain sensitive content.
 - Team bundles are content-free by design, but structural token/timing/tool
