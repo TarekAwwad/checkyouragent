@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Download, FileJson, Lock, Pencil } from "lucide-react";
+import { Check, Download, FileJson, Pencil } from "lucide-react";
 import { exportTeamBundle, getRuntimeConfig, getTeamPreview, getTeamProjects } from "../api/client";
 import type { TeamExportRequestBody, TeamPrivacyLevel } from "../api/types";
 import type { ContributionSession } from "../contribute/specimen";
@@ -22,8 +22,6 @@ const LEVELS: { id: TeamPrivacyLevel; label: string; hint: string }[] = [
     hint: "Adds your name, project names, tool names, and file types — still no conversation content.",
   },
 ];
-// Reserved ladder rungs (raw session sharing) — visible so the ladder reads as one axis.
-const PLANNED_LEVELS = ["Sessions", "Raw"];
 
 function sessionsFromBundle(value: unknown): ContributionSession[] {
   return Array.isArray(value) ? (value as ContributionSession[]) : [];
@@ -149,11 +147,6 @@ export default function TeamBundleExport() {
                     title={option.hint}
                   >
                     {option.label}
-                  </button>
-                ))}
-                {PLANNED_LEVELS.map((label) => (
-                  <button key={label} type="button" className="team-level planned" disabled title="Planned: raw session sharing">
-                    <Lock size={12} aria-hidden="true" /> {label}
                   </button>
                 ))}
               </div>
@@ -304,7 +297,7 @@ export default function TeamBundleExport() {
           {manifest ? (
             <section className="card team-flow-card team-ledger-card">
               <PrivacyLedger
-                title="What stays vs. what goes into the team bundle"
+                title="What stays vs. what travels"
                 caveat={manifest.fingerprint_caveat}
                 excluded={manifest.excluded}
                 included={manifest.included_fields}

@@ -1,0 +1,32 @@
+version: 2
+updates:
+  # Bump the SHA-pinned actions in the workflows as new versions ship, so pinning
+  # for integrity does not mean silently running known-vulnerable action code.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # Frontend: app dependencies bundled into the published UI, plus build tooling.
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+
+  # Screenshot / demo-capture tooling (Playwright).
+  - package-ecosystem: "npm"
+    directory: "/scripts"
+    schedule:
+      interval: "weekly"
+
+  # Backend Python dependencies (pyproject.toml).
+  - package-ecosystem: "pip"
+    directory: "/backend"
+    schedule:
+      interval: "weekly"
+
+  # Docker base image tag + pinned digest.
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"

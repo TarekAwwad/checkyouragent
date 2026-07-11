@@ -25,8 +25,8 @@ used to verify product behavior.
 | `docker-compose-local.yml` | duplicate or redundant | Local, ignored compose variant for a backend-only topology with host-specific mount paths. It is useful locally but should not be treated as canonical documentation. |
 | `.dockerignore` | missing important information before audit; current after audit | Updated to exclude `TeamBundles/`, `.ccfr-data/`, `.claude/`, and logs from Docker build context. |
 | `.gitignore` | current | Excludes generated data, local env, dependency/build output, local agent notes, WIP plans, and pricing snapshots. |
-| `backend/pyproject.toml` | current | Package metadata uses `check-your-agent`; the Python import namespace remains `ccfr`. |
-| `frontend/package.json` | current | Scripts exist and work with the documented frontend workflow. Private package metadata uses `check-your-agent-frontend`. |
+| `backend/pyproject.toml` | current | Package metadata uses `checkyouragent`; the Python import namespace remains `ccfr`. |
+| `frontend/package.json` | current | Scripts exist and work with the documented frontend workflow. Private package metadata uses `checkyouragent-frontend`. |
 | `frontend/vite.config.ts` | current | Confirms the local dev server default port is `5174` and `/api` proxies to `localhost:8000`. |
 | `frontend/index.html` | current | Browser title and static description metadata use `Check Your Agent`. |
 | `frontend/src/shell/Sidebar.tsx` | current | UI wordmark is `Check Your Agent`. |

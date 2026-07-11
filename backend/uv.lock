@@ -43,7 +43,7 @@ wheels = [
 ]
 
 [[package]]
-name = "check-your-agent"
+name = "checkyouragent"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

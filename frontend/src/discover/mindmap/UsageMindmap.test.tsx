@@ -67,14 +67,6 @@ const evidencePayload: UsageMapEvidenceResponse = {
 vi.mock("../../api/client", () => ({
   getUsageMap: vi.fn(() => Promise.resolve(mapPayload)),
   getUsageMapEvidence: vi.fn(() => Promise.resolve(evidencePayload)),
-  getUsageCharacteristics: vi.fn(() => Promise.resolve({
-    meta: { project_id: null, window: { date_from: null, date_to: null },
-            total_usd: 100, total_tokens: 0, cost_available: true,
-            costs_partial: false, sessions_analyzed: 5, share_basis: "cost",
-            basis_note: "weighted by cost" },
-    characteristics: [{ key: "subagent_sessions", headline: "subagent-heavy sessions",
-                        share: 0.89, cost_usd: 89, kind: "session", guidance: "g" }],
-  })),
 }));
 
 function renderPage(onOpenSession = vi.fn()) {
@@ -212,13 +204,6 @@ describe("UsageMindmap", () => {
       expect(vi.mocked(getUsageMapEvidence)).toHaveBeenCalledWith(
         "tool:Read@explore", expect.anything());
     });
-  });
-
-  it("opens the usage-characteristics dialog from the toolbar", async () => {
-    renderPage();
-    await screen.findByText("My usage");
-    fireEvent.click(screen.getByRole("button", { name: /Usage drivers/ }));
-    expect(await screen.findByText(/89%/)).toBeInTheDocument();
   });
 
   it("rescales phase shares when the origin filter is set to Subagents", async () => {

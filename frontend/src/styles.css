@@ -305,55 +305,6 @@ html:has(.glossary-dialog[open]) { overflow: hidden; }
   overflow-x: auto;
 }
 
-/* Usage Characteristics modal — /usage-style overlapping-characteristics list.
-   Frame styles are inherited from .glossary-dialog/.glossary-panel. */
-.usage-characteristics-dialog { height: auto; max-height: min(80vh, 640px); }
-.usage-characteristics-dialog .segmented-control { margin: 10px 20px 0; }
-.usage-characteristics-dialog .uc-subtitle {
-  margin: 6px 20px 12px;
-  color: var(--muted);
-  font-size: 12px;
-}
-.usage-characteristics-dialog .uc-body {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 0 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-.usage-characteristics-dialog .uc-row {
-  border-left: 2px solid var(--border-2);
-  padding-left: 10px;
-}
-.usage-characteristics-dialog .uc-headline {
-  margin: 0;
-  font-size: 14px;
-  color: var(--text);
-}
-.usage-characteristics-dialog .uc-headline strong {
-  font-variant-numeric: tabular-nums;
-}
-.usage-characteristics-dialog .uc-guidance {
-  margin: 3px 0 0;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.4;
-}
-.usage-characteristics-dialog .uc-note {
-  color: var(--muted);
-  font-size: 13px;
-}
-.usage-characteristics-dialog .uc-caveat {
-  margin: 0;
-  padding: 12px 20px 16px;
-  border-top: 1px solid var(--border);
-  color: var(--faint);
-  font-size: 11px;
-  font-style: italic;
-}
-
 .page { flex: 1; width: 100%; max-width: var(--page-max-width); margin: 0 auto; padding: 22px var(--page-gutter); }
 .import-page,
 .team-export-page,
@@ -368,8 +319,8 @@ html:has(.glossary-dialog[open]) { overflow: hidden; }
 
 .console-label { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 
-.eyebrow { margin: 0; font-size: 10px; font-weight: 700; letter-spacing: .14em;
-  text-transform: uppercase; color: var(--fan); }
+.eyebrow { margin: 0; font-size: 11px; font-weight: 700; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--muted); }
 
 .docker-badge {
   display: inline-block; margin-left: 8px; padding: 1px 6px; border-radius: 4px;
@@ -490,7 +441,6 @@ h3 {
 }
 .metric span { display: block; font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); }
 .metric strong { display: block; margin-top: 9px; font-size: 24px; font-weight: 700; color: var(--text-strong); }
-.metric:first-child strong { color: var(--accent); }
 
 .map-footer {
   border: 1px solid var(--border);
@@ -528,6 +478,10 @@ h3 {
 .import-row .row-meta { color: var(--muted); font-size: 11.5px; white-space: nowrap; }
 .import-row .row-meta b { color: var(--text); }
 .import-row .row-time { color: var(--faint); }
+
+.demo-card { margin-bottom: 18px; }
+.demo-cta { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; }
+.demo-cta .muted { margin: 0; max-width: 520px; line-height: 1.45; }
 
 
 .searchbox, .selectbox { display: flex; align-items: center; gap: 8px; min-height: 36px;
@@ -1361,6 +1315,12 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
   overflow: hidden; display: flex; flex-direction: column;
 }
 .discover-subtitle { margin: 4px 0 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
+/* Toolbar lead block: page title + subtitle on the left. When present, the
+   range tabs shrink to content so the lead owns the remaining width. */
+.discover-toolbar-lead { flex: 1 1 300px; min-width: 240px; }
+.discover-toolbar-lead h1 { margin: 0; font-size: 16px; font-weight: 700; line-height: 1.2; }
+.discover-toolbar-lead .discover-subtitle { max-width: 62ch; }
+.discover-toolbar-lead ~ .discover-tabs { flex: 0 1 auto; }
 
 /* Outcome segmented control (was the in-panel tab row) */
 .discover-tabs {
@@ -2916,15 +2876,19 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
   display: flex;
   justify-content: space-between;
   gap: 18px;
-  align-items: flex-start;
-  padding: 14px 16px;
+  align-items: center;
+  padding: 13px 16px;
   border-bottom: 1px solid var(--border);
 }
 
 .privacy-ledger-head h2 {
   margin: 0;
-  color: var(--text-strong);
-  font-size: 15.5px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  white-space: nowrap;
+  color: var(--muted);
 }
 
 .privacy-note {
@@ -3377,6 +3341,12 @@ html:has(.specimen-dialog[open]) {
 .team-flow-metrics .contribute-metric strong.team-metric-text {
   font-family: inherit;
   letter-spacing: 0;
+}
+
+.team-flow-metrics .contribute-metric span {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
 }
 
 .team-flow-body {
@@ -3887,6 +3857,7 @@ html:has(.specimen-dialog[open]) {
 
   .privacy-ledger-head {
     flex-direction: column;
+    align-items: flex-start;
     gap: 10px;
   }
 
@@ -4333,4 +4304,20 @@ html:has(.specimen-dialog[open]) {
   border-color: color-mix(in srgb, var(--success) 18%, var(--border));
   background: color-mix(in srgb, var(--success) 8%, var(--surface));
   color: color-mix(in srgb, var(--success) 55%, var(--text));
+}
+
+/* ship-kit:P09/P13 — Usage drivers Explore page. The characteristic rows are
+   shared with the mindmap dialog (.uc-* classes, styled per context); on the
+   page they live inside a .card body, so only row typography is scoped here —
+   the shell chrome comes from the .discover-* / .card grammar. */
+.usage-drivers-body .uc-body { display: flex; flex-direction: column; gap: 14px; }
+.usage-drivers-body .uc-row { border-left: 2px solid var(--border-2); padding-left: 10px; }
+.usage-drivers-body .uc-headline { margin: 0; font-size: 14px; color: var(--text); }
+.usage-drivers-body .uc-headline strong { font-variant-numeric: tabular-nums; }
+.usage-drivers-body .uc-guidance { margin: 3px 0 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.usage-drivers-body .uc-note { color: var(--muted); font-size: 13px; }
+/* Basis footnote as the card's muted footer (replaces the stranded divider). */
+.usage-drivers-footnote {
+  margin: 0; padding: 10px 16px; border-top: 1px solid var(--border);
+  color: var(--faint); font-size: 11px;
 }

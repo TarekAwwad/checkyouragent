@@ -10,7 +10,9 @@ export default defineConfig({
     // port irrelevant (the frontend talks to its own origin's /api).
     proxy: {
       "/api": {
-        target: "http://localhost:8000",
+        // CCFR_DEV_API lets tooling (e.g. the screenshot capture harness)
+        // point the dev server at a backend on a non-default port.
+        target: process.env.CCFR_DEV_API ?? "http://localhost:8000",
         changeOrigin: true,
       },
     },

@@ -1,0 +1,6 @@
+{
+  "agentType": "code-reviewer",
+  "description": "Synthetic demo subagent.",
+  "name": "agent-03",
+  "toolUseId": "demo-agent-00000005-0000-4000-8000-00000000002d-03"
+}

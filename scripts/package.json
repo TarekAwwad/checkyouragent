@@ -1,0 +1,14 @@
+{
+  "name": "checkyouragent-scripts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Local dev tooling (demo screencast capture). Not part of the app build.",
+  "scripts": {
+    "capture-demo": "node capture-demo.mjs",
+    "capture-shots": "node capture-shots.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.0"
+  }
+}

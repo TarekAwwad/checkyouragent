@@ -1,4 +1,5 @@
 import React from "react";
+import { Blurred } from "../../shell/Blurred";
 
 interface TipState {
   x: number;
@@ -6,6 +7,7 @@ interface TipState {
   hostWidth: number;
   title: string;
   lines: string[];
+  blur: boolean;
 }
 
 /**
@@ -18,7 +20,14 @@ export function useChartTooltip<T extends HTMLElement>() {
   const ref = React.useRef<T>(null);
   const [tip, setTip] = React.useState<TipState | null>(null);
 
-  const show = React.useCallback((event: React.MouseEvent, title: string, lines: string[]) => {
+  // Pass { blur: true } when the title is content-derived (file paths, tool
+  // labels) so privacy mode blurs it; category titles stay readable by default.
+  const show = React.useCallback((
+    event: React.MouseEvent,
+    title: string,
+    lines: string[],
+    options?: { blur?: boolean },
+  ) => {
     const host = ref.current?.getBoundingClientRect();
     if (!host) return;
     setTip({
@@ -27,6 +36,7 @@ export function useChartTooltip<T extends HTMLElement>() {
       hostWidth: host.width,
       title,
       lines,
+      blur: options?.blur ?? false,
     });
   }, []);
 
@@ -41,7 +51,7 @@ export function useChartTooltip<T extends HTMLElement>() {
       style={{ left: tip.x, top: tip.y }}
       role="presentation"
     >
-      <strong>{tip.title}</strong>
+      <strong>{tip.blur ? <Blurred>{tip.title}</Blurred> : tip.title}</strong>
       {tip.lines.map((line) => <span key={line}>{line}</span>)}
     </div>
   );

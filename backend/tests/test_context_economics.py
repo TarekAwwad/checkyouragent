@@ -890,6 +890,50 @@ def test_corpus_payload_without_pricing_is_token_only(
     assert payload["meta"]["trend"] == []
 
 
+def test_corpus_payload_exposes_token_currency(economics_conn: sqlite3.Connection) -> None:
+    payload = context_economics_analytics(economics_conn, min_support=3)
+    meta = payload["meta"]
+
+    assert meta["total_tokens"] > 0
+    raw_avoidable = sum(
+        a["savings_tokens"] for a in payload["archetypes"] if a["meets_support"]
+    )
+    # avoidable_tokens mirrors the supported archetypes' token savings, clamped so
+    # it can never exceed the corpus's own total (the same honesty clamp the USD
+    # headline uses).
+    assert meta["avoidable_tokens"] == min(raw_avoidable, meta["total_tokens"])
+    assert meta["avoidable_tokens"] <= meta["total_tokens"]
+    # abs=5e-7 because the share is rounded to 6 decimal places in the payload.
+    assert meta["avoidable_token_share"] == pytest.approx(
+        meta["avoidable_tokens"] / meta["total_tokens"], abs=5e-7
+    )
+
+
+def test_corpus_payload_token_currency_survives_missing_pricing(
+    conn: sqlite3.Connection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Tokens are a price-independent currency: they must be populated even when no
+    # price table is loaded (the whole point of this framing for Max users).
+    monkeypatch.setattr(context_economics, "pricing_path", lambda: tmp_path / "missing.csv")
+    monkeypatch.setattr(context_economics, "pricing_dir", lambda: tmp_path / "pricing")
+    for n in range(3):
+        add_session(conn, uuid=f"tok-{n}", title=f"Re-reader {n}", calls=[
+            {"context": 10_000, "minute": 1}, {"context": 30_000, "minute": 2},
+            {"context": 50_000, "minute": 3}, {"context": 50_500, "minute": 4},
+        ], gap_items={
+            1: [{"kind": "tool_result", "chars": 80_000, "tool_name": "Read", "path": "big.py"}],
+            2: [{"kind": "tool_result", "chars": 80_000, "tool_name": "Read", "path": "big.py"}],
+        })
+    payload = context_economics_analytics(conn, min_support=3)
+    meta = payload["meta"]
+
+    assert meta["cost_available"] is False
+    assert meta["total_usd"] == 0
+    assert meta["total_tokens"] > 0
+    assert meta["avoidable_tokens"] > 0
+    assert 0 < meta["avoidable_token_share"] <= 1
+
+
 def test_corpus_payload_empty_db_is_stable(conn: sqlite3.Connection, tmp_path: Path,
                                            monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(context_economics, "pricing_path", lambda: tmp_path / "missing.csv")
