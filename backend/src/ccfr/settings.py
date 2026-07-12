@@ -8,6 +8,7 @@ import json
 import secrets
 import uuid
 from dataclasses import asdict, dataclass, field, replace
+from datetime import date
 from pathlib import Path
 
 from ccfr.config import data_dir
@@ -27,10 +28,33 @@ class Settings:
     # and deselected export_names (deselected, not selected, so newly imported
     # projects default to included — protecting full-snapshot semantics).
     team_export_prefs: dict = field(default_factory=dict)
+    # Optional subscription history for the limit-hits analysis: sanitized rows
+    # of {"plan": str, "start_date": "YYYY-MM-DD"}, kept sorted ascending.
+    plan_history: list = field(default_factory=list)
 
 
 def _settings_path() -> Path:
     return data_dir() / "settings.json"
+
+
+def _clean_plan_history(raw: object) -> list[dict[str, str]]:
+    if not isinstance(raw, list):
+        return []
+    rows: list[dict[str, str]] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        plan = str(item.get("plan") or "").strip()
+        start = str(item.get("start_date") or "").strip()
+        if not plan:
+            continue
+        try:
+            date.fromisoformat(start)
+        except ValueError:
+            continue
+        rows.append({"plan": plan, "start_date": start})
+    rows.sort(key=lambda row: row["start_date"])
+    return rows
 
 
 def read_settings() -> Settings:
@@ -50,12 +74,14 @@ def read_settings() -> Settings:
         contributor_id=raw.get("contributor_id"),
         team_bundle_seq=int(raw.get("team_bundle_seq", 0) or 0),
         team_export_prefs=raw.get("team_export_prefs") if isinstance(raw.get("team_export_prefs"), dict) else {},
+        plan_history=_clean_plan_history(raw.get("plan_history")),
     )
 
 
 def write_settings(settings: Settings) -> Settings:
     path = _settings_path()
     path.parent.mkdir(parents=True, exist_ok=True)
+    settings.plan_history = _clean_plan_history(settings.plan_history)
     # Preserve existing contributor identity if the incoming settings omits it.
     # Use replace() to create a copy so we don't mutate the caller's object.
     to_write = settings

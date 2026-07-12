@@ -71,3 +71,21 @@ def test_write_settings_does_not_mutate_input(tmp_path, monkeypatch):
     assert arg.contributor_salt is None and arg.contributor_id is None  # input untouched
     reloaded = settings_mod.read_settings()
     assert reloaded.contributor_salt == salt and reloaded.contributor_id == cid  # disk preserved
+
+
+def test_plan_history_round_trip_and_sanitization(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(settings_mod, "data_dir", lambda: tmp_path)
+    settings = settings_mod.read_settings()
+    settings.plan_history = [
+        {"plan": "Max 5x", "start_date": "2026-06-10"},
+        {"plan": "Pro", "start_date": "2026-05-01"},
+        {"plan": "", "start_date": "2026-01-01"},        # dropped: empty plan
+        {"plan": "Bad", "start_date": "not-a-date"},     # dropped: bad date
+        "not-a-dict",                                     # dropped
+    ]
+    settings_mod.write_settings(settings)
+    loaded = settings_mod.read_settings()
+    assert loaded.plan_history == [
+        {"plan": "Pro", "start_date": "2026-05-01"},
+        {"plan": "Max 5x", "start_date": "2026-06-10"},
+    ]

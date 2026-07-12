@@ -21,6 +21,7 @@ class SettingsResponse(BaseModel):
     historical_pricing: bool = True
     privacy_mode: bool = False
     team_export_prefs: dict[str, Any] = Field(default_factory=dict)
+    plan_history: list[dict[str, str]] = Field(default_factory=list)
 
 
 class CacheStatsResponse(BaseModel):

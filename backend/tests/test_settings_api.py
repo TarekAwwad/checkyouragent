@@ -12,12 +12,30 @@ def test_settings_get_default_and_put_round_trip(monkeypatch, tmp_path):
 
     got = client.get("/api/settings")
     assert got.status_code == 200
-    assert got.json() == {"historical_pricing": True, "privacy_mode": False, "team_export_prefs": {}}
+    assert got.json() == {"historical_pricing": True, "privacy_mode": False, "team_export_prefs": {},
+                          "plan_history": []}
 
     put = client.put("/api/settings", json={"historical_pricing": False})
     assert put.status_code == 200
-    assert put.json() == {"historical_pricing": False, "privacy_mode": False, "team_export_prefs": {}}
+    assert put.json() == {"historical_pricing": False, "privacy_mode": False, "team_export_prefs": {},
+                          "plan_history": []}
 
     assert client.get("/api/settings").json() == {
-        "historical_pricing": False, "privacy_mode": False, "team_export_prefs": {}
+        "historical_pricing": False, "privacy_mode": False, "team_export_prefs": {}, "plan_history": []
     }
+
+
+def test_settings_api_round_trips_plan_history(monkeypatch, tmp_path):
+    monkeypatch.setattr(settings_mod, "data_dir", lambda: tmp_path)
+    client = TestClient(create_app())
+    put = client.put("/api/settings", json={
+        "historical_pricing": True,
+        "privacy_mode": False,
+        "team_export_prefs": {},
+        "plan_history": [{"plan": "Pro", "start_date": "2026-05-01"}],
+    })
+    assert put.status_code == 200
+    assert put.json()["plan_history"] == [{"plan": "Pro", "start_date": "2026-05-01"}]
+    assert client.get("/api/settings").json()["plan_history"] == [
+        {"plan": "Pro", "start_date": "2026-05-01"}
+    ]
