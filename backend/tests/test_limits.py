@@ -5,8 +5,11 @@ import sqlite3
 from datetime import datetime, timedelta, timezone
 
 from ccfr.analysis.limits import (
+    LimitHit,
+    UsageEvent,
     classify_hit_text,
     detect_limit_hits,
+    fold_windows,
     parse_reset_at,
 )
 from ccfr.storage import init_db
@@ -147,3 +150,69 @@ def test_detect_unparseable_reset_buckets_by_time() -> None:
     assert len(hits) == 2
     assert hits[0].reset_at is None
     assert hits[0].blocked_minutes is None
+
+
+# ---------------------------------------------------------------------------
+# Window folding
+# ---------------------------------------------------------------------------
+
+def _events(*specs: tuple[str, float]) -> list[UsageEvent]:
+    return [UsageEvent(ts=_utc(ts), cost=cost, tokens=int(cost * 1000))
+            for ts, cost in specs]
+
+
+def test_fold_windows_groups_by_five_hours() -> None:
+    events = _events(
+        ("2026-07-03T08:00:00Z", 1.0),
+        ("2026-07-03T09:00:00Z", 2.0),   # same window (starts 08:00, ends 13:00)
+        ("2026-07-03T14:00:00Z", 4.0),   # next window
+    )
+    windows = fold_windows(events, [])
+    assert len(windows) == 2
+    assert windows[0].start == _utc("2026-07-03T08:00:00Z")
+    assert windows[0].end == _utc("2026-07-03T13:00:00Z")
+    assert windows[0].value_usd == 3.0
+    assert windows[1].value_usd == 4.0
+
+
+def test_fold_windows_attaches_hit_and_measures_usage_at_hit() -> None:
+    events = _events(
+        ("2026-07-03T08:00:00Z", 1.0),
+        ("2026-07-03T09:00:00Z", 2.0),
+        ("2026-07-03T09:40:44Z", 0.0),   # the synthetic hit row itself (zero cost)
+        ("2026-07-03T12:00:00Z", 8.0),   # after the snapped reset: a NEW window
+    )
+    hit = LimitHit(ts=_utc("2026-07-03T09:40:44Z"), kind="session",
+                   reset_at=_utc("2026-07-03T10:30:00Z"))
+    windows = fold_windows(events, [hit])
+    # The hit snaps window 0's end to the reset stamp, so the 12:00 event opens window 1.
+    assert len(windows) == 2
+    assert windows[0].end == _utc("2026-07-03T10:30:00Z")
+    assert windows[0].hit_kinds == ["session"]
+    assert hit.window_index == 0
+    assert hit.usage_at_hit == 3.0
+    assert windows[1].start == _utc("2026-07-03T12:00:00Z")
+
+
+def test_fold_windows_never_snaps_weekly_hits() -> None:
+    events = _events(
+        ("2026-07-03T08:00:00Z", 1.0),
+        ("2026-07-03T08:30:00Z", 0.0),
+    )
+    hit = LimitHit(ts=_utc("2026-07-03T08:30:00Z"), kind="weekly",
+                   reset_at=_utc("2026-07-06T09:00:00Z"))  # days away
+    windows = fold_windows(events, [hit])
+    assert windows[0].end == _utc("2026-07-03T13:00:00Z")  # untouched
+    assert hit.window_index == 0
+
+
+def test_fold_windows_ignores_out_of_tolerance_reset() -> None:
+    events = _events(
+        ("2026-07-03T08:00:00Z", 1.0),
+        ("2026-07-03T08:10:00Z", 0.0),
+    )
+    # A "session" stamp 7h out is inconsistent with a 5h window: keep the inferred end.
+    hit = LimitHit(ts=_utc("2026-07-03T08:10:00Z"), kind="session",
+                   reset_at=_utc("2026-07-03T15:00:00Z"))
+    windows = fold_windows(events, [hit])
+    assert windows[0].end == _utc("2026-07-03T13:00:00Z")

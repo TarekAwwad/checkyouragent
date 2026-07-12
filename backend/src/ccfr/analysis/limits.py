@@ -207,3 +207,62 @@ def detect_limit_hits(
                 hit.session_ids.append(row["session_db_id"])
                 hit.session_titles.append(row["title"])
     return sorted(merged.values(), key=lambda h: h.ts)
+
+
+@dataclass(frozen=True)
+class UsageEvent:
+    """One assistant message reduced to what window folding needs."""
+
+    ts: datetime
+    cost: float
+    tokens: int
+
+
+@dataclass
+class UsageWindow:
+    """One reconstructed 5-hour rate-limit window."""
+
+    start: datetime
+    end: datetime
+    value_usd: float = 0.0
+    tokens: int = 0
+    era: str = ""
+    hit_kinds: list[str] = field(default_factory=list)
+
+
+def fold_windows(events: list[UsageEvent], hits: list[LimitHit]) -> list[UsageWindow]:
+    """Fold time-sorted events into non-overlapping 5-hour windows.
+
+    A window opens at its first message and ends 5 hours later, except when a
+    session hit inside it carries a parsed reset stamp within tolerance: then
+    the end snaps to the stamp (measured ground truth beats inference), and
+    later events open the next window. Fills usage_at_hit (window value up to
+    the hit, not the whole window) and window_index on the hits in place.
+    `hits` must be sorted by ts, as detect_limit_hits returns them.
+    """
+    windows: list[UsageWindow] = []
+    current: UsageWindow | None = None
+    hit_idx = 0
+    for event in events:
+        if current is None or event.ts >= current.end:
+            current = UsageWindow(start=event.ts, end=event.ts + WINDOW_SPAN)
+            windows.append(current)
+        current.value_usd += event.cost
+        current.tokens += event.tokens
+        while hit_idx < len(hits) and hits[hit_idx].ts <= event.ts:
+            hit = hits[hit_idx]
+            hit_idx += 1
+            if hit.ts < current.start:
+                continue  # hit fell in a gap with no matching usage row
+            hit.window_index = len(windows) - 1
+            hit.usage_at_hit = round(current.value_usd, 6)
+            current.hit_kinds.append(hit.kind)
+            if (
+                hit.kind == "session"
+                and hit.reset_at is not None
+                and current.start < hit.reset_at <= current.start + WINDOW_SPAN + SNAP_TOLERANCE
+            ):
+                current.end = hit.reset_at
+    for window in windows:
+        window.value_usd = round(window.value_usd, 6)
+    return windows
