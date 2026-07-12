@@ -287,3 +287,137 @@ def fold_windows(events: list[UsageEvent], hits: list[LimitHit]) -> list[UsageWi
     for window in windows:
         window.value_usd = round(window.value_usd, 6)
     return windows
+
+
+def _era_for(ts: datetime, history: list[dict[str, str]]) -> str:
+    """Label for the last plan whose start_date is on or before ts (else "")."""
+    day = ts.date().isoformat()
+    label = ""
+    for row in history:
+        if row["start_date"] <= day:
+            label = row["plan"]
+    return label
+
+
+def _hit_payload(hit: LimitHit) -> dict[str, Any]:
+    blocked = hit.blocked_minutes
+    return {
+        "ts": hit.ts.isoformat(),
+        "kind": hit.kind,
+        "reset_at": hit.reset_at.isoformat() if hit.reset_at else None,
+        "blocked_minutes": round(blocked, 1) if blocked is not None else None,
+        "usage_at_hit": round(hit.usage_at_hit, 4) if hit.usage_at_hit is not None else None,
+        "occurrence_count": hit.occurrence_count,
+        "window_index": hit.window_index,
+        "session_ids": list(hit.session_ids),
+        "session_titles": list(hit.session_titles),
+    }
+
+
+def limits_analytics(
+    conn: sqlite3.Connection,
+    *,
+    historical: bool = True,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    plan_history: list[dict[str, str]] | None = None,
+) -> dict[str, Any]:
+    """Limit hits, priced 5-hour windows, and per-era cap zones."""
+    history = sorted(
+        (
+            row for row in (plan_history or [])
+            if isinstance(row, dict) and row.get("plan") and row.get("start_date")
+        ),
+        key=lambda row: row["start_date"],
+    )
+    timeline = load_price_timeline(pricing_path(), pricing_dir())
+    events = load_events(conn, timeline, historical=historical,
+                         date_from=date_from, date_to=date_to)
+    usage: list[UsageEvent] = []
+    costs_partial = False
+    for event in events:
+        ts = _parse_ts(event.ts)
+        if ts is None:
+            continue
+        if event.model != SYNTHETIC_MODEL and not event.priced:
+            costs_partial = True
+        usage.append(UsageEvent(ts=ts, cost=event.cost, tokens=event.tokens))
+    usage.sort(key=lambda u: u.ts)
+
+    hits = detect_limit_hits(conn, date_from=date_from, date_to=date_to)
+    windows = fold_windows(usage, hits)
+    for window in windows:
+        window.era = _era_for(window.start, history)
+
+    era_order: list[str] = []
+    for window in windows:
+        if window.era not in era_order:
+            era_order.append(window.era)
+    if not era_order:
+        era_order = [""]
+
+    eras_payload: list[dict[str, Any]] = []
+    for era in era_order:
+        era_indices = [i for i, w in enumerate(windows) if w.era == era]
+        era_windows = [windows[i] for i in era_indices]
+        era_hits = [h for h in hits
+                    if h.window_index is not None and windows[h.window_index].era == era]
+        session_hits = [h for h in era_hits if h.kind == "session"]
+        zone = sorted(h.usage_at_hit for h in session_hits if h.usage_at_hit is not None)
+        cap_median = round(median(zone), 4) if zone else None
+        near_miss = 0
+        percentile = None
+        if cap_median:
+            hit_window_indices = {h.window_index for h in session_hits}
+            near_miss = sum(
+                1 for i in era_indices
+                if i not in hit_window_indices
+                and windows[i].value_usd >= NEAR_MISS_RATIO * cap_median
+            )
+            below = sum(1 for w in era_windows if w.value_usd <= cap_median)
+            percentile = round(below / len(era_windows), 4)
+        blocked = sum(h.blocked_minutes or 0.0 for h in era_hits)
+        eras_payload.append({
+            "era": era,
+            "window_count": len(era_windows),
+            "session_hit_count": len(session_hits),
+            "blocked_minutes": round(blocked, 1),
+            "cap_median_usd": cap_median,
+            "cap_min_usd": round(zone[0], 4) if zone else None,
+            "cap_max_usd": round(zone[-1], 4) if zone else None,
+            "near_miss_count": near_miss,
+            "cap_percentile": percentile,
+            "usage_at_hit_usd": [round(v, 4) for v in zone],
+        })
+
+    blocked_total = sum(h.blocked_minutes or 0.0 for h in hits)
+    last_ts = usage[-1].ts if usage else None
+    recent = [h for h in hits
+              if last_ts is not None and h.ts >= last_ts - timedelta(days=RECENT_DAYS)]
+    return {
+        "meta": {
+            "window": {"date_from": date_from, "date_to": date_to},
+            "cost_available": timeline.has_prices,
+            "costs_partial": costs_partial,
+            "total_hits": len(hits),
+            "total_windows": len(windows),
+            "blocked_minutes": round(blocked_total, 1),
+            "hits_per_week_recent": round(len(recent) / (RECENT_DAYS / 7), 2),
+            "hit_counts": dict(Counter(h.kind for h in hits)),
+            "plan_history": history,
+            "method_note": METHOD_NOTE,
+        },
+        "hits": [_hit_payload(h) for h in hits],
+        "windows": [
+            {
+                "start": w.start.isoformat(),
+                "end": w.end.isoformat(),
+                "value_usd": round(w.value_usd, 4),
+                "tokens": w.tokens,
+                "era": w.era,
+                "hit_kinds": list(w.hit_kinds),
+            }
+            for w in windows
+        ],
+        "eras": eras_payload,
+    }

@@ -3,6 +3,9 @@ from __future__ import annotations
 import json
 import sqlite3
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+import pytest
 
 from ccfr.analysis.limits import (
     LimitHit,
@@ -10,6 +13,7 @@ from ccfr.analysis.limits import (
     classify_hit_text,
     detect_limit_hits,
     fold_windows,
+    limits_analytics,
     parse_reset_at,
 )
 from ccfr.storage import init_db
@@ -241,3 +245,91 @@ def test_fold_windows_hit_in_activity_gap_opens_its_own_window() -> None:
     assert len(windows) == 2
     assert hit.window_index == 1
     assert hit.usage_at_hit == 0.0
+
+
+# ---------------------------------------------------------------------------
+# limits_analytics composition
+# ---------------------------------------------------------------------------
+
+def _add_usage(conn: sqlite3.Connection, session_id: int, ts: str, base: int) -> int:
+    ev = conn.execute(
+        "INSERT INTO events (session_id, source_path, line_no, type, timestamp, raw_json)"
+        " VALUES (?, 'f.jsonl', 1, 'assistant', ?, '{}')",
+        (session_id, ts),
+    ).lastrowid
+    conn.execute(
+        "INSERT INTO messages (event_id, role, model, input_tokens, output_tokens,"
+        " base_input_tokens, cache_5m_tokens, cache_1h_tokens, cache_read_tokens)"
+        " VALUES (?, 'assistant', 'claude-opus-4-8', ?, 0, ?, 0, 0, 0)",
+        (ev, base, base),
+    )
+    return int(ev)
+
+
+@pytest.fixture()
+def priced(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    csv = tmp_path / "pricing.csv"
+    # $10 per million base-input tokens: 1M tokens = $10.
+    csv.write_text(
+        "model,base-input-tokens,5m-cache-writes,1h-cache-writes,"
+        "cache-hits-&-refreshes,output-tokens\n"
+        "claude-opus-4-8,10,0,0,0,0\n",
+        encoding="utf-8",
+    )
+    import ccfr.analysis.limits as limits_mod
+    monkeypatch.setattr(limits_mod, "pricing_path", lambda: csv)
+    monkeypatch.setattr(limits_mod, "pricing_dir", lambda: tmp_path / "no-sheets")
+
+
+def test_limits_analytics_full_payload(priced: None) -> None:
+    conn = _make_conn()
+    # Window 1 (May 20, Pro era): $10 usage then a session hit.
+    _add_usage(conn, 1, "2026-05-20T08:00:00Z", 1_000_000)
+    _add_limit_hit(conn, 1, "2026-05-20T09:00:00Z",
+                   "You've hit your session limit · resets 1pm (UTC)")
+    # Window 2 (July 3, Max era): $30 usage then a session hit.
+    _add_usage(conn, 1, "2026-07-03T08:00:00Z", 3_000_000)
+    _add_limit_hit(conn, 1, "2026-07-03T09:40:00Z")
+    # Window 3 (July 4, Max era): $25 quiet usage. 25 >= 0.6 * 30: a near-miss.
+    _add_usage(conn, 1, "2026-07-04T08:00:00Z", 2_500_000)
+
+    payload = limits_analytics(conn, plan_history=[
+        {"plan": "Pro", "start_date": "2026-05-01"},
+        {"plan": "Max 5x", "start_date": "2026-06-10"},
+    ])
+
+    assert payload["meta"]["total_hits"] == 2
+    assert payload["meta"]["hit_counts"] == {"session": 2}
+    assert payload["meta"]["total_windows"] == 3
+    assert payload["meta"]["cost_available"] is True
+    assert payload["meta"]["method_note"]
+
+    eras = {era["era"]: era for era in payload["eras"]}
+    assert set(eras) == {"Pro", "Max 5x"}
+    assert eras["Pro"]["session_hit_count"] == 1
+    assert eras["Pro"]["cap_median_usd"] == 10.0
+    assert eras["Max 5x"]["cap_median_usd"] == 30.0
+    assert eras["Max 5x"]["near_miss_count"] == 1
+    assert eras["Max 5x"]["window_count"] == 2
+
+    assert [w["era"] for w in payload["windows"]] == ["Pro", "Max 5x", "Max 5x"]
+    assert payload["windows"][0]["hit_kinds"] == ["session"]
+    assert payload["hits"][0]["kind"] == "session"
+    assert payload["hits"][0]["usage_at_hit"] == 10.0
+    assert payload["hits"][0]["session_ids"] == [1]
+
+
+def test_limits_analytics_without_plan_history_or_hits(priced: None) -> None:
+    conn = _make_conn()
+    _add_usage(conn, 1, "2026-05-20T08:00:00Z", 1_000_000)
+    payload = limits_analytics(conn)
+    assert payload["meta"]["total_hits"] == 0
+    assert payload["meta"]["total_windows"] == 1
+    assert payload["eras"] == [
+        {
+            "era": "", "window_count": 1, "session_hit_count": 0,
+            "blocked_minutes": 0.0, "cap_median_usd": None, "cap_min_usd": None,
+            "cap_max_usd": None, "near_miss_count": 0, "cap_percentile": None,
+            "usage_at_hit_usd": [],
+        }
+    ]
