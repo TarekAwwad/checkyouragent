@@ -103,3 +103,107 @@ def _parse_ts(ts: str | None) -> datetime | None:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed
+
+
+@dataclass
+class LimitHit:
+    """One deduplicated cap hit (possibly seen as several retry events)."""
+
+    ts: datetime
+    kind: str  # session | weekly | org | unknown
+    reset_at: datetime | None
+    session_ids: list[int] = field(default_factory=list)
+    session_titles: list[str] = field(default_factory=list)
+    occurrence_count: int = 1
+    usage_at_hit: float | None = None  # filled by fold_windows
+    window_index: int | None = None  # filled by fold_windows
+
+    @property
+    def blocked_minutes(self) -> float | None:
+        if self.reset_at is None:
+            return None
+        return max(0.0, (self.reset_at - self.ts).total_seconds() / 60)
+
+
+def _hit_text(preview: str, raw: dict) -> str:
+    """The limit message text: text_preview when stored, else the raw block."""
+    if preview:
+        return preview
+    content = (raw.get("message") or {}).get("content")
+    if isinstance(content, list):
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                return str(block.get("text") or "")
+    return ""
+
+
+def detect_limit_hits(
+    conn: sqlite3.Connection,
+    *,
+    date_from: str | None = None,
+    date_to: str | None = None,
+) -> list[LimitHit]:
+    """All deduplicated limit hits in the corpus, sorted by time.
+
+    Detection is structured-first: '<synthetic>' messages whose event raw_json
+    carries error == "rate_limit" (or apiErrorStatus == 429 on older logs).
+    Events sharing (kind, reset stamp) are one hit; without a parsed stamp the
+    fallback key buckets timestamps into 5-minute slots.
+    """
+    where = ["m.model = ?"]
+    params: list[Any] = [SYNTHETIC_MODEL]
+    if date_from:
+        where.append("date(e.timestamp) >= date(?)")
+        params.append(date_from)
+    if date_to:
+        where.append("date(e.timestamp) <= date(?)")
+        params.append(date_to)
+    rows = conn.execute(
+        f"""
+        SELECT e.timestamp AS ts, e.raw_json AS raw_json,
+               COALESCE(m.text_preview, '') AS text,
+               s.id AS session_db_id, COALESCE(s.title, '') AS title
+        FROM messages m
+        JOIN events e ON e.id = m.event_id
+        JOIN sessions s ON s.id = e.session_id
+        WHERE {' AND '.join(where)}
+        ORDER BY e.timestamp, e.id
+        """,
+        params,
+    ).fetchall()
+
+    merged: dict[tuple[str, Any], LimitHit] = {}
+    for row in rows:
+        try:
+            raw = json.loads(row["raw_json"])
+        except (json.JSONDecodeError, TypeError):
+            raw = {}
+        if not isinstance(raw, dict):
+            raw = {}
+        if raw.get("error") != "rate_limit" and raw.get("apiErrorStatus") != 429:
+            continue
+        ts = _parse_ts(row["ts"])
+        if ts is None:
+            continue
+        text = _hit_text(row["text"], raw)
+        kind = classify_hit_text(text)
+        reset_at = parse_reset_at(text, ts)
+        key: tuple[str, Any]
+        if reset_at is not None:
+            key = (kind, reset_at.isoformat())
+        else:
+            key = (kind, int(ts.timestamp()) // _DEDUP_BUCKET_S)
+        hit = merged.get(key)
+        if hit is None:
+            merged[key] = LimitHit(
+                ts=ts, kind=kind, reset_at=reset_at,
+                session_ids=[row["session_db_id"]],
+                session_titles=[row["title"]],
+            )
+        else:
+            hit.occurrence_count += 1
+            hit.ts = min(hit.ts, ts)
+            if row["session_db_id"] not in hit.session_ids:
+                hit.session_ids.append(row["session_db_id"])
+                hit.session_titles.append(row["title"])
+    return sorted(merged.values(), key=lambda h: h.ts)

@@ -6,8 +6,10 @@ from datetime import datetime, timedelta, timezone
 
 from ccfr.analysis.limits import (
     classify_hit_text,
+    detect_limit_hits,
     parse_reset_at,
 )
+from ccfr.storage import init_db
 
 
 def _utc(text: str) -> datetime:
@@ -62,3 +64,86 @@ def test_parse_reset_unknown_timezone_or_garbage_returns_none() -> None:
     assert parse_reset_at("resets 5pm (Middle/Nowhere)", hit) is None
     assert parse_reset_at("You've hit your session limit", hit) is None
     assert parse_reset_at("", hit) is None
+
+
+def _make_conn() -> sqlite3.Connection:
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    init_db(conn)
+    import_id = conn.execute(
+        "INSERT INTO imports (source_path, imported_at, file_count, status, error_count)"
+        " VALUES ('fx', '2026-01-01T00:00:00Z', 0, 'complete', 0)"
+    ).lastrowid
+    project = conn.execute(
+        "INSERT INTO projects (import_id, export_name, inferred_cwd) VALUES (?, 'alpha', NULL)",
+        (import_id,),
+    ).lastrowid
+    conn.execute(
+        "INSERT INTO sessions (project_id, session_id, title, first_ts, last_ts)"
+        " VALUES (?, 's1', 'Session One', '2026-07-03T00:00:00Z', '2026-07-03T12:00:00Z')",
+        (project,),
+    )
+    return conn
+
+
+HIT_TEXT = "You've hit your session limit · resets 12:30pm (Europe/Paris)"
+
+
+def _add_limit_hit(conn: sqlite3.Connection, session_id: int, ts: str,
+                   text: str = HIT_TEXT, *, error: str | None = "rate_limit") -> int:
+    raw: dict = {"isApiErrorMessage": True,
+                 "message": {"model": "<synthetic>",
+                             "content": [{"type": "text", "text": text}]}}
+    if error is not None:
+        raw["error"] = error
+        raw["apiErrorStatus"] = 429
+    ev = conn.execute(
+        "INSERT INTO events (session_id, source_path, line_no, type, timestamp, raw_json)"
+        " VALUES (?, 'f.jsonl', 1, 'assistant', ?, ?)",
+        (session_id, ts, json.dumps(raw)),
+    ).lastrowid
+    conn.execute(
+        "INSERT INTO messages (event_id, role, model, text_preview)"
+        " VALUES (?, 'assistant', '<synthetic>', ?)",
+        (ev, text),
+    )
+    return int(ev)
+
+
+# ---------------------------------------------------------------------------
+# Detection and dedup
+# ---------------------------------------------------------------------------
+
+def test_detect_merges_same_reset_stamp_and_keeps_earliest_ts() -> None:
+    conn = _make_conn()
+    _add_limit_hit(conn, 1, "2026-07-03T09:40:44Z")
+    _add_limit_hit(conn, 1, "2026-07-03T09:52:00Z")  # retry against the same cap
+    hits = detect_limit_hits(conn)
+    assert len(hits) == 1
+    assert hits[0].kind == "session"
+    assert hits[0].occurrence_count == 2
+    assert hits[0].ts == _utc("2026-07-03T09:40:44Z")
+    assert hits[0].reset_at == _utc("2026-07-03T10:30:00Z")
+    assert hits[0].blocked_minutes is not None
+    assert round(hits[0].blocked_minutes, 1) == 49.3
+    assert hits[0].session_ids == [1]
+    assert hits[0].session_titles == ["Session One"]
+
+
+def test_detect_ignores_synthetic_rows_without_rate_limit_marker() -> None:
+    conn = _make_conn()
+    _add_limit_hit(conn, 1, "2026-07-03T09:40:44Z", "Some other synthetic notice",
+                   error=None)
+    assert detect_limit_hits(conn) == []
+
+
+def test_detect_unparseable_reset_buckets_by_time() -> None:
+    conn = _make_conn()
+    text = "You've hit your session limit — resets 5pm"  # no timezone: unparseable
+    _add_limit_hit(conn, 1, "2026-07-03T09:40:00Z", text)
+    _add_limit_hit(conn, 1, "2026-07-03T09:42:00Z", text)  # same 5-minute bucket
+    _add_limit_hit(conn, 1, "2026-07-03T11:00:00Z", text)  # separate hit
+    hits = detect_limit_hits(conn)
+    assert len(hits) == 2
+    assert hits[0].reset_at is None
+    assert hits[0].blocked_minutes is None
