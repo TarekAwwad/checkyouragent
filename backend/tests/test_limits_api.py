@@ -56,7 +56,7 @@ def test_limits_endpoint_returns_hits_windows_and_eras(client: TestClient) -> No
     assert body["hits"][0]["session_titles"] == ["Session One"]
 
 
-def test_limits_endpoint_rejects_no_params_gracefully(client: TestClient) -> None:
+def test_limits_endpoint_empty_corpus_returns_zeroes(client: TestClient) -> None:
     resp = client.get("/api/analytics/limits")
     assert resp.status_code == 200
     assert resp.json()["meta"]["total_hits"] == 0

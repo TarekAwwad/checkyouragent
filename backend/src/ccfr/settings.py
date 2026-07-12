@@ -49,10 +49,10 @@ def _clean_plan_history(raw: object) -> list[dict[str, str]]:
         if not plan:
             continue
         try:
-            date.fromisoformat(start)
+            parsed = date.fromisoformat(start)
         except ValueError:
             continue
-        rows.append({"plan": plan, "start_date": start})
+        rows.append({"plan": plan, "start_date": parsed.isoformat()})
     rows.sort(key=lambda row: row["start_date"])
     return rows
 

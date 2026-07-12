@@ -91,6 +91,16 @@ def test_plan_history_round_trip_and_sanitization(tmp_path, monkeypatch) -> None
     ]
 
 
+def test_plan_history_normalizes_compact_iso_dates(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings_mod, "data_dir", lambda: tmp_path)
+    settings = settings_mod.read_settings()
+    settings.plan_history = [{"plan": "Pro", "start_date": "20260501"}]
+    settings_mod.write_settings(settings)
+    assert settings_mod.read_settings().plan_history == [
+        {"plan": "Pro", "start_date": "2026-05-01"}
+    ]
+
+
 def test_write_settings_does_not_mutate_caller_plan_history(monkeypatch, tmp_path):
     monkeypatch.setattr(settings_mod, "data_dir", lambda: tmp_path)
     original = [
