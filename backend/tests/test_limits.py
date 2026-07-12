@@ -333,3 +333,19 @@ def test_limits_analytics_without_plan_history_or_hits(priced: None) -> None:
             "usage_at_hit_usd": [],
         }
     ]
+
+
+def test_limits_analytics_zero_usage_cap_zone_stays_defined(priced: None) -> None:
+    conn = _make_conn()
+    # A hit as the first logged call of its window: measured usage-at-hit is
+    # $0 (the real usage lived outside these logs). The zone is still
+    # reported, but near-miss and percentile are meaningless against a $0
+    # cap and stay unset.
+    _add_limit_hit(conn, 1, "2026-07-03T09:40:00Z")
+    payload = limits_analytics(conn)
+    era = payload["eras"][0]
+    assert era["session_hit_count"] == 1
+    assert era["cap_median_usd"] == 0.0
+    assert era["usage_at_hit_usd"] == [0.0]
+    assert era["near_miss_count"] == 0
+    assert era["cap_percentile"] is None

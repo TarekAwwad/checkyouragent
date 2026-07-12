@@ -367,7 +367,10 @@ def limits_analytics(
         cap_median = round(median(zone), 4) if zone else None
         near_miss = 0
         percentile = None
-        if cap_median:
+        # A zero median cap means the measured hits carried no visible usage
+        # (the shared pool filled elsewhere); near-miss and percentile would
+        # be meaningless against a $0 threshold, so they stay unset.
+        if cap_median is not None and cap_median > 0:
             hit_window_indices = {h.window_index for h in session_hits}
             near_miss = sum(
                 1 for i in era_indices
