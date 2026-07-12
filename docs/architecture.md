@@ -137,6 +137,9 @@ team bundles do not contain raw per-session events.
 - `team_bundles.py` and `team_cost.py`: content-free team sharing and team
   aggregate cost.
 - `contribution.py`: content-free contribution bundle export.
+- `limits.py`: detects subscription limit-hit events (synthetic rate-limit
+  messages), folds usage into priced 5-hour windows, and derives per-era
+  measured cap zones. Corpus-wide on purpose (limits are account-level).
 
 ## Configuration Reference
 

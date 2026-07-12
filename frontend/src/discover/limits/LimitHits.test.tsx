@@ -41,8 +41,12 @@ const payload: LimitsResponse = {
   ],
 };
 
+const updateSettingsMock = vi.fn((s) => Promise.resolve(s));
 vi.mock("../../api/client", () => ({
   getLimits: vi.fn(() => Promise.resolve(payload)),
+  getSettings: vi.fn(() =>
+    Promise.resolve({ historical_pricing: true, privacy_mode: false, plan_history: [] })),
+  updateSettings: (s: unknown) => updateSettingsMock(s),
 }));
 
 const projects: Project[] = [];
@@ -90,5 +94,20 @@ describe("LimitHits", () => {
       near_miss_count: 0, cap_percentile: null, usage_at_hit_usd: [],
     }]} />);
     expect(screen.getByText(/That is headroom/)).toBeInTheDocument();
+  });
+
+  it("edits plan history through the modal and saves it to settings", async () => {
+    renderPage();
+    await screen.findByText("limit hits");
+    fireEvent.click(screen.getByRole("button", { name: "Plan history" }));
+    expect(await screen.findByRole("dialog", { name: "Plan history" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Add plan" }));
+    fireEvent.change(screen.getByLabelText("Plan name 1"), { target: { value: "Pro" } });
+    fireEvent.change(screen.getByLabelText("Start date 1"), { target: { value: "2026-05-01" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await vi.waitFor(() => expect(updateSettingsMock).toHaveBeenCalled());
+    expect(updateSettingsMock.mock.calls[0][0]).toMatchObject({
+      plan_history: [{ plan: "Pro", start_date: "2026-05-01" }],
+    });
   });
 });

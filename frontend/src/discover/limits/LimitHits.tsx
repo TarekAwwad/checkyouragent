@@ -5,6 +5,7 @@ import type { LimitsResponse } from "../../api/types";
 import { getLimits } from "../../api/client";
 import WindowsTimeline from "./WindowsTimeline";
 import CapZones from "./CapZones";
+import PlanHistoryModal from "./PlanHistoryModal";
 import { Blurred } from "../../shell/Blurred";
 
 export function formatBlocked(minutes: number): string {
@@ -25,6 +26,7 @@ export default function LimitHits({ onOpenSession }: TechniqueProps) {
   const query = useQuery<LimitsResponse>({ queryKey: ["limits"], queryFn: getLimits });
   const data = query.data;
   const [selected, setSelected] = React.useState<number | null>(null);
+  const [planOpen, setPlanOpen] = React.useState(false);
 
   return (
     <main className="discover-page">
@@ -37,6 +39,9 @@ export default function LimitHits({ onOpenSession }: TechniqueProps) {
               them. Covers all projects: limits are account-level.
             </p>
           </div>
+          <button type="button" onClick={() => setPlanOpen(true)}>
+            Plan history
+          </button>
         </div>
 
         {query.isLoading && <div className="empty-state">Reconstructing windows.</div>}
@@ -124,6 +129,8 @@ export default function LimitHits({ onOpenSession }: TechniqueProps) {
             <p className="limit-footnote">{data.meta.method_note}</p>
           </>
         )}
+
+        {planOpen && <PlanHistoryModal onClose={() => setPlanOpen(false)} />}
       </div>
     </main>
   );
