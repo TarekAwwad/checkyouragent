@@ -216,3 +216,28 @@ def test_fold_windows_ignores_out_of_tolerance_reset() -> None:
                    reset_at=_utc("2026-07-03T15:00:00Z"))
     windows = fold_windows(events, [hit])
     assert windows[0].end == _utc("2026-07-03T13:00:00Z")
+
+
+def test_fold_windows_attaches_deferred_hit_without_matching_event() -> None:
+    # The hit has no event row of its own; a later event must not steal it.
+    events = _events(
+        ("2026-07-03T08:00:00Z", 1.0),
+        ("2026-07-03T20:00:00Z", 4.0),
+    )
+    hit = LimitHit(ts=_utc("2026-07-03T10:00:00Z"), kind="session",
+                   reset_at=_utc("2026-07-03T10:30:00Z"))
+    windows = fold_windows(events, [hit])
+    assert len(windows) == 2
+    assert hit.window_index == 0
+    assert hit.usage_at_hit == 1.0
+    assert windows[0].end == _utc("2026-07-03T10:30:00Z")
+    assert windows[0].hit_kinds == ["session"]
+
+
+def test_fold_windows_hit_in_activity_gap_opens_its_own_window() -> None:
+    events = _events(("2026-07-03T08:00:00Z", 1.0))
+    hit = LimitHit(ts=_utc("2026-07-03T14:00:00Z"), kind="session", reset_at=None)
+    windows = fold_windows(events, [hit])
+    assert len(windows) == 2
+    assert hit.window_index == 1
+    assert hit.usage_at_hit == 0.0

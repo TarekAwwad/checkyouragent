@@ -238,31 +238,52 @@ def fold_windows(events: list[UsageEvent], hits: list[LimitHit]) -> list[UsageWi
     the end snaps to the stamp (measured ground truth beats inference), and
     later events open the next window. Fills usage_at_hit (window value up to
     the hit, not the whole window) and window_index on the hits in place.
-    `hits` must be sorted by ts, as detect_limit_hits returns them.
+    Hits are merged into the event stream by timestamp, so a hit with no
+    matching event row still lands in the window that contains it; a hit in
+    an activity gap opens its own window (an attempted call is activity).
+    `events` and `hits` must both be sorted by ts.
     """
     windows: list[UsageWindow] = []
     current: UsageWindow | None = None
     hit_idx = 0
+
+    def open_window(ts: datetime) -> UsageWindow:
+        window = UsageWindow(start=ts, end=ts + WINDOW_SPAN)
+        windows.append(window)
+        return window
+
+    def attach(hit: LimitHit) -> None:
+        hit.window_index = len(windows) - 1
+        hit.usage_at_hit = round(current.value_usd, 6)
+        current.hit_kinds.append(hit.kind)
+        if (
+            hit.kind == "session"
+            and hit.reset_at is not None
+            and current.start < hit.reset_at <= current.start + WINDOW_SPAN + SNAP_TOLERANCE
+        ):
+            current.end = hit.reset_at
+
     for event in events:
+        while hit_idx < len(hits) and hits[hit_idx].ts < event.ts:
+            hit = hits[hit_idx]
+            hit_idx += 1
+            if current is None or hit.ts >= current.end:
+                current = open_window(hit.ts)
+            attach(hit)
         if current is None or event.ts >= current.end:
-            current = UsageWindow(start=event.ts, end=event.ts + WINDOW_SPAN)
-            windows.append(current)
+            current = open_window(event.ts)
         current.value_usd += event.cost
         current.tokens += event.tokens
         while hit_idx < len(hits) and hits[hit_idx].ts <= event.ts:
             hit = hits[hit_idx]
             hit_idx += 1
-            if hit.ts < current.start:
-                continue  # hit fell in a gap with no matching usage row
-            hit.window_index = len(windows) - 1
-            hit.usage_at_hit = round(current.value_usd, 6)
-            current.hit_kinds.append(hit.kind)
-            if (
-                hit.kind == "session"
-                and hit.reset_at is not None
-                and current.start < hit.reset_at <= current.start + WINDOW_SPAN + SNAP_TOLERANCE
-            ):
-                current.end = hit.reset_at
+            attach(hit)
+    while hit_idx < len(hits):
+        hit = hits[hit_idx]
+        hit_idx += 1
+        if current is None or hit.ts >= current.end:
+            current = open_window(hit.ts)
+        attach(hit)
     for window in windows:
         window.value_usd = round(window.value_usd, 6)
     return windows
