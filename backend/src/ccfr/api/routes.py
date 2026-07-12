@@ -157,7 +157,8 @@ def update_settings(payload: SettingsResponse) -> SettingsResponse:
     current = read_settings()
     current.historical_pricing = payload.historical_pricing
     current.privacy_mode = payload.privacy_mode
-    current.plan_history = [dict(row) for row in payload.plan_history]
+    if payload.plan_history is not None:
+        current.plan_history = [dict(row) for row in payload.plan_history]
     saved = write_settings(current)
     return SettingsResponse(**asdict(saved))
 
