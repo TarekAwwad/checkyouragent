@@ -81,14 +81,14 @@ def read_settings() -> Settings:
 def write_settings(settings: Settings) -> Settings:
     path = _settings_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    settings.plan_history = _clean_plan_history(settings.plan_history)
+    # Always write a copy so we never mutate the caller's object; sanitize the
+    # plan history on the way out, mirroring read_settings.
+    to_write = replace(settings, plan_history=_clean_plan_history(settings.plan_history))
     # Preserve existing contributor identity if the incoming settings omits it.
-    # Use replace() to create a copy so we don't mutate the caller's object.
-    to_write = settings
     if settings.contributor_salt is None or settings.contributor_id is None:
         existing = read_settings()
         to_write = replace(
-            settings,
+            to_write,
             contributor_salt=settings.contributor_salt or existing.contributor_salt,
             contributor_id=settings.contributor_id or existing.contributor_id,
         )
