@@ -14,4 +14,11 @@ describe("technique registry", () => {
     expect(DEFAULT_TECHNIQUE).toBe("subgroup");
     expect(TECHNIQUES.some((t) => t.key === DEFAULT_TECHNIQUE)).toBe(true);
   });
+
+  it("registers Limit hits as a ready technique with a component", () => {
+    const limits = TECHNIQUES.find((t) => t.key === "limits");
+    expect(limits?.status).toBe("ready");
+    expect(limits?.label).toBe("Limit hits");
+    expect(limits?.component).toBeTruthy();
+  });
 });

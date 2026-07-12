@@ -11,6 +11,7 @@ import type {
   EventDetail,
   ImportProgress,
   ImportSummary,
+  LimitsResponse,
   Project,
   RiskFinding,
   RuntimeConfig,
@@ -247,6 +248,10 @@ export function getUsageCharacteristics(filters: UsageMapFilters = {}) {
   return request<UsageCharacteristicsResponse>(
     `/analytics/usage-characteristics${query ? `?${query}` : ""}`,
   );
+}
+
+export function getLimits() {
+  return request<LimitsResponse>("/analytics/limits");
 }
 
 export function getSettings() {
