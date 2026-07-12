@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sqlite3
 from pathlib import Path
 
 import pytest
@@ -10,7 +9,6 @@ import ccfr.analysis.limits as limits_mod
 from ccfr import settings as settings_mod
 from ccfr.api.deps import get_db
 from ccfr.main import create_app
-from ccfr.storage import init_db
 from tests.test_limits import HIT_TEXT, _add_limit_hit, _add_usage, _make_conn
 
 
@@ -27,24 +25,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(limits_mod, "pricing_dir", lambda: tmp_path / "no-sheets")
     monkeypatch.setattr(settings_mod, "data_dir", lambda: tmp_path)
     monkeypatch.setattr("ccfr.main.database_path", lambda: tmp_path / "startup.sqlite3")
-    # Create a file-based database (thread-safe) instead of in-memory.
-    db_path = tmp_path / "test.sqlite3"
-    conn = sqlite3.connect(str(db_path), check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    init_db(conn)
-    import_id = conn.execute(
-        "INSERT INTO imports (source_path, imported_at, file_count, status, error_count)"
-        " VALUES ('fx', '2026-01-01T00:00:00Z', 0, 'complete', 0)"
-    ).lastrowid
-    project = conn.execute(
-        "INSERT INTO projects (import_id, export_name, inferred_cwd) VALUES (?, 'alpha', NULL)",
-        (import_id,),
-    ).lastrowid
-    conn.execute(
-        "INSERT INTO sessions (project_id, session_id, title, first_ts, last_ts)"
-        " VALUES (?, 's1', 'Session One', '2026-07-03T00:00:00Z', '2026-07-03T12:00:00Z')",
-        (project,),
-    )
+    conn = _make_conn()
     app = create_app()
     app.dependency_overrides[get_db] = lambda: conn
     with TestClient(app) as c:

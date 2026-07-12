@@ -74,7 +74,7 @@ def test_parse_reset_unknown_timezone_or_garbage_returns_none() -> None:
 
 
 def _make_conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(":memory:")
+    conn = sqlite3.connect(":memory:", check_same_thread=False)
     conn.row_factory = sqlite3.Row
     init_db(conn)
     import_id = conn.execute(
