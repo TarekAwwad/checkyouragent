@@ -677,6 +677,60 @@ class UsageCharacteristicsResponse(BaseModel):
     characteristics: list[UsageCharacteristic] = Field(default_factory=list)
 
 
+class LimitHitOut(BaseModel):
+    ts: str
+    kind: str
+    reset_at: str | None = None
+    blocked_minutes: float | None = None
+    usage_at_hit: float | None = None
+    occurrence_count: int = 1
+    window_index: int | None = None
+    session_ids: list[int] = Field(default_factory=list)
+    session_titles: list[str] = Field(default_factory=list)
+
+
+class LimitWindowOut(BaseModel):
+    start: str
+    end: str
+    value_usd: float = 0
+    tokens: int = 0
+    era: str = ""
+    hit_kinds: list[str] = Field(default_factory=list)
+
+
+class LimitEraOut(BaseModel):
+    era: str = ""
+    window_count: int = 0
+    session_hit_count: int = 0
+    blocked_minutes: float = 0
+    cap_median_usd: float | None = None
+    cap_min_usd: float | None = None
+    cap_max_usd: float | None = None
+    near_miss_count: int = 0
+    cap_percentile: float | None = None
+    usage_at_hit_usd: list[float] = Field(default_factory=list)
+
+
+class LimitsMeta(BaseModel):
+    window: UsageMapWindow = Field(default_factory=UsageMapWindow)
+    cost_available: bool = False
+    costs_partial: bool = False
+    total_hits: int = 0
+    total_windows: int = 0
+    blocked_minutes: float = 0
+    hits_per_week_recent: float = 0
+    hit_counts: dict[str, int] = Field(default_factory=dict)
+    plan_history: list[dict[str, str]] = Field(default_factory=list)
+    method_note: str = ""
+
+
+class LimitsResponse(BaseModel):
+    meta: LimitsMeta = Field(default_factory=LimitsMeta)
+    hits: list[LimitHitOut] = Field(default_factory=list)
+    windows: list[LimitWindowOut] = Field(default_factory=list)
+    eras: list[LimitEraOut] = Field(default_factory=list)
+
+
 class ContributionPreviewResponse(BaseModel):
     manifest: dict[str, Any]
     bundle: dict[str, Any]
