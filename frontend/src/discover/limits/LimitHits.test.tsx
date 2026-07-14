@@ -62,29 +62,48 @@ function renderPage(onOpenSession = vi.fn()) {
 }
 
 describe("LimitHits", () => {
-  it("renders the stat tiles and the measured cap", async () => {
+  it("renders the stat tiles without per-plan cards", async () => {
     renderPage();
-    expect(await screen.findByText("limit hits")).toBeInTheDocument();
-    expect(screen.getByText("$76.2")).toBeInTheDocument();
-    expect(screen.getByText(/Max 5x cap, median/)).toBeInTheDocument();
-    expect(screen.getByText(/hits\/week, last 28 days/)).toBeInTheDocument();
+    expect(await screen.findByText("Time blocked")).toBeInTheDocument();
+    expect(screen.getByText("Capped windows")).toBeInTheDocument();
+    expect(screen.getByText("1 of 2 windows hit a cap")).toBeInTheDocument();
+    expect(screen.queryByText("Hits per week")).not.toBeInTheDocument();
+    expect(screen.queryByText("Max 5x cap")).not.toBeInTheDocument();
   });
 
-  it("shows the windows timeline and opens the hit detail on click", async () => {
+  it("shows the windows timeline with its legend and opens the hit detail on click", async () => {
     const onOpenSession = renderPage();
-    await screen.findByText("limit hits");
+    await screen.findByText("Time blocked");
     expect(screen.getByRole("img", { name: "5-hour windows timeline" })).toBeInTheDocument();
+    expect(screen.getByText("window usage")).toBeInTheDocument();
+    expect(screen.getByText("limit hit")).toBeInTheDocument();
+    expect(screen.getByText("1.0 hits/wk")).toBeInTheDocument();
+    expect(screen.getByText("x-axis: window start date")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /window 1/i }));
     expect(await screen.findByText(/session limit/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Ship the release/ }));
     expect(onOpenSession).toHaveBeenCalledWith(7);
   });
 
-  it("shows the cap zone strip per era", async () => {
+  it("shows the per-plan metrics on the cap zone rows", async () => {
     renderPage();
-    await screen.findByText("limit hits");
-    expect(screen.getByText(/1 session hits/)).toBeInTheDocument();
+    await screen.findByText("Time blocked");
+    expect(screen.getByText(/1 session hit\b/)).toBeInTheDocument();
+    expect(screen.getByText(/median \$76\.2/)).toBeInTheDocument();
+    expect(screen.getByText(/avg \$76\.2/)).toBeInTheDocument();
+    expect(screen.getByText(/0\.8h blocked/)).toBeInTheDocument();
     expect(screen.getByText(/cap at p50 of windows/)).toBeInTheDocument();
+    expect(screen.getByText("min-max cap zone")).toBeInTheDocument();
+    expect(screen.getByText("avg hit")).toBeInTheDocument();
+    expect(screen.getByText(/x-axis: window usage/)).toBeInTheDocument();
+  });
+
+  it("shows a verdict about the active plan", async () => {
+    renderPage();
+    await screen.findByText("Time blocked");
+    expect(
+      screen.getByText(/You hit the Max 5x cap about 1\.0 times a week/),
+    ).toBeInTheDocument();
   });
 
   it("shows the headroom message when no session hits exist", () => {
@@ -98,7 +117,7 @@ describe("LimitHits", () => {
 
   it("edits plan history through the modal and saves it to settings", async () => {
     renderPage();
-    await screen.findByText("limit hits");
+    await screen.findByText("Time blocked");
     fireEvent.click(screen.getByRole("button", { name: "Plan history" }));
     expect(await screen.findByRole("dialog", { name: "Plan history" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Add plan" }));
@@ -109,5 +128,16 @@ describe("LimitHits", () => {
     expect(updateSettingsMock.mock.calls[0][0]).toMatchObject({
       plan_history: [{ plan: "Pro", start_date: "2026-05-01" }],
     });
+  });
+
+  it("keeps Add plan disabled until the saved history has loaded", async () => {
+    // A row added before the settings fetch resolves would be wiped by it.
+    const { getSettings } = await import("../../api/client");
+    vi.mocked(getSettings).mockImplementationOnce(() => new Promise(() => {}));
+    renderPage();
+    await screen.findByText("Time blocked");
+    fireEvent.click(screen.getByRole("button", { name: "Plan history" }));
+    expect(await screen.findByRole("dialog", { name: "Plan history" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add plan" })).toBeDisabled();
   });
 });

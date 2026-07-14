@@ -7,16 +7,22 @@ import WindowsTimeline from "./WindowsTimeline";
 import CapZones from "./CapZones";
 import PlanHistoryModal from "./PlanHistoryModal";
 import { Blurred } from "../../shell/Blurred";
+import InsightStat from "../../components/InsightStat";
+import LoadingBar from "../../components/LoadingBar";
+import { activeEra, buildVerdict, eraRates, formatBlocked, formatUsd } from "./limitMath";
 
-export function formatBlocked(minutes: number): string {
-  if (!minutes) return "0h";
-  const hours = minutes / 60;
-  return hours >= 10 ? `${Math.round(hours)}h` : `${hours.toFixed(1)}h`;
+function hitCountsHint(counts: Record<string, number>): string {
+  const parts = Object.entries(counts).map(([kind, count]) => `${count} ${kind}`);
+  return parts.length > 0 ? parts.join(" · ") : "in your exported logs";
 }
 
-export function formatUsd(value: number | null | undefined): string {
-  if (value == null) return "n/a";
-  return `$${value >= 100 ? value.toFixed(0) : value.toFixed(1)}`;
+function cappedCount(windows: LimitsResponse["windows"]): number {
+  return windows.filter((w) => w.hit_kinds.length > 0).length;
+}
+
+function cappedPct(windows: LimitsResponse["windows"]): number {
+  if (windows.length === 0) return 0;
+  return Math.round((cappedCount(windows) / windows.length) * 100);
 }
 
 // Explore technique: measured subscription limits. Account-level by design,
@@ -27,6 +33,16 @@ export default function LimitHits({ onOpenSession }: TechniqueProps) {
   const data = query.data;
   const [selected, setSelected] = React.useState<number | null>(null);
   const [planOpen, setPlanOpen] = React.useState(false);
+
+  // The verdict reads the plan the user is on now (the newest window's era).
+  const verdict = React.useMemo(() => {
+    if (!data || data.windows.length === 0) return null;
+    const era = activeEra(data.windows);
+    return buildVerdict(
+      data.eras.find((e) => e.era === era),
+      eraRates(data.windows, data.hits).get(era ?? ""),
+    );
+  }, [data]);
 
   return (
     <main className="discover-page">
@@ -39,44 +55,50 @@ export default function LimitHits({ onOpenSession }: TechniqueProps) {
               them. Covers all projects: limits are account-level.
             </p>
           </div>
-          <button type="button" onClick={() => setPlanOpen(true)}>
+          <button type="button" className="ghost-action" onClick={() => setPlanOpen(true)}>
             Plan history
           </button>
         </div>
 
-        {query.isLoading && <div className="empty-state">Reconstructing windows.</div>}
-        {query.isError && <div className="empty-state">Could not load limit analytics.</div>}
+        {query.isLoading && (
+          <div className="loading-view"><LoadingBar caption="Reconstructing 5-hour windows…" /></div>
+        )}
+        {query.isError && (
+          <div className="empty-state panel-error">
+            <strong>Failed to load</strong>
+            <span>Limit analytics could not be loaded.</span>
+          </div>
+        )}
 
         {data && (
           <>
-            <div className="limit-tiles" aria-label="Limit stats">
-              <div className="limit-tile">
-                <strong>{data.meta.total_hits}</strong>
-                <span>limit hits</span>
-              </div>
-              <div className="limit-tile">
-                <strong>{formatBlocked(data.meta.blocked_minutes)}</strong>
-                <span>blocked</span>
-              </div>
-              <div className="limit-tile">
-                <strong>{data.meta.hits_per_week_recent}</strong>
-                <span>hits/week, last 28 days</span>
-              </div>
-              {data.eras
-                .filter((era) => era.cap_median_usd != null)
-                .map((era) => (
-                  <div key={era.era || "all"} className="limit-tile">
-                    <strong>{formatUsd(era.cap_median_usd)}</strong>
-                    <span>{era.era ? `${era.era} cap, median` : "measured cap, median"}</span>
-                  </div>
-                ))}
+            {!data.meta.cost_available && (
+              <p className="tile-note">Price table unavailable, so window dollar values cannot be computed.</p>
+            )}
+            {data.meta.cost_available && data.meta.costs_partial && (
+              <p className="tile-note">Some models lack prices, so window values are a lower bound.</p>
+            )}
+            <div className="cost-insight-strip limit-insight-strip" aria-label="Limit stats">
+              <InsightStat label="Limit hits" value={data.meta.total_hits}
+                           hint={hitCountsHint(data.meta.hit_counts)} />
+              <InsightStat label="Time blocked" value={formatBlocked(data.meta.blocked_minutes)}
+                           hint="from parsed reset times" />
+              <InsightStat label="Capped windows" value={`${cappedPct(data.windows)}%`}
+                           hint={`${cappedCount(data.windows)} of ${data.windows.length} windows hit a cap`} />
             </div>
+            {verdict && (
+              <p className="limit-verdict" data-tone={verdict.tone}>
+                <i aria-hidden={true} />
+                <span>{verdict.text}</span>
+              </p>
+            )}
             <section className="card" aria-label="Windows timeline">
               <div className="card-head">
                 <h2>5-hour windows, hits marked</h2>
+                <span className="card-count"><b>{data.meta.total_windows}</b> windows</span>
               </div>
               <div className="card-pad">
-                <WindowsTimeline windows={data.windows} selected={selected}
+                <WindowsTimeline windows={data.windows} hits={data.hits} selected={selected}
                                  onSelectWindow={setSelected} />
               </div>
             </section>
@@ -94,6 +116,9 @@ export default function LimitHits({ onOpenSession }: TechniqueProps) {
               <section className="card" aria-label="Window detail">
                 <div className="card-head">
                   <h2>Window detail</h2>
+                  <span className="card-count">
+                    {new Date(data.windows[selected].start).toLocaleString()}
+                  </span>
                 </div>
                 <div className="card-pad">
                   {data.hits.filter((h) => h.window_index === selected).map((h) => (

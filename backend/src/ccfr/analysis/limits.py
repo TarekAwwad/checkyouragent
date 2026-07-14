@@ -42,9 +42,7 @@ METHOD_NOTE = (
     "Claude surface, so this page always covers the whole corpus. Dollars are "
     "API-equivalent value, not an invoice. Hit counts are a lower bound (only "
     "hits recorded inside exported sessions are visible), and usage outside "
-    "Claude Code shares the same pool but is invisible here. Fable 5 usage "
-    "after 2026-07-12 bills as usage credits and no longer counts against "
-    "these caps."
+    "Claude Code shares the same pool but is invisible here."
 )
 
 

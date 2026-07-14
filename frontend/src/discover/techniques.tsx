@@ -22,12 +22,14 @@ export interface Technique {
 // Attach a component here when a technique becomes ready. The "soon" status is
 // intentionally kept in the type so a future technique can register as a
 // not-yet-ready stub; DiscoverPage renders those through its ComingSoon fallback.
+// Listed in priority order; the sidebar renders this order verbatim and the
+// first entry is what Explore opens to.
 export const TECHNIQUES: Technique[] = [
-  { key: "subgroup", label: "Subgroups", status: "ready", component: SubgroupDiscovery },
-  { key: "context", label: "Context economics", status: "ready", component: ContextEconomics },
-  { key: "mindmap", label: "Usage Mindmap", status: "ready", component: UsageMindmap },
-  { key: "drivers", label: "Usage drivers", status: "ready", component: UsageDrivers },
   { key: "limits", label: "Limit hits", status: "ready", component: LimitHits },
+  { key: "context", label: "Context economics", status: "ready", component: ContextEconomics },
+  { key: "drivers", label: "Usage drivers", status: "ready", component: UsageDrivers },
+  { key: "mindmap", label: "Usage Mindmap", status: "ready", component: UsageMindmap },
+  { key: "subgroup", label: "Subgroups", status: "ready", component: SubgroupDiscovery },
 ];
 
-export const DEFAULT_TECHNIQUE = "subgroup";
+export const DEFAULT_TECHNIQUE = "limits";

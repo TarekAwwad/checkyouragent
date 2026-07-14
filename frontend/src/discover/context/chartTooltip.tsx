@@ -5,6 +5,7 @@ interface TipState {
   x: number;
   y: number;
   hostWidth: number;
+  hostHeight: number;
   title: string;
   lines: string[];
   blur: boolean;
@@ -34,6 +35,7 @@ export function useChartTooltip<T extends HTMLElement>() {
       x: event.clientX - host.left,
       y: event.clientY - host.top,
       hostWidth: host.width,
+      hostHeight: host.height,
       title,
       lines,
       blur: options?.blur ?? false,
@@ -42,12 +44,13 @@ export function useChartTooltip<T extends HTMLElement>() {
 
   const hide = React.useCallback(() => setTip(null), []);
 
-  // Flip to the left of the cursor in the right 40% of the host so the tooltip
-  // never clips at the container edge.
+  // Flip to the left of the cursor in the right 40% of the host, and above it
+  // in the bottom 40%, so the tooltip never clips at the container edge.
   const flipped = tip !== null && tip.x > tip.hostWidth * 0.6;
+  const flippedY = tip !== null && tip.y > tip.hostHeight * 0.6;
   const tooltip = tip && (
     <div
-      className={`chart-tooltip${flipped ? " is-flipped" : ""}`}
+      className={`chart-tooltip${flipped ? " is-flipped" : ""}${flippedY ? " is-flipped-y" : ""}`}
       style={{ left: tip.x, top: tip.y }}
       role="presentation"
     >
