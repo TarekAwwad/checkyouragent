@@ -73,6 +73,15 @@ def test_parse_reset_unknown_timezone_or_garbage_returns_none() -> None:
     assert parse_reset_at("", hit) is None
 
 
+def test_parse_reset_out_of_range_minute_returns_none() -> None:
+    # The minute group is \d{2}, so a garbled stamp can carry 60-99. It must
+    # read as unparsed, not raise out of the analytics endpoint.
+    hit = _utc("2026-05-20T14:00:00Z")
+    assert parse_reset_at("resets 5:99pm (UTC)", hit) is None
+    assert parse_reset_at("resets 5:60pm (UTC)", hit) is None
+    assert parse_reset_at("resets 5:59pm (UTC)", hit) == _utc("2026-05-20T17:59:00Z")
+
+
 def _make_conn() -> sqlite3.Connection:
     conn = sqlite3.connect(":memory:", check_same_thread=False)
     conn.row_factory = sqlite3.Row

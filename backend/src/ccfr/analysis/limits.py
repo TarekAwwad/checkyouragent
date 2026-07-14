@@ -80,10 +80,14 @@ def parse_reset_at(text: str, hit_at: datetime) -> datetime | None:
         tz = ZoneInfo(match.group("tz").strip())
     except Exception:  # unknown/garbled zone name: treat as unparsed
         return None
+    # hour is bounded by the % 12, but the minute group is \d{2}: "resets 5:99pm"
+    # is as garbled as an unknown zone, so it reads as unparsed rather than raising.
     hour = int(match.group("hour")) % 12
     if match.group("ampm").lower() == "pm":
         hour += 12
     minute = int(match.group("minute") or 0)
+    if minute > 59:
+        return None
     local_hit = hit_at.astimezone(tz)
     candidate = local_hit.replace(hour=hour, minute=minute, second=0, microsecond=0)
     if candidate <= local_hit:
