@@ -10,8 +10,17 @@ describe("technique registry", () => {
     expect(drivers?.component).toBeTypeOf("function");
   });
 
-  it("keeps subgroup as the default technique", () => {
-    expect(DEFAULT_TECHNIQUE).toBe("subgroup");
-    expect(TECHNIQUES.some((t) => t.key === DEFAULT_TECHNIQUE)).toBe(true);
+  it("ranks techniques limits-first and opens Explore on the top entry", () => {
+    expect(TECHNIQUES.map((t) => t.key)).toEqual([
+      "limits", "context", "drivers", "mindmap", "subgroup",
+    ]);
+    expect(DEFAULT_TECHNIQUE).toBe(TECHNIQUES[0].key);
+  });
+
+  it("registers Limit hits as a ready technique with a component", () => {
+    const limits = TECHNIQUES.find((t) => t.key === "limits");
+    expect(limits?.status).toBe("ready");
+    expect(limits?.label).toBe("Limit hits");
+    expect(limits?.component).toBeTruthy();
   });
 });

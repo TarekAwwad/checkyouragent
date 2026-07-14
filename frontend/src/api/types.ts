@@ -653,6 +653,66 @@ export interface Settings {
   historical_pricing: boolean;
   privacy_mode: boolean;
   team_export_prefs?: Record<string, unknown>;
+  plan_history?: PlanEra[];
+}
+
+export interface PlanEra {
+  plan: string;
+  start_date: string;
+}
+
+export interface LimitHitEntry {
+  ts: string;
+  kind: string;
+  reset_at: string | null;
+  blocked_minutes: number | null;
+  usage_at_hit: number | null;
+  occurrence_count: number;
+  window_index: number | null;
+  session_ids: number[];
+  session_titles: string[];
+}
+
+export interface LimitWindowEntry {
+  start: string;
+  end: string;
+  value_usd: number;
+  tokens: number;
+  era: string;
+  hit_kinds: string[];
+}
+
+export interface LimitEraEntry {
+  era: string;
+  window_count: number;
+  session_hit_count: number;
+  blocked_minutes: number;
+  cap_median_usd: number | null;
+  cap_min_usd: number | null;
+  cap_max_usd: number | null;
+  near_miss_count: number;
+  cap_percentile: number | null;
+  usage_at_hit_usd: number[];
+}
+
+export interface LimitsMeta {
+  window: { date_from: string | null; date_to: string | null };
+  cost_available: boolean;
+  costs_partial: boolean;
+  total_hits: number;
+  total_windows: number;
+  blocked_minutes: number;
+  hits_per_week_recent: number;
+  hit_counts: Record<string, number>;
+  plan_history: PlanEra[];
+  method_note: string;
+}
+
+export interface LimitsResponse {
+  meta: LimitsMeta;
+  hits: LimitHitEntry[];
+  windows: LimitWindowEntry[];
+  eras: LimitEraEntry[];
 }
 
 export interface ContributionManifest {

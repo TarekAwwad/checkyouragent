@@ -22,6 +22,7 @@ from ccfr.analysis.context_economics import (
     session_context_economics,
 )
 from ccfr.analysis.discovery import discovery_analytics
+from ccfr.analysis.limits import limits_analytics
 from ccfr.analysis.team_bundles import (
     build_team_bundle,
     delete_team_member,
@@ -47,6 +48,7 @@ from ccfr.api.schemas import (
     ImportProgressResponse,
     ImportRequest,
     ImportSummaryResponse,
+    LimitsResponse,
     ProjectResponse,
     RiskFindingResponse,
     RuntimeConfigResponse,
@@ -155,6 +157,8 @@ def update_settings(payload: SettingsResponse) -> SettingsResponse:
     current = read_settings()
     current.historical_pricing = payload.historical_pricing
     current.privacy_mode = payload.privacy_mode
+    if payload.plan_history is not None:
+        current.plan_history = [dict(row) for row in payload.plan_history]
     saved = write_settings(current)
     return SettingsResponse(**asdict(saved))
 
@@ -642,3 +646,18 @@ def get_usage_characteristics(
         **usage_characteristics_analytics(conn, project_id=project_id,
                                           date_from=date_from, date_to=date_to, historical=historical)
     )
+
+
+@router.get("/analytics/limits", response_model=LimitsResponse)
+def get_limits(
+    date_from: str | None = None,
+    date_to: str | None = None,
+    conn: Connection = Depends(get_db),
+    historical: bool = Depends(get_historical_pricing),
+) -> LimitsResponse:
+    # Deliberately no project_id: limits are account-level, the window that
+    # capped may have been filled by several projects at once.
+    return LimitsResponse(**limits_analytics(
+        conn, historical=historical, date_from=date_from, date_to=date_to,
+        plan_history=read_settings().plan_history,
+    ))

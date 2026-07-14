@@ -4,8 +4,11 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Project } from "../api/types";
 
-const { getDiscoveryAnalytics } = vi.hoisted(() => ({ getDiscoveryAnalytics: vi.fn() }));
-vi.mock("../api/client", () => ({ getDiscoveryAnalytics }));
+const { getDiscoveryAnalytics, getLimits } = vi.hoisted(() => ({
+  getDiscoveryAnalytics: vi.fn(),
+  getLimits: vi.fn(),
+}));
+vi.mock("../api/client", () => ({ getDiscoveryAnalytics, getLimits }));
 
 import DiscoverPage from "./DiscoverPage";
 
@@ -21,6 +24,17 @@ function renderPage(technique: string) {
 }
 
 beforeEach(() => {
+  getLimits.mockReset();
+  getLimits.mockResolvedValue({
+    meta: {
+      window: { date_from: null, date_to: null },
+      cost_available: true, costs_partial: false,
+      total_hits: 0, total_windows: 0, blocked_minutes: 0,
+      hits_per_week_recent: 0, hit_counts: {}, plan_history: [],
+      method_note: "note",
+    },
+    hits: [], windows: [], eras: [],
+  });
   getDiscoveryAnalytics.mockReset();
   getDiscoveryAnalytics.mockResolvedValue({
     meta: { project_id: null, min_support: 5, total_sessions: 12, cost_available: true },
@@ -59,10 +73,10 @@ describe("DiscoverPage", () => {
     expect(await screen.findByRole("heading", { name: "What drives high-cost sessions?" })).toBeInTheDocument();
   });
 
-  it("falls back to the default technique for an unregistered key", async () => {
+  it("falls back to the default technique (limits) for an unregistered key", async () => {
     renderPage("sequence");
     expect(
-      await screen.findByRole("heading", { name: "What drives high-cost sessions?" }),
+      await screen.findByRole("heading", { name: "Limit hits" }),
     ).toBeInTheDocument();
   });
 });
