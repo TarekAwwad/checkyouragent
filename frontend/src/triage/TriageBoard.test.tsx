@@ -127,6 +127,41 @@ describe("TriageBoard", () => {
     expect(within(row).getByText("$12.34")).toBeInTheDocument();
   });
 
+  it("shows the session start timestamp in the overview table", () => {
+    const firstTs = "2026-06-03T10:00:00Z";
+    render(
+      <TriageBoard
+        projects={projects}
+        sessions={[s({ first_ts: firstTs })]}
+        loading={false}
+        onOpenSession={() => {}}
+      />,
+    );
+
+    expect(screen.getByRole("columnheader", { name: "Started" })).toBeInTheDocument();
+    const timestamp = screen.getByText(
+      new Date(firstTs).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }),
+    );
+    expect(timestamp).toHaveAttribute("datetime", firstTs);
+  });
+
+  it("sorts sessions newest first from the Started column", () => {
+    const sessions = [
+      s({ id: 1, session_id: "older111", first_ts: "2026-06-01T10:00:00Z" }),
+      s({ id: 2, session_id: "undated2", first_ts: null }),
+      s({ id: 3, session_id: "newer333", first_ts: "2026-06-03T10:00:00Z" }),
+    ];
+    render(<TriageBoard projects={projects} sessions={sessions} loading={false} onOpenSession={() => {}} />);
+
+    fireEvent.click(screen.getByRole("columnheader", { name: "Started" }));
+
+    const rows = screen.getAllByRole("row").slice(1);
+    expect(within(rows[0]).getByText(/newer333/)).toBeInTheDocument();
+    expect(within(rows[1]).getByText(/older111/)).toBeInTheDocument();
+    expect(within(rows[2]).getByText(/undated2/)).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Sort sessions" })).toHaveValue("first_ts");
+  });
+
   it("sorts by the displayed cost when the Cost header is clicked", () => {
     const sessions = [
       s({ id: 1, session_id: "cheap111", cost_usd: 0.5 }),

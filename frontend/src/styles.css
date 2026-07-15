@@ -823,6 +823,7 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
 
 .tr-name { font-weight: 700; color: var(--text); }
 .tr-sub { font-size: 11px; color: var(--faint); margin-top: 3px; }
+.cell-started { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .cell-err, .cell-loop, .cell-fan { font-weight: 700; }
 .cell-err { color: var(--err); } .cell-loop { color: var(--loop); } .cell-fan { color: var(--fan); }
 .cell-muted { color: var(--faint); }
