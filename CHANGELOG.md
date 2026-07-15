@@ -6,6 +6,11 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- Limit hits can now switch between raw token volume and API-equivalent cost;
+  the timeline, hit details, cap zones, near-misses, percentile, and plan-fit
+  verdict all use the selected measurement basis.
+
 ## [0.1.0] - 2026-07-11
 
 First public release. Local, privacy-strict forensic analytics for Claude Code

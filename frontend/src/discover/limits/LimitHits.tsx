@@ -9,7 +9,15 @@ import PlanHistoryModal from "./PlanHistoryModal";
 import { Blurred } from "../../shell/Blurred";
 import InsightStat from "../../components/InsightStat";
 import LoadingBar from "../../components/LoadingBar";
-import { activeEra, buildVerdict, eraRates, formatBlocked, formatUsd } from "./limitMath";
+import {
+  activeEra,
+  buildVerdict,
+  eraRates,
+  formatBlocked,
+  formatLimitValue,
+  hitUsage,
+  type LimitBasis,
+} from "./limitMath";
 
 function hitCountsHint(counts: Record<string, number>): string {
   const parts = Object.entries(counts).map(([kind, count]) => `${count} ${kind}`);
@@ -33,6 +41,16 @@ export default function LimitHits({ onOpenSession }: TechniqueProps) {
   const data = query.data;
   const [selected, setSelected] = React.useState<number | null>(null);
   const [planOpen, setPlanOpen] = React.useState(false);
+  const [chosenBasis, setChosenBasis] = React.useState<LimitBasis | null>(null);
+
+  // Derived, not an effect: a cost basis the price table cannot back would
+  // otherwise paint one frame of all-zero dollars before flipping to tokens.
+  // Partial prices still default to tokens, but cost stays reachable; without
+  // a price table at all there is nothing to switch to.
+  const costUnusable = data != null && !data.meta.cost_available;
+  const defaultBasis: LimitBasis =
+    data != null && (!data.meta.cost_available || data.meta.costs_partial) ? "tokens" : "cost";
+  const basis: LimitBasis = costUnusable ? "tokens" : chosenBasis ?? defaultBasis;
 
   // The verdict reads the plan the user is on now (the newest window's era).
   const verdict = React.useMemo(() => {
@@ -41,8 +59,9 @@ export default function LimitHits({ onOpenSession }: TechniqueProps) {
     return buildVerdict(
       data.eras.find((e) => e.era === era),
       eraRates(data.windows, data.hits).get(era ?? ""),
+      basis,
     );
-  }, [data]);
+  }, [basis, data]);
 
   return (
     <main className="discover-page">
@@ -55,9 +74,22 @@ export default function LimitHits({ onOpenSession }: TechniqueProps) {
               them. Covers all projects: limits are account-level.
             </p>
           </div>
-          <button type="button" className="ghost-action" onClick={() => setPlanOpen(true)}>
-            Plan history
-          </button>
+          <div className="limit-toolbar-actions">
+            <div className="segmented-control" role="group" aria-label="Usage measurement">
+              {(["tokens", "cost"] as LimitBasis[]).map((item) => (
+                <button key={item} type="button"
+                        className={basis === item ? "active" : ""}
+                        aria-pressed={basis === item}
+                        disabled={item === "cost" && costUnusable}
+                        onClick={() => setChosenBasis(item)}>
+                  {item === "cost" ? "Cost" : "Tokens"}
+                </button>
+              ))}
+            </div>
+            <button type="button" className="ghost-action" onClick={() => setPlanOpen(true)}>
+              Plan history
+            </button>
+          </div>
         </div>
 
         {query.isLoading && (
@@ -98,7 +130,7 @@ export default function LimitHits({ onOpenSession }: TechniqueProps) {
                 <span className="card-count"><b>{data.meta.total_windows}</b> windows</span>
               </div>
               <div className="card-pad">
-                <WindowsTimeline windows={data.windows} hits={data.hits} selected={selected}
+                <WindowsTimeline windows={data.windows} hits={data.hits} basis={basis} selected={selected}
                                  onSelectWindow={setSelected} />
               </div>
             </section>
@@ -108,7 +140,7 @@ export default function LimitHits({ onOpenSession }: TechniqueProps) {
                 <h2>Measured cap zones</h2>
               </div>
               <div className="card-pad">
-                <CapZones eras={data.eras} />
+                <CapZones eras={data.eras} basis={basis} />
               </div>
             </section>
 
@@ -130,8 +162,10 @@ export default function LimitHits({ onOpenSession }: TechniqueProps) {
                           ? `blocked ${formatBlocked(h.blocked_minutes)}`
                           : "reset time unknown"}
                       </span>
-                      {h.usage_at_hit != null && (
-                        <span>at {formatUsd(h.usage_at_hit)} of window usage</span>
+                      {hitUsage(h, basis) != null && (
+                        <span>
+                          at {formatLimitValue(hitUsage(h, basis), basis)} of window usage
+                        </span>
                       )}
                       {h.occurrence_count > 1 && <span>seen {h.occurrence_count} times</span>}
                       <span className="limit-sessions">

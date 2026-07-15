@@ -667,6 +667,7 @@ export interface LimitHitEntry {
   reset_at: string | null;
   blocked_minutes: number | null;
   usage_at_hit: number | null;
+  usage_at_hit_tokens: number | null;
   occurrence_count: number;
   window_index: number | null;
   session_ids: number[];
@@ -690,9 +691,15 @@ export interface LimitEraEntry {
   cap_median_usd: number | null;
   cap_min_usd: number | null;
   cap_max_usd: number | null;
+  cap_median_tokens: number | null;
+  cap_min_tokens: number | null;
+  cap_max_tokens: number | null;
   near_miss_count: number;
+  near_miss_count_tokens: number;
   cap_percentile: number | null;
+  cap_percentile_tokens: number | null;
   usage_at_hit_usd: number[];
+  usage_at_hit_tokens: number[];
 }
 
 export interface LimitsMeta {

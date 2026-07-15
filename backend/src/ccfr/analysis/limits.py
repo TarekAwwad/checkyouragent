@@ -18,6 +18,7 @@ import json
 import re
 import sqlite3
 from collections import Counter
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from statistics import median
@@ -117,7 +118,8 @@ class LimitHit:
     session_ids: list[int] = field(default_factory=list)
     session_titles: list[str] = field(default_factory=list)
     occurrence_count: int = 1
-    usage_at_hit: float | None = None  # filled by fold_windows
+    usage_at_hit: float | None = None  # API-equivalent USD, filled by fold_windows
+    usage_at_hit_tokens: int | None = None  # raw billed-token volume at the hit
     window_index: int | None = None  # filled by fold_windows
 
     @property
@@ -238,8 +240,9 @@ def fold_windows(events: list[UsageEvent], hits: list[LimitHit]) -> list[UsageWi
     A window opens at its first message and ends 5 hours later, except when a
     session hit inside it carries a parsed reset stamp within tolerance: then
     the end snaps to the stamp (measured ground truth beats inference), and
-    later events open the next window. Fills usage_at_hit (window value up to
-    the hit, not the whole window) and window_index on the hits in place.
+    later events open the next window. Fills usage_at_hit and
+    usage_at_hit_tokens (window usage up to the hit, not the whole window),
+    plus window_index, on the hits in place.
     Hits are merged into the event stream by timestamp, so a hit with no
     matching event row still lands in the window that contains it; a hit in
     an activity gap opens its own window (an attempted call is activity).
@@ -257,6 +260,7 @@ def fold_windows(events: list[UsageEvent], hits: list[LimitHit]) -> list[UsageWi
     def attach(hit: LimitHit) -> None:
         hit.window_index = len(windows) - 1
         hit.usage_at_hit = round(current.value_usd, 6)
+        hit.usage_at_hit_tokens = current.tokens
         current.hit_kinds.append(hit.kind)
         if (
             hit.kind == "session"
@@ -309,11 +313,47 @@ def _hit_payload(hit: LimitHit) -> dict[str, Any]:
         "reset_at": hit.reset_at.isoformat() if hit.reset_at else None,
         "blocked_minutes": round(blocked, 1) if blocked is not None else None,
         "usage_at_hit": round(hit.usage_at_hit, 4) if hit.usage_at_hit is not None else None,
+        "usage_at_hit_tokens": hit.usage_at_hit_tokens,
         "occurrence_count": hit.occurrence_count,
         "window_index": hit.window_index,
         "session_ids": list(hit.session_ids),
         "session_titles": list(hit.session_titles),
     }
+
+
+@dataclass(frozen=True)
+class _CapStats:
+    cap_median: float | None
+    near_miss: int
+    percentile: float | None
+
+
+def _cap_stats(
+    zone: Sequence[float],
+    windows: list[UsageWindow],
+    era_indices: list[int],
+    hit_window_indices: set[int | None],
+    value_of: Callable[[UsageWindow], float],
+) -> _CapStats:
+    """Cap zone, near-miss count, and percentile for one measurement basis.
+
+    A zero median cap means the measured hits carried no visible usage (the
+    shared pool filled elsewhere); near-miss and percentile would be
+    meaningless against a zero threshold, so they stay unset for that basis.
+    """
+    if not zone:
+        return _CapStats(None, 0, None)
+    cap_median = median(zone)
+    if cap_median <= 0:
+        return _CapStats(cap_median, 0, None)
+    near_miss = sum(
+        1 for i in era_indices
+        if i not in hit_window_indices
+        and value_of(windows[i]) >= NEAR_MISS_RATIO * cap_median
+    )
+    era_windows = [windows[i] for i in era_indices]
+    below = sum(1 for w in era_windows if value_of(w) <= cap_median)
+    return _CapStats(cap_median, near_miss, round(below / len(era_windows), 4))
 
 
 def limits_analytics(
@@ -366,33 +406,34 @@ def limits_analytics(
                     if h.window_index is not None and windows[h.window_index].era == era]
         session_hits = [h for h in era_hits if h.kind == "session"]
         zone = sorted(h.usage_at_hit for h in session_hits if h.usage_at_hit is not None)
-        cap_median = round(median(zone), 4) if zone else None
-        near_miss = 0
-        percentile = None
-        # A zero median cap means the measured hits carried no visible usage
-        # (the shared pool filled elsewhere); near-miss and percentile would
-        # be meaningless against a $0 threshold, so they stay unset.
-        if cap_median is not None and cap_median > 0:
-            hit_window_indices = {h.window_index for h in session_hits}
-            near_miss = sum(
-                1 for i in era_indices
-                if i not in hit_window_indices
-                and windows[i].value_usd >= NEAR_MISS_RATIO * cap_median
-            )
-            below = sum(1 for w in era_windows if w.value_usd <= cap_median)
-            percentile = round(below / len(era_windows), 4)
+        token_zone = sorted(
+            h.usage_at_hit_tokens
+            for h in session_hits
+            if h.usage_at_hit_tokens is not None
+        )
+        hit_window_indices = {h.window_index for h in session_hits}
+        usd = _cap_stats(zone, windows, era_indices, hit_window_indices,
+                         lambda w: w.value_usd)
+        tokens = _cap_stats(token_zone, windows, era_indices, hit_window_indices,
+                            lambda w: w.tokens)
         blocked = sum(h.blocked_minutes or 0.0 for h in era_hits)
         eras_payload.append({
             "era": era,
             "window_count": len(era_windows),
             "session_hit_count": len(session_hits),
             "blocked_minutes": round(blocked, 1),
-            "cap_median_usd": cap_median,
+            "cap_median_usd": round(usd.cap_median, 4) if usd.cap_median is not None else None,
             "cap_min_usd": round(zone[0], 4) if zone else None,
             "cap_max_usd": round(zone[-1], 4) if zone else None,
-            "near_miss_count": near_miss,
-            "cap_percentile": percentile,
+            "cap_median_tokens": tokens.cap_median,
+            "cap_min_tokens": token_zone[0] if token_zone else None,
+            "cap_max_tokens": token_zone[-1] if token_zone else None,
+            "near_miss_count": usd.near_miss,
+            "near_miss_count_tokens": tokens.near_miss,
+            "cap_percentile": usd.percentile,
+            "cap_percentile_tokens": tokens.percentile,
             "usage_at_hit_usd": [round(v, 4) for v in zone],
+            "usage_at_hit_tokens": token_zone,
         })
 
     blocked_total = sum(h.blocked_minutes or 0.0 for h in hits)

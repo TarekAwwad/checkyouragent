@@ -204,6 +204,7 @@ def test_fold_windows_attaches_hit_and_measures_usage_at_hit() -> None:
     assert windows[0].hit_kinds == ["session"]
     assert hit.window_index == 0
     assert hit.usage_at_hit == 3.0
+    assert hit.usage_at_hit_tokens == 3000
     assert windows[1].start == _utc("2026-07-03T12:00:00Z")
 
 
@@ -260,7 +261,8 @@ def test_fold_windows_hit_in_activity_gap_opens_its_own_window() -> None:
 # limits_analytics composition
 # ---------------------------------------------------------------------------
 
-def _add_usage(conn: sqlite3.Connection, session_id: int, ts: str, base: int) -> int:
+def _add_usage(conn: sqlite3.Connection, session_id: int, ts: str, base: int,
+               model: str = "claude-opus-4-8") -> int:
     ev = conn.execute(
         "INSERT INTO events (session_id, source_path, line_no, type, timestamp, raw_json)"
         " VALUES (?, 'f.jsonl', 1, 'assistant', ?, '{}')",
@@ -269,8 +271,8 @@ def _add_usage(conn: sqlite3.Connection, session_id: int, ts: str, base: int) ->
     conn.execute(
         "INSERT INTO messages (event_id, role, model, input_tokens, output_tokens,"
         " base_input_tokens, cache_5m_tokens, cache_1h_tokens, cache_read_tokens)"
-        " VALUES (?, 'assistant', 'claude-opus-4-8', ?, 0, ?, 0, 0, 0)",
-        (ev, base, base),
+        " VALUES (?, 'assistant', ?, ?, 0, ?, 0, 0, 0)",
+        (ev, model, base, base),
     )
     return int(ev)
 
@@ -278,11 +280,12 @@ def _add_usage(conn: sqlite3.Connection, session_id: int, ts: str, base: int) ->
 @pytest.fixture()
 def priced(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     csv = tmp_path / "pricing.csv"
-    # $10 per million base-input tokens: 1M tokens = $10.
+    # $10 and $1 per million base-input tokens respectively.
     csv.write_text(
         "model,base-input-tokens,5m-cache-writes,1h-cache-writes,"
         "cache-hits-&-refreshes,output-tokens\n"
-        "claude-opus-4-8,10,0,0,0,0\n",
+        "claude-opus-4-8,10,0,0,0,0\n"
+        "claude-haiku-4-5,1,0,0,0,0\n",
         encoding="utf-8",
     )
     import ccfr.analysis.limits as limits_mod
@@ -317,15 +320,39 @@ def test_limits_analytics_full_payload(priced: None) -> None:
     assert set(eras) == {"Pro", "Max 5x"}
     assert eras["Pro"]["session_hit_count"] == 1
     assert eras["Pro"]["cap_median_usd"] == 10.0
+    assert eras["Pro"]["cap_median_tokens"] == 1_000_000
     assert eras["Max 5x"]["cap_median_usd"] == 30.0
+    assert eras["Max 5x"]["cap_median_tokens"] == 3_000_000
     assert eras["Max 5x"]["near_miss_count"] == 1
+    assert eras["Max 5x"]["near_miss_count_tokens"] == 1
+    assert eras["Max 5x"]["cap_percentile_tokens"] == 1.0
     assert eras["Max 5x"]["window_count"] == 2
 
     assert [w["era"] for w in payload["windows"]] == ["Pro", "Max 5x", "Max 5x"]
     assert payload["windows"][0]["hit_kinds"] == ["session"]
     assert payload["hits"][0]["kind"] == "session"
     assert payload["hits"][0]["usage_at_hit"] == 10.0
+    assert payload["hits"][0]["usage_at_hit_tokens"] == 1_000_000
     assert payload["hits"][0]["session_ids"] == [1]
+
+
+def test_cost_and_token_percentiles_are_computed_independently(priced: None) -> None:
+    conn = _make_conn()
+    # The hit window has fewer, more expensive tokens; the quiet window has
+    # more, cheaper tokens. Their rank therefore reverses between the lenses.
+    _add_usage(conn, 1, "2026-07-03T08:00:00Z", 1_000_000)
+    _add_limit_hit(conn, 1, "2026-07-03T09:40:00Z")
+    _add_usage(
+        conn, 1, "2026-07-04T08:00:00Z", 2_000_000,
+        model="claude-haiku-4-5",
+    )
+
+    era = limits_analytics(conn)["eras"][0]
+
+    assert era["cap_percentile"] == 1.0
+    assert era["cap_percentile_tokens"] == 0.5
+    assert era["near_miss_count"] == 0
+    assert era["near_miss_count_tokens"] == 1
 
 
 def test_limits_analytics_without_plan_history_or_hits(priced: None) -> None:
@@ -338,8 +365,11 @@ def test_limits_analytics_without_plan_history_or_hits(priced: None) -> None:
         {
             "era": "", "window_count": 1, "session_hit_count": 0,
             "blocked_minutes": 0.0, "cap_median_usd": None, "cap_min_usd": None,
-            "cap_max_usd": None, "near_miss_count": 0, "cap_percentile": None,
-            "usage_at_hit_usd": [],
+            "cap_max_usd": None, "cap_median_tokens": None,
+            "cap_min_tokens": None, "cap_max_tokens": None,
+            "near_miss_count": 0, "near_miss_count_tokens": 0,
+            "cap_percentile": None, "cap_percentile_tokens": None,
+            "usage_at_hit_usd": [], "usage_at_hit_tokens": [],
         }
     ]
 
@@ -355,6 +385,10 @@ def test_limits_analytics_zero_usage_cap_zone_stays_defined(priced: None) -> Non
     era = payload["eras"][0]
     assert era["session_hit_count"] == 1
     assert era["cap_median_usd"] == 0.0
+    assert era["cap_median_tokens"] == 0
     assert era["usage_at_hit_usd"] == [0.0]
+    assert era["usage_at_hit_tokens"] == [0]
     assert era["near_miss_count"] == 0
+    assert era["near_miss_count_tokens"] == 0
     assert era["cap_percentile"] is None
+    assert era["cap_percentile_tokens"] is None
