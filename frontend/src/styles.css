@@ -761,17 +761,17 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
   position: relative; display: block;
   border-radius: 999px; background: var(--track); overflow: hidden;
 }
-.loading-bar.panel { width: 160px; height: 5px; }
-.loading-bar.tile { width: 120px; height: 4px; }
-.loading-bar.inline { display: inline-block; vertical-align: middle; width: 34px; height: 3px; }
+.loading-bar--panel { width: 160px; height: 5px; }
+.loading-bar--tile { width: 120px; height: 4px; }
+.loading-bar--inline { display: inline-block; vertical-align: middle; width: 34px; height: 3px; }
 
 .loading-bar::before {
   content: ""; position: absolute; top: 0; bottom: 0; border-radius: 999px;
   background: linear-gradient(90deg, var(--err), var(--loop), var(--fan), var(--accent), var(--info));
 }
 /* Wide bars (panel, tile): a gradient band sweeps across and loops. */
-.loading-bar.panel::before,
-.loading-bar.tile::before {
+.loading-bar--panel::before,
+.loading-bar--tile::before {
   left: 0; width: 42%;
   animation: loading-sweep 1.25s cubic-bezier(.45, 0, .25, 1) infinite;
 }
@@ -780,7 +780,7 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
   100% { transform: translateX(258%); }
 }
 /* Small bar (inline): the gradient fills L→R, fades at full, then resets. */
-.loading-bar.inline::before {
+.loading-bar--inline::before {
   inset: 0; transform-origin: left center;
   animation: loading-fill 1.55s ease-in-out infinite;
 }
@@ -823,6 +823,7 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
 
 .tr-name { font-weight: 700; color: var(--text); }
 .tr-sub { font-size: 11px; color: var(--faint); margin-top: 3px; }
+.cell-started { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .cell-err, .cell-loop, .cell-fan { font-weight: 700; }
 .cell-err { color: var(--err); } .cell-loop { color: var(--loop); } .cell-fan { color: var(--fan); }
 .cell-muted { color: var(--faint); }
@@ -4330,13 +4331,17 @@ html:has(.specimen-dialog[open]) {
    muted HTML tick labels around the plot (.sot idiom), .chip-legend chips,
    and theme tokens only. */
 .limit-timeline { display: flex; gap: 6px; }
+.limit-toolbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.limit-toolbar-actions .segmented-control { align-self: center; }
+.limit-toolbar-actions .ghost-action { height: 33px; box-sizing: border-box; }
 .limit-axis-title-y {
   writing-mode: vertical-rl; transform: rotate(180deg); align-self: center;
   font-size: 10px; color: var(--muted); flex: 0 0 auto;
 }
-.limit-timeline-yaxis { position: relative; flex: 0 0 38px; }
+/* Wide enough for a token tick ("2.3M tok"), not just a dollar one. */
+.limit-timeline-yaxis { position: relative; flex: 0 0 52px; }
 .limit-ylabel {
-  position: absolute; right: 4px; transform: translateY(-50%);
+  position: absolute; right: 4px; transform: translateY(-50%); white-space: nowrap;
   font-size: 9px; color: var(--muted); font-variant-numeric: tabular-nums;
 }
 .limit-timeline-plot { position: relative; flex: 1 1 auto; min-width: 0; }
@@ -4396,7 +4401,7 @@ html:has(.specimen-dialog[open]) {
 .limit-zone-avg { stroke: var(--danger); stroke-width: 2; stroke-dasharray: 3 2; }
 .limit-zone-axis { position: relative; height: 13px; margin-top: -6px; }
 .limit-zone-axis span {
-  position: absolute; transform: translateX(-50%);
+  position: absolute; transform: translateX(-50%); white-space: nowrap;
   font-size: 9px; color: var(--muted); font-variant-numeric: tabular-nums;
 }
 .limit-hit-detail { display: flex; gap: 12px; flex-wrap: wrap; align-items: baseline; }

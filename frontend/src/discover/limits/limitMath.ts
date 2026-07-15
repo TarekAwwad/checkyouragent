@@ -1,4 +1,7 @@
 import type { LimitEraEntry, LimitHitEntry, LimitWindowEntry } from "../../api/types";
+import { formatTokens as formatTokenCount, formatUsd } from "../formatting";
+
+export type LimitBasis = "cost" | "tokens";
 
 export function formatBlocked(minutes: number): string {
   if (!minutes) return "0h";
@@ -6,9 +9,23 @@ export function formatBlocked(minutes: number): string {
   return hours >= 10 ? `${Math.round(hours)}h` : `${hours.toFixed(1)}h`;
 }
 
-export function formatUsd(value: number | null | undefined): string {
+// A measured value the user reads (tooltip, hit detail, era summary): keeps
+// cents, because a cheap window is not a free one.
+export function formatLimitValue(
+  value: number | null | undefined,
+  basis: LimitBasis,
+): string {
   if (value == null) return "n/a";
-  return `$${value >= 100 ? value.toFixed(0) : value.toFixed(1)}`;
+  if (value === 0) return basis === "cost" ? "$0" : "0 tok";
+  return basis === "cost" ? formatUsd(value) : formatTokenCount(value);
+}
+
+// An axis tick: rounded hard, because these sit in a narrow gutter and are
+// read against the plot, not quoted.
+export function formatLimitTick(value: number, basis: LimitBasis): string {
+  if (basis === "tokens") return formatTokenCount(Math.round(value));
+  if (value === 0) return "$0";
+  return `$${value >= 10 ? Math.round(value) : value.toFixed(1)}`;
 }
 
 export interface EraRate {
@@ -60,10 +77,58 @@ export function activeEra(windows: LimitWindowEntry[]): string | null {
   return windows.length > 0 ? windows[windows.length - 1].era : null;
 }
 
-export function meanUsageAtHit(era: LimitEraEntry): number | null {
-  if (era.usage_at_hit_usd.length === 0) return null;
-  const sum = era.usage_at_hit_usd.reduce((s, v) => s + v, 0);
-  return sum / era.usage_at_hit_usd.length;
+/** How the selected basis names itself in legends and aria-labels. */
+export function basisLabel(basis: LimitBasis): string {
+  return basis === "cost" ? "API-equivalent cost" : "token volume";
+}
+
+export interface EraCap {
+  values: number[];
+  median: number | null;
+  min: number | null;
+  max: number | null;
+  nearMissCount: number;
+  percentile: number | null;
+}
+
+/**
+ * The era's cap zone on the selected basis. The backend sends both bases side
+ * by side; picking between them belongs here, not in every chart.
+ */
+export function eraCap(era: LimitEraEntry, basis: LimitBasis): EraCap {
+  if (basis === "cost") {
+    return {
+      values: era.usage_at_hit_usd,
+      median: era.cap_median_usd,
+      min: era.cap_min_usd,
+      max: era.cap_max_usd,
+      nearMissCount: era.near_miss_count,
+      percentile: era.cap_percentile,
+    };
+  }
+  return {
+    values: era.usage_at_hit_tokens,
+    median: era.cap_median_tokens,
+    min: era.cap_min_tokens,
+    max: era.cap_max_tokens,
+    nearMissCount: era.near_miss_count_tokens,
+    percentile: era.cap_percentile_tokens,
+  };
+}
+
+/** The window usage a single hit was measured at, on the selected basis. */
+export function hitUsage(hit: LimitHitEntry, basis: LimitBasis): number | null {
+  return basis === "cost" ? hit.usage_at_hit : hit.usage_at_hit_tokens;
+}
+
+export function meanUsageAtHit(
+  era: LimitEraEntry,
+  basis: LimitBasis = "cost",
+): number | null {
+  const values = eraCap(era, basis).values;
+  if (values.length === 0) return null;
+  const sum = values.reduce((s, v) => s + v, 0);
+  return sum / values.length;
 }
 
 export type VerdictTone = "good" | "watch" | "tight";
@@ -86,6 +151,7 @@ const COMFORTABLE_CAP_PERCENTILE = 0.9;
 export function buildVerdict(
   era: LimitEraEntry | undefined,
   rate: EraRate | undefined,
+  basis: LimitBasis = "cost",
 ): Verdict | null {
   if (!era) return null;
   const plan = era.era || "your plan";
@@ -103,8 +169,9 @@ export function buildVerdict(
       text: `Caps cost you about ${formatBlocked(blockedPerWeek)} of waiting per week on ${plan}. This usage has outgrown the plan.`,
     };
   }
-  if (era.cap_percentile != null && era.cap_percentile >= COMFORTABLE_CAP_PERCENTILE) {
-    const topPct = Math.max(1, Math.round((1 - era.cap_percentile) * 100));
+  const percentile = eraCap(era, basis).percentile;
+  if (percentile != null && percentile >= COMFORTABLE_CAP_PERCENTILE) {
+    const topPct = Math.max(1, Math.round((1 - percentile) * 100));
     return {
       tone: "good",
       text: `${plan} is well dimensioned: only your top ${topPct}% of windows reach the cap, costing about ${formatBlocked(blockedPerWeek)} of waiting per week.`,

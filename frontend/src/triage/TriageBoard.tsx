@@ -13,10 +13,11 @@ interface Props {
   onOpenSession: (session: SessionCard) => void;
 }
 
-type SortKey = "risk" | "patterns" | "error_count" | "max_repeat" | "subagent_count" | "event_count" | "cost_usd";
+type SortKey = "risk" | "first_ts" | "patterns" | "error_count" | "max_repeat" | "subagent_count" | "event_count" | "cost_usd";
 
 const SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
   { key: "risk", label: "Highest risk" },
+  { key: "first_ts", label: "Newest first" },
   { key: "patterns", label: "Strongest finding" },
   { key: "error_count", label: "Most errors" },
   { key: "max_repeat", label: "Largest loop" },
@@ -27,12 +28,23 @@ const SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
 
 function sortValue(session: SessionCard, sortKey: SortKey): number {
   if (sortKey === "risk") return riskScore(session);
+  if (sortKey === "first_ts") {
+    const timestamp = session.first_ts ? Date.parse(session.first_ts) : Number.NaN;
+    return Number.isNaN(timestamp) ? 0 : timestamp;
+  }
   if (sortKey === "patterns") return session.pattern_risk_score;
   return session[sortKey] as number;
 }
 
 function formatUsd(value: number): string {
   return `$${value.toFixed(2)}`;
+}
+
+function formatSessionStart(value: string | null): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }
 
 function formatCategory(value: string | null): string {
@@ -167,6 +179,7 @@ function TriageBoard({ projects, sessions, loading, onOpenSession }: Props) {
                 <tr>
                   {header("risk", "Risk")}
                   <th>Session</th>
+                  {header("first_ts", "Started")}
                   {header("patterns", "Top issue")}
                   <th>Impact</th>
                   {header("cost_usd", "Cost")}
@@ -192,6 +205,11 @@ function TriageBoard({ projects, sessions, loading, onOpenSession }: Props) {
                       <td>
                         <div className="tr-name"><Blurred>{session.title || session.session_id.slice(0, 8)}</Blurred></div>
                         <div className="tr-sub"><Blurred>{session.project_name}{session.title ? ` · ${session.session_id.slice(0, 8)}` : ""}</Blurred></div>
+                      </td>
+                      <td className="cell-started">
+                        {session.first_ts ? (
+                          <time dateTime={session.first_ts}>{formatSessionStart(session.first_ts)}</time>
+                        ) : "—"}
                       </td>
                       <td className={`cell-issue issue-${issue.tone}`}>
                         <span className="finding-cell">

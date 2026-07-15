@@ -22,7 +22,8 @@ const payload: LimitsResponse = {
     {
       ts: "2026-07-03T09:40:44+00:00", kind: "session",
       reset_at: "2026-07-03T10:30:00+00:00", blocked_minutes: 49.3,
-      usage_at_hit: 76.2, occurrence_count: 2, window_index: 0,
+      usage_at_hit: 76.2, usage_at_hit_tokens: 900000,
+      occurrence_count: 2, window_index: 0,
       session_ids: [7], session_titles: ["Ship the release"],
     },
   ],
@@ -36,7 +37,10 @@ const payload: LimitsResponse = {
     {
       era: "Max 5x", window_count: 2, session_hit_count: 1, blocked_minutes: 49.3,
       cap_median_usd: 76.2, cap_min_usd: 76.2, cap_max_usd: 76.2,
-      near_miss_count: 0, cap_percentile: 0.5, usage_at_hit_usd: [76.2],
+      cap_median_tokens: 900000, cap_min_tokens: 900000, cap_max_tokens: 900000,
+      near_miss_count: 0, near_miss_count_tokens: 0,
+      cap_percentile: 0.5, cap_percentile_tokens: 0.95,
+      usage_at_hit_usd: [76.2], usage_at_hit_tokens: [900000],
     },
   ],
 };
@@ -74,11 +78,11 @@ describe("LimitHits", () => {
   it("shows the windows timeline with its legend and opens the hit detail on click", async () => {
     const onOpenSession = renderPage();
     await screen.findByText("Time blocked");
-    expect(screen.getByRole("img", { name: "5-hour windows timeline" })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /5-hour windows timeline/ })).toBeInTheDocument();
     expect(screen.getByText("window usage")).toBeInTheDocument();
     expect(screen.getByText("limit hit")).toBeInTheDocument();
     expect(screen.getByText("1.0 hits/wk")).toBeInTheDocument();
-    expect(screen.getByText("x-axis: window start date")).toBeInTheDocument();
+    expect(screen.getByText(/x-axis: window start date/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /window 1/i }));
     expect(await screen.findByText(/session limit/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Ship the release/ }));
@@ -98,6 +102,38 @@ describe("LimitHits", () => {
     expect(screen.getByText(/x-axis: window usage/)).toBeInTheDocument();
   });
 
+  it("switches every usage display and percentile to token volume", async () => {
+    renderPage();
+    await screen.findByText("Time blocked");
+    expect(screen.getByRole("button", { name: "Cost" })).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Tokens" }));
+
+    expect(screen.getByText("tokens per window")).toBeInTheDocument();
+    expect(screen.getByText(/median 900k tok/)).toBeInTheDocument();
+    expect(screen.getByText(/cap at p95 of windows/)).toBeInTheDocument();
+    expect(screen.getByText(/x-axis: window usage, token volume/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /window 1/i }));
+    expect(await screen.findByText(/at 900k tok of window usage/)).toBeInTheDocument();
+  });
+
+  it("falls back to tokens when cost is unavailable", async () => {
+    const { getLimits } = await import("../../api/client");
+    vi.mocked(getLimits).mockResolvedValueOnce({
+      ...payload,
+      meta: { ...payload.meta, cost_available: false },
+    });
+    renderPage();
+
+    await screen.findByText(/Price table unavailable/);
+    await vi.waitFor(() => {
+      expect(screen.getByRole("button", { name: "Tokens" })).toHaveAttribute(
+        "aria-pressed", "true",
+      );
+    });
+    expect(screen.getByRole("button", { name: "Cost" })).toBeDisabled();
+  });
+
   it("shows a verdict about the active plan", async () => {
     renderPage();
     await screen.findByText("Time blocked");
@@ -107,12 +143,29 @@ describe("LimitHits", () => {
   });
 
   it("shows the headroom message when no session hits exist", () => {
-    render(<CapZones eras={[{
+    render(<CapZones basis="cost" eras={[{
       era: "", window_count: 1, session_hit_count: 0, blocked_minutes: 0,
       cap_median_usd: null, cap_min_usd: null, cap_max_usd: null,
-      near_miss_count: 0, cap_percentile: null, usage_at_hit_usd: [],
+      cap_median_tokens: null, cap_min_tokens: null, cap_max_tokens: null,
+      near_miss_count: 0, near_miss_count_tokens: 0,
+      cap_percentile: null, cap_percentile_tokens: null,
+      usage_at_hit_usd: [], usage_at_hit_tokens: [],
     }]} />);
     expect(screen.getByText(/That is headroom/)).toBeInTheDocument();
+  });
+
+  it("draws one axis tick when the measured cap zone sits at zero usage", () => {
+    render(<CapZones basis="cost" eras={[{
+      era: "Pro", window_count: 3, session_hit_count: 1, blocked_minutes: 20,
+      cap_median_usd: 0, cap_min_usd: 0, cap_max_usd: 0,
+      cap_median_tokens: 0, cap_min_tokens: 0, cap_max_tokens: 0,
+      near_miss_count: 0, near_miss_count_tokens: 0,
+      cap_percentile: null, cap_percentile_tokens: null,
+      usage_at_hit_usd: [0], usage_at_hit_tokens: [0],
+    }]} />);
+    // A zero max used to yield ticks [0, 0, 0]: three labels stacked at the
+    // same x, and three React children sharing the key 0.
+    expect(screen.getAllByText("$0")).toHaveLength(1);
   });
 
   it("edits plan history through the modal and saves it to settings", async () => {

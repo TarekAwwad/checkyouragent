@@ -1,7 +1,13 @@
 import React from "react";
 import type { LimitHitEntry, LimitWindowEntry } from "../../api/types";
 import { useChartTooltip } from "../context/chartTooltip";
-import { eraRates } from "./limitMath";
+import {
+  basisLabel,
+  eraRates,
+  formatLimitTick,
+  formatLimitValue,
+  type LimitBasis,
+} from "./limitMath";
 
 const BAR_W = 6;
 const GAP = 2;
@@ -18,19 +24,15 @@ function dayLabel(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-function tickLabel(value: number): string {
-  if (value === 0) return "$0";
-  return `$${value >= 10 ? Math.round(value) : value.toFixed(1)}`;
-}
-
 // One bar per reconstructed 5-hour window, uniform spacing. Hits are marked by
 // color; era changes get a background band with the plan label. Bars widen (to
 // a cap) to fill the panel; past that the chart scrolls horizontally inside
-// its container so the page never scrolls sideways, and the dollar axis stays
+// its container so the page never scrolls sideways, and the metric axis stays
 // fixed outside the scroller.
-export default function WindowsTimeline({ windows, hits, selected, onSelectWindow }: {
+export default function WindowsTimeline({ windows, hits, basis, selected, onSelectWindow }: {
   windows: LimitWindowEntry[];
   hits: LimitHitEntry[];
+  basis: LimitBasis;
   selected: number | null;
   onSelectWindow: (index: number) => void;
 }) {
@@ -63,7 +65,11 @@ export default function WindowsTimeline({ windows, hits, selected, onSelectWindo
   if (windows.length === 0) {
     return <div className="empty-state">No usage found, so no windows to show.</div>;
   }
-  const max = Math.max(1e-9, ...windows.map((w) => w.value_usd));
+  const metric = (window: LimitWindowEntry) => (
+    basis === "cost" ? window.value_usd : window.tokens
+  );
+  const max = Math.max(0, ...windows.map(metric));
+  const scaleMax = Math.max(1e-9, max);
   const needed = GAP + windows.length * (BAR_W + GAP) + GAP;
   const scale = Math.min(MAX_SLOT_SCALE, Math.max(1, hostWidth / needed));
   const barW = BAR_W * scale;
@@ -73,7 +79,7 @@ export default function WindowsTimeline({ windows, hits, selected, onSelectWindo
   const yTicks = Y_FRACTIONS.map((f) => ({
     f,
     y: PLOT_TOP + PLOT_H * (1 - f),
-    label: tickLabel(max * f),
+    label: formatLimitTick(max * f, basis),
   }));
 
   const bands: { era: string; from: number; to: number }[] = [];
@@ -96,7 +102,9 @@ export default function WindowsTimeline({ windows, hits, selected, onSelectWindo
   return (
     <>
       <div className="limit-timeline">
-        <span className="limit-axis-title-y">$ per window</span>
+        <span className="limit-axis-title-y">
+          {basis === "cost" ? "$ per window" : "tokens per window"}
+        </span>
         <div className="limit-timeline-yaxis" style={{ height: HEIGHT }} aria-hidden={true}>
           {yTicks.map((t) => (
             <span key={t.f} className="limit-ylabel" style={{ top: t.y }}>{t.label}</span>
@@ -105,7 +113,8 @@ export default function WindowsTimeline({ windows, hits, selected, onSelectWindo
         <div className="limit-timeline-plot chart-tooltip-host" ref={ref}>
           <div className="limit-timeline-scroll" ref={scrollRef}>
             <svg width={width} height={HEIGHT}
-                 role="img" aria-label="5-hour windows timeline">
+                 role="img"
+                 aria-label={`5-hour windows timeline by ${basisLabel(basis)}`}>
               {bands.map((b, bi) => (
                 <g key={`${b.era}-${b.from}`}>
                   <rect x={x(b.from) - gap / 2} y={0}
@@ -138,7 +147,9 @@ export default function WindowsTimeline({ windows, hits, selected, onSelectWindo
                 </text>
               ))}
               {windows.map((w, i) => {
-                const h = Math.max(2, (w.value_usd / max) * PLOT_H);
+                const value = metric(w);
+                const formattedValue = formatLimitValue(value, basis);
+                const h = Math.max(2, (value / scaleMax) * PLOT_H);
                 const hit = w.hit_kinds.length > 0;
                 const cls = [
                   "limit-bar",
@@ -149,11 +160,11 @@ export default function WindowsTimeline({ windows, hits, selected, onSelectWindo
                   <rect key={w.start} x={x(i)} y={PLOT_TOP + PLOT_H - h}
                         width={barW} height={h}
                         className={cls} role="button" tabIndex={0}
-                        aria-label={`window ${i + 1}: ${w.start.slice(0, 10)}, $${w.value_usd.toFixed(2)}${hit ? `, ${w.hit_kinds.join(" and ")} hit` : ""}`}
+                        aria-label={`window ${i + 1}: ${w.start.slice(0, 10)}, ${formattedValue}${hit ? `, ${w.hit_kinds.join(" and ")} hit` : ""}`}
                         onClick={() => onSelectWindow(i)}
                         onKeyDown={(e) => e.key === "Enter" && onSelectWindow(i)}
                         onMouseMove={(e) => show(e, dayLabel(w.start), [
-                          `$${w.value_usd.toFixed(2)} in this window`,
+                          `${formattedValue} in this window`,
                           ...(hit ? [`${w.hit_kinds.join(", ")} limit hit`] : []),
                           ...(w.era ? [`plan: ${w.era}`] : []),
                         ])}
@@ -169,7 +180,7 @@ export default function WindowsTimeline({ windows, hits, selected, onSelectWindo
         <span><i className="is-window" />window usage</span>
         <span><i className="is-hit" />limit hit</span>
         {hasEras && <span><i className="is-era" />plan era</span>}
-        <em>x-axis: window start date</em>
+        <em>{`y-axis: ${basisLabel(basis)} · x-axis: window start date`}</em>
       </div>
     </>
   );

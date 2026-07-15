@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { LimitEraEntry, LimitHitEntry, LimitWindowEntry } from "../../api/types";
-import { activeEra, buildVerdict, eraRates, meanUsageAtHit } from "./limitMath";
+import {
+  activeEra,
+  buildVerdict,
+  eraRates,
+  formatLimitTick,
+  formatLimitValue,
+  meanUsageAtHit,
+} from "./limitMath";
 
 function win(start: string, end: string, era: string, hit = false): LimitWindowEntry {
   return { start, end, value_usd: 10, tokens: 1, era, hit_kinds: hit ? ["session"] : [] };
@@ -9,7 +16,8 @@ function win(start: string, end: string, era: string, hit = false): LimitWindowE
 function hit(windowIndex: number | null): LimitHitEntry {
   return {
     ts: "2026-07-01T01:00:00Z", kind: "session", reset_at: null,
-    blocked_minutes: null, usage_at_hit: null, occurrence_count: 1,
+    blocked_minutes: null, usage_at_hit: null, usage_at_hit_tokens: null,
+    occurrence_count: 1,
     window_index: windowIndex, session_ids: [], session_titles: [],
   };
 }
@@ -18,9 +26,29 @@ function era(overrides: Partial<LimitEraEntry>): LimitEraEntry {
   return {
     era: "Pro", window_count: 10, session_hit_count: 2, blocked_minutes: 60,
     cap_median_usd: 10, cap_min_usd: 8, cap_max_usd: 12, near_miss_count: 1,
-    cap_percentile: 0.7, usage_at_hit_usd: [8, 12], ...overrides,
+    cap_median_tokens: 1000, cap_min_tokens: 800, cap_max_tokens: 1200,
+    near_miss_count_tokens: 2, cap_percentile: 0.7, cap_percentile_tokens: 0.95,
+    usage_at_hit_usd: [8, 12], usage_at_hit_tokens: [800, 1200], ...overrides,
   };
 }
+
+describe("formatLimitValue and formatLimitTick", () => {
+  it("keeps cents on measured values so a cheap window is not a free one", () => {
+    expect(formatLimitValue(0.04, "cost")).toBe("$0.04");
+    expect(formatLimitValue(2.47, "cost")).toBe("$2.47");
+    expect(formatLimitValue(0, "cost")).toBe("$0");
+    expect(formatLimitValue(null, "cost")).toBe("n/a");
+    expect(formatLimitValue(900_000, "tokens")).toBe("900k tok");
+  });
+
+  it("rounds axis ticks, which sit in a narrow gutter", () => {
+    expect(formatLimitTick(52.5, "cost")).toBe("$53");
+    expect(formatLimitTick(2.47, "cost")).toBe("$2.5");
+    expect(formatLimitTick(0, "cost")).toBe("$0");
+    expect(formatLimitTick(333.25, "tokens")).toBe("333 tok");
+    expect(formatLimitTick(2_300_000, "tokens")).toBe("2.3M tok");
+  });
+});
 
 describe("eraRates", () => {
   it("floors tenure at one week and counts hits per era", () => {
@@ -53,6 +81,7 @@ describe("activeEra and meanUsageAtHit", () => {
     expect(activeEra(windows)).toBe("Max 5x");
     expect(activeEra([])).toBeNull();
     expect(meanUsageAtHit(era({}))).toBe(10);
+    expect(meanUsageAtHit(era({}), "tokens")).toBe(1000);
     expect(meanUsageAtHit(era({ usage_at_hit_usd: [] }))).toBeNull();
   });
 });
@@ -80,6 +109,16 @@ describe("buildVerdict", () => {
     );
     expect(v?.tone).toBe("good");
     expect(v?.text).toMatch(/well dimensioned: only your top 5%/);
+  });
+
+  it("uses the selected basis for the percentile verdict", () => {
+    const v = buildVerdict(
+      era({ cap_percentile: 0.5, cap_percentile_tokens: 0.95, blocked_minutes: 30 }),
+      { hitCount: 1, weeks: 4, perWeek: 0.25 },
+      "tokens",
+    );
+    expect(v?.tone).toBe("good");
+    expect(v?.text).toMatch(/top 5%/);
   });
 
   it("defaults to the watch verdict in between", () => {

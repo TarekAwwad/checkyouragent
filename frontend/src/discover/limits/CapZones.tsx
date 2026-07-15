@@ -1,24 +1,39 @@
 import React from "react";
 import type { LimitEraEntry } from "../../api/types";
-import { formatBlocked, formatUsd, meanUsageAtHit } from "./limitMath";
+import {
+  basisLabel,
+  eraCap,
+  formatBlocked,
+  formatLimitTick,
+  formatLimitValue,
+  meanUsageAtHit,
+  type LimitBasis,
+} from "./limitMath";
 import { useChartTooltip } from "../context/chartTooltip";
 
 const FALLBACK_W = 560;
 const STRIP_H = 26;
 const PAD = 10; // keeps edge dots inside the strip
 
+function edgeShift(index: number, count: number): string {
+  if (index === 0) return "translateX(0)";
+  if (index === count - 1) return "translateX(-100%)";
+  return "translateX(-50%)";
+}
+
 // The per-plan metrics live here (one row per era, not one card per era, so
 // any number of plans scales). Only the parts an era actually has are shown.
-function eraSummary(era: LimitEraEntry): string {
+function eraSummary(era: LimitEraEntry, basis: LimitBasis): string {
   const hits = era.session_hit_count;
-  const avg = meanUsageAtHit(era);
+  const cap = eraCap(era, basis);
+  const avg = meanUsageAtHit(era, basis);
   const parts = [`${hits} session hit${hits === 1 ? "" : "s"}`];
-  if (era.cap_median_usd != null) parts.push(`median ${formatUsd(era.cap_median_usd)}`);
-  if (avg != null) parts.push(`avg ${formatUsd(avg)}`);
+  if (cap.median != null) parts.push(`median ${formatLimitValue(cap.median, basis)}`);
+  if (avg != null) parts.push(`avg ${formatLimitValue(avg, basis)}`);
   if (era.blocked_minutes > 0) parts.push(`${formatBlocked(era.blocked_minutes)} blocked`);
-  parts.push(`${era.near_miss_count} near-miss${era.near_miss_count === 1 ? "" : "es"}`);
-  if (era.cap_percentile != null) {
-    parts.push(`cap at p${Math.round(era.cap_percentile * 100)} of windows`);
+  parts.push(`${cap.nearMissCount} near-miss${cap.nearMissCount === 1 ? "" : "es"}`);
+  if (cap.percentile != null) {
+    parts.push(`cap at p${Math.round(cap.percentile * 100)} of windows`);
   }
   return parts.join(", ");
 }
@@ -26,8 +41,11 @@ function eraSummary(era: LimitEraEntry): string {
 // Per era: usage-at-hit dots, the min-max band, and a median marker, plus the
 // percentile insight (a cap is a percentile of your windows, not a quota).
 // Rendered in measured pixel space so markers keep their shape at any width;
-// all eras share one dollar scale and the axis at the bottom.
-export default function CapZones({ eras }: { eras: LimitEraEntry[] }) {
+// all eras share one scale for the selected basis and the axis at the bottom.
+export default function CapZones({ eras, basis }: {
+  eras: LimitEraEntry[];
+  basis: LimitBasis;
+}) {
   const { ref, show, hide, tooltip } = useChartTooltip<HTMLDivElement>();
   const [width, setWidth] = React.useState(FALLBACK_W);
 
@@ -47,7 +65,7 @@ export default function CapZones({ eras }: { eras: LimitEraEntry[] }) {
     return () => observer.disconnect();
   }, [ref]);
 
-  const zoned = eras.filter((e) => e.usage_at_hit_usd.length > 0 || e.blocked_minutes > 0);
+  const zoned = eras.filter((e) => eraCap(e, basis).values.length > 0 || e.blocked_minutes > 0);
   if (zoned.length === 0) {
     return (
       <div className="empty-state">
@@ -55,41 +73,45 @@ export default function CapZones({ eras }: { eras: LimitEraEntry[] }) {
       </div>
     );
   }
-  const max = Math.max(1e-9, ...zoned.map((e) => e.cap_max_usd ?? 0));
-  const px = (v: number) => PAD + (v / max) * (width - 2 * PAD);
-  const ticks = [0, max / 2, max];
+  const max = Math.max(0, ...zoned.map((e) => eraCap(e, basis).max ?? 0));
+  const scaleMax = Math.max(1e-9, max);
+  const px = (v: number) => PAD + (v / scaleMax) * (width - 2 * PAD);
+  // Hits measured at zero usage (a pool filled elsewhere, or no price table)
+  // leave max at 0, where the three ticks would land on top of each other.
+  const ticks = max > 0 ? [0, max / 2, max] : [0];
 
   return (
     <div className="limit-zones chart-tooltip-host" ref={ref}>
       {zoned.map((era) => {
-        const avg = meanUsageAtHit(era);
+        const avg = meanUsageAtHit(era, basis);
+        const cap = eraCap(era, basis);
         return (
         <div key={era.era || "all"} className="limit-zone-row">
           <div className="limit-zone-head">
             <strong>{era.era || "All usage"}</strong>
-            <span>{eraSummary(era)}</span>
+            <span>{eraSummary(era, basis)}</span>
           </div>
           <svg width={width} height={STRIP_H} className="limit-zone-strip" role="img"
-               aria-label={`${era.era || "All usage"} cap zone`}>
+               aria-label={`${era.era || "All usage"} cap zone by ${basisLabel(basis)}`}>
             {ticks.map((t) => (
               <line key={t} className="limit-zone-grid"
                     x1={px(t)} y1={3} x2={px(t)} y2={STRIP_H - 3} />
             ))}
             <rect x={PAD} y={STRIP_H / 2 - 2} width={Math.max(0, width - 2 * PAD)}
                   height={4} rx={2} className="lane-track" />
-            {era.cap_min_usd != null && era.cap_max_usd != null && (
-              <rect x={px(era.cap_min_usd)} y={STRIP_H / 2 - 5}
-                    width={Math.max(2, px(era.cap_max_usd) - px(era.cap_min_usd))}
+            {cap.min != null && cap.max != null && (
+              <rect x={px(cap.min)} y={STRIP_H / 2 - 5}
+                    width={Math.max(2, px(cap.max) - px(cap.min))}
                     height={10} rx={5} className="limit-zone-band" />
             )}
-            {era.usage_at_hit_usd.map((v, i) => (
+            {cap.values.map((v, i) => (
               <circle key={i} cx={px(v)} cy={STRIP_H / 2} r={5}
                       className="limit-zone-dot"
-                      onMouseMove={(e) => show(e, formatUsd(v), ["window usage when the cap hit"])}
+                      onMouseMove={(e) => show(e, formatLimitValue(v, basis), ["window usage when the cap hit"])}
                       onMouseLeave={hide} />
             ))}
-            {era.cap_median_usd != null && (
-              <rect x={px(era.cap_median_usd) - 1} y={2} width={2} height={STRIP_H - 4}
+            {cap.median != null && (
+              <rect x={px(cap.median) - 1} y={2} width={2} height={STRIP_H - 4}
                     className="limit-zone-median" />
             )}
             {avg != null && (
@@ -101,8 +123,12 @@ export default function CapZones({ eras }: { eras: LimitEraEntry[] }) {
         );
       })}
       <div className="limit-zone-axis" aria-hidden={true}>
-        {ticks.map((t) => (
-          <span key={t} style={{ left: px(t) }}>{t === 0 ? "$0" : formatUsd(t)}</span>
+        {ticks.map((t, i) => (
+          // Edge labels anchor inward: a token label ("49.7M tok") is wide
+          // enough to leave the strip if it stays centred on its tick.
+          <span key={t} style={{ left: px(t), transform: edgeShift(i, ticks.length) }}>
+            {formatLimitTick(t, basis)}
+          </span>
         ))}
       </div>
       <div className="chip-legend card-bottom-legend limit-legend">
@@ -110,7 +136,7 @@ export default function CapZones({ eras }: { eras: LimitEraEntry[] }) {
         <span><i className="is-band" />min-max cap zone</span>
         <span><i className="is-median" />median cap</span>
         <span><i className="is-avg" />avg hit</span>
-        <em>x-axis: window usage, $ API-equivalent</em>
+        <em>{`x-axis: window usage, ${basisLabel(basis)}`}</em>
       </div>
       {tooltip}
     </div>

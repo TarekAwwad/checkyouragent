@@ -683,6 +683,7 @@ class LimitHitOut(BaseModel):
     reset_at: str | None = None
     blocked_minutes: float | None = None
     usage_at_hit: float | None = None
+    usage_at_hit_tokens: int | None = None
     occurrence_count: int = 1
     window_index: int | None = None
     session_ids: list[int] = Field(default_factory=list)
@@ -706,9 +707,15 @@ class LimitEraOut(BaseModel):
     cap_median_usd: float | None = None
     cap_min_usd: float | None = None
     cap_max_usd: float | None = None
+    cap_median_tokens: float | None = None
+    cap_min_tokens: int | None = None
+    cap_max_tokens: int | None = None
     near_miss_count: int = 0
+    near_miss_count_tokens: int = 0
     cap_percentile: float | None = None
+    cap_percentile_tokens: float | None = None
     usage_at_hit_usd: list[float] = Field(default_factory=list)
+    usage_at_hit_tokens: list[int] = Field(default_factory=list)
 
 
 class LimitsMeta(BaseModel):
