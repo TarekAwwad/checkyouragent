@@ -761,17 +761,17 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
   position: relative; display: block;
   border-radius: 999px; background: var(--track); overflow: hidden;
 }
-.loading-bar.panel { width: 160px; height: 5px; }
-.loading-bar.tile { width: 120px; height: 4px; }
-.loading-bar.inline { display: inline-block; vertical-align: middle; width: 34px; height: 3px; }
+.loading-bar--panel { width: 160px; height: 5px; }
+.loading-bar--tile { width: 120px; height: 4px; }
+.loading-bar--inline { display: inline-block; vertical-align: middle; width: 34px; height: 3px; }
 
 .loading-bar::before {
   content: ""; position: absolute; top: 0; bottom: 0; border-radius: 999px;
   background: linear-gradient(90deg, var(--err), var(--loop), var(--fan), var(--accent), var(--info));
 }
 /* Wide bars (panel, tile): a gradient band sweeps across and loops. */
-.loading-bar.panel::before,
-.loading-bar.tile::before {
+.loading-bar--panel::before,
+.loading-bar--tile::before {
   left: 0; width: 42%;
   animation: loading-sweep 1.25s cubic-bezier(.45, 0, .25, 1) infinite;
 }
@@ -780,7 +780,7 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
   100% { transform: translateX(258%); }
 }
 /* Small bar (inline): the gradient fills L→R, fades at full, then resets. */
-.loading-bar.inline::before {
+.loading-bar--inline::before {
   inset: 0; transform-origin: left center;
   animation: loading-fill 1.55s ease-in-out infinite;
 }

@@ -6,13 +6,18 @@ describe("LoadingBar", () => {
   it("renders a status role with the default label at panel size", () => {
     render(<LoadingBar />);
     const bar = screen.getByRole("status");
-    expect(bar).toHaveClass("loading-bar", "panel");
+    expect(bar).toHaveClass("loading-bar", "loading-bar--panel");
     expect(bar).toHaveAttribute("aria-label", "Loading…");
   });
 
   it("applies the requested size", () => {
     render(<LoadingBar size="inline" />);
-    expect(screen.getByRole("status")).toHaveClass("inline");
+    expect(screen.getByRole("status")).toHaveClass("loading-bar--inline");
+  });
+
+  it("does not reuse generic layout classes for its size", () => {
+    render(<LoadingBar size="tile" />);
+    expect(screen.getByRole("status")).not.toHaveClass("tile");
   });
 
   it("shows a string caption under the bar and uses it as the accessible label", () => {

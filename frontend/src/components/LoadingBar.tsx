@@ -14,7 +14,7 @@ interface Props {
  */
 export default function LoadingBar({ size = "panel", label, caption }: Props) {
   const name = label ?? (typeof caption === "string" ? caption : "Loading…");
-  const bar = <span className={`loading-bar ${size}`} role="status" aria-label={name} />;
+  const bar = <span className={`loading-bar loading-bar--${size}`} role="status" aria-label={name} />;
   if (caption === undefined) return bar;
   return (
     <span className="loading-bar-block">
