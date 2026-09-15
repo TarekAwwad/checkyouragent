@@ -156,7 +156,9 @@ def detect_limit_hits(
     Events sharing (kind, reset stamp) are one hit; without a parsed stamp the
     fallback key buckets timestamps into 5-minute slots.
     """
-    where = ["m.model = ?"]
+    # A replayed hit is the same hit; without this one rate-limit window would list
+    # every resumed copy of the session that recorded it.
+    where = ["m.model = ?", "e.is_replay = 0"]
     params: list[Any] = [SYNTHETIC_MODEL]
     if date_from:
         where.append("date(e.timestamp) >= date(?)")

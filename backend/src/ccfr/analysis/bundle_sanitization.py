@@ -155,7 +155,7 @@ def session_models(conn: sqlite3.Connection, session_id: int) -> list[str]:
         """
         SELECT DISTINCT m.model
         FROM messages m JOIN events e ON e.id = m.event_id
-        WHERE e.session_id = ? AND m.model IS NOT NULL
+        WHERE e.session_id = ? AND e.is_replay = 0 AND m.model IS NOT NULL
         """,
         (session_id,),
     ).fetchall()
@@ -173,7 +173,7 @@ def session_tokens(conn: sqlite3.Connection, session_id: int) -> dict[str, int]:
             COALESCE(SUM(m.cache_1h_tokens), 0)    AS cache_1h,
             COALESCE(SUM(m.cache_read_tokens), 0)  AS cache_read
         FROM messages m JOIN events e ON e.id = m.event_id
-        WHERE e.session_id = ?
+        WHERE e.session_id = ? AND e.is_replay = 0
         """,
         (session_id,),
     ).fetchone()
@@ -208,7 +208,8 @@ def session_stop_reasons(conn: sqlite3.Connection, session_id: int) -> dict[str,
         """
         SELECT m.stop_reason AS stop_reason, COUNT(*) AS count
         FROM messages m JOIN events e ON e.id = m.event_id
-        WHERE e.session_id = ? AND m.stop_reason IS NOT NULL AND m.stop_reason != ''
+        WHERE e.session_id = ? AND e.is_replay = 0
+          AND m.stop_reason IS NOT NULL AND m.stop_reason != ''
         GROUP BY m.stop_reason
         """,
         (session_id,),

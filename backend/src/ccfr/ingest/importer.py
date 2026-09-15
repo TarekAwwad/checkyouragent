@@ -11,7 +11,7 @@ from typing import Any, Callable
 
 from ccfr.analysis.session_findings import rebuild_session_findings
 from ccfr.ingest.file_ext import file_ext_from_tool_input
-from ccfr.storage.database import init_db
+from ccfr.storage.database import init_db, mark_replay_events
 
 
 PERSISTED_RE = re.compile(r"Full output saved to:\s*(?P<path>.+?)(?:\r?\n|$)")
@@ -410,6 +410,8 @@ def _notify_progress(
 
 
 def _rebuild_derived(conn: sqlite3.Connection, session_ids: list[int], project_ids: list[int]) -> None:
+    # Must run before the stats/pattern passes so they see the final replay flags.
+    mark_replay_events(conn, project_ids=project_ids)
     _build_edges(conn, session_ids)
     _refresh_subagent_stats(conn, session_ids)
     _refresh_session_stats(conn, session_ids)
@@ -508,9 +510,9 @@ def _insert_event(
         """
         INSERT INTO events(
             session_id, source_path, line_no, uuid, parent_uuid, type, timestamp,
-            is_sidechain, agent_id, raw_json
+            is_sidechain, agent_id, origin_session_id, raw_json
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             session_pk,
@@ -522,6 +524,7 @@ def _insert_event(
             obj.get("timestamp"),
             1 if is_sidechain else 0,
             agent_id,
+            obj.get("sessionId"),
             _json(_compact_for_storage(obj)),
         ),
     )

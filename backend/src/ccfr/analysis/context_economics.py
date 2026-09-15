@@ -332,7 +332,7 @@ def load_threads(
                    m.base_input_tokens + m.cache_5m_tokens + m.cache_1h_tokens
                      + m.cache_read_tokens AS context_tokens
             FROM events e JOIN messages m ON m.event_id = e.id
-            WHERE e.session_id = ? AND m.role = 'assistant'
+            WHERE e.session_id = ? AND e.is_replay = 0 AND m.role = 'assistant'
             ORDER BY e.timestamp, e.id
             """,
             (session["id"],),
@@ -369,7 +369,7 @@ def load_threads(
                 ON tc.session_id = e.session_id AND tc.tool_use_id = tr.tool_use_id
             -- tool_result content blocks live on user-type events in the export, so the
             -- type filter still captures them via the tool_results join below.
-            WHERE e.session_id = ? AND e.type IN ('user', 'attachment')
+            WHERE e.session_id = ? AND e.is_replay = 0 AND e.type IN ('user', 'attachment')
             ORDER BY e.timestamp, e.id
             """,
             (session["id"],),
@@ -850,9 +850,10 @@ def _corpus_total_tokens(conn: sqlite3.Connection, project_id: int | None) -> in
     price-independent on purpose: the token currency must exist even when no
     price table is loaded.
     """
-    where, params = "", []
+    # Replayed copies are excluded so corpus totals match the Cost page.
+    where, params = "WHERE e.is_replay = 0", []
     if project_id is not None:
-        where = "WHERE s.project_id = ?"
+        where += " AND s.project_id = ?"
         params.append(project_id)
     row = conn.execute(
         f"""
@@ -877,9 +878,10 @@ def _corpus_cost_summary(
     historical: bool = True,
 ) -> tuple[float, list[str]]:
     """Known corpus cost and models whose used messages could not be priced."""
-    where, params = "", []
+    # Replayed copies are excluded so corpus totals match the Cost page.
+    where, params = "WHERE e.is_replay = 0", []
     if project_id is not None:
-        where = "WHERE s.project_id = ?"
+        where += " AND s.project_id = ?"
         params.append(project_id)
     period_expr = timeline.sql_period_expr("e.timestamp", historical=historical)
     rows = conn.execute(
@@ -947,9 +949,10 @@ def _corpus_weekly_usd(conn: sqlite3.Connection, project_id: int | None,
     Grouped by model+day in SQL to keep the row count small, then folded into
     weeks in Python so the week logic matches _week_start exactly.
     """
-    where, params = "", []
+    # Replayed copies are excluded so corpus totals match the Cost page.
+    where, params = "WHERE e.is_replay = 0", []
     if project_id is not None:
-        where = "WHERE s.project_id = ?"
+        where += " AND s.project_id = ?"
         params.append(project_id)
     rows = conn.execute(
         f"""

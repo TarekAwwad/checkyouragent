@@ -458,7 +458,7 @@ def _scoped_session_costs(
             FROM messages m
             JOIN events e ON e.id = m.event_id
             JOIN sessions s ON s.id = e.session_id
-            WHERE m.model IS NOT NULL AND m.model != ''
+            WHERE e.is_replay = 0 AND m.model IS NOT NULL AND m.model != ''
             {_project_and(project_id, "s")}
             ORDER BY m.model
             """,
@@ -480,7 +480,7 @@ def _scoped_session_costs(
         FROM messages m
         JOIN events e ON e.id = m.event_id
         JOIN sessions s ON s.id = e.session_id
-        WHERE m.model IS NOT NULL AND m.model != ''
+        WHERE e.is_replay = 0 AND m.model IS NOT NULL AND m.model != ''
         {_project_and(project_id, "s")}
         GROUP BY e.session_id, m.model, price_period
         """,
@@ -517,7 +517,7 @@ def _models_by_session(conn: sqlite3.Connection, *, project_id: int | None) -> d
         FROM messages m
         JOIN events e ON e.id = m.event_id
         JOIN sessions s ON s.id = e.session_id
-        WHERE m.model IS NOT NULL AND m.model != ''
+        WHERE e.is_replay = 0 AND m.model IS NOT NULL AND m.model != ''
         {_project_and(project_id, "s")}
         GROUP BY e.session_id, m.model
         """,

@@ -53,8 +53,12 @@ def bucket_for_range(start: str | None, end: str | None) -> str:
 
 def _where(date_from: str | None, date_to: str | None, project_id: int | None) -> tuple[str, list[Any]]:
     """Build the shared SQL WHERE fragment (date + project). Model filtering is done in
-    Python after grouping, so normalize_model_key can fold dated release suffixes."""
-    clauses: list[str] = []
+    Python after grouping, so normalize_model_key can fold dated release suffixes.
+
+    Replayed events are always excluded: a resumed session repeats the whole prior
+    history, and counting those copies would multiply spend by the number of resumes.
+    """
+    clauses: list[str] = ["e.is_replay = 0"]
     params: list[Any] = []
     if date_from:
         clauses.append("e.timestamp >= ?")
@@ -165,6 +169,7 @@ def session_turn_cost_breakdown(conn: sqlite3.Connection, session_id: int, *, hi
         JOIN messages m ON m.event_id = e.id
         WHERE e.session_id = ?
           AND e.is_sidechain = 0
+          AND e.is_replay = 0
           AND m.role = 'user'
         ORDER BY e.id
         """,
@@ -236,6 +241,7 @@ def session_turn_cost_breakdown(conn: sqlite3.Connection, session_id: int, *, hi
         FROM events e
         LEFT JOIN messages m ON m.event_id = e.id
         WHERE e.session_id = ?
+          AND e.is_replay = 0
         ORDER BY e.id
         """,
         (session_id,),
@@ -314,6 +320,7 @@ def _turn_cost_stats(
         JOIN messages um ON um.event_id = e.id
         JOIN sessions s ON s.id = e.session_id
         WHERE e.is_sidechain = 0
+          AND e.is_replay = 0
           AND um.role = 'user'
           {project_clause}
         GROUP BY e.session_id, e.id

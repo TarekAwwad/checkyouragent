@@ -225,7 +225,7 @@ def _session_tokens_by_model(conn: sqlite3.Connection, session_pk: int) -> dict[
                COALESCE(SUM(m.cache_1h_tokens), 0)   AS cache_1h,
                COALESCE(SUM(m.cache_read_tokens), 0) AS cache_read
         FROM messages m JOIN events e ON e.id = m.event_id
-        WHERE e.session_id = ?
+        WHERE e.session_id = ? AND e.is_replay = 0
         GROUP BY m.model
         """,
         (session_pk,),
