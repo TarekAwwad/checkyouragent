@@ -9,6 +9,6 @@
     "capture-shots": "node capture-shots.mjs"
   },
   "devDependencies": {
-    "playwright": "^1.49.0"
+    "playwright": "^1.64.0"
   }
 }
