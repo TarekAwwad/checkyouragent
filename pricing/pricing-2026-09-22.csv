@@ -1,0 +1,2 @@
+model,base-input-tokens,5m-cache-writes,1h-cache-writes,cache-hits-&-refreshes,output-tokens
+Claude-Opus-5.5,4,5,8,0.20,20

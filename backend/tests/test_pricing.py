@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import date
 from pathlib import Path
 
+import pytest
+
 from ccfr.analysis.pricing import (
     ModelPrice,
     TokenBreakdown,
@@ -31,6 +33,66 @@ def _write_pricing(tmp_path: Path) -> Path:
 def test_shipped_pricing_models_are_safe_team_model_families() -> None:
     shipped_pricing = Path(__file__).resolve().parents[2] / "pricing.csv"
     assert set(load_price_table(shipped_pricing)) <= PUBLIC_MODEL_KEYS
+    for snapshot in (shipped_pricing.parent / "pricing").glob("pricing-*.csv"):
+        assert set(load_price_table(snapshot)) <= PUBLIC_MODEL_KEYS
+
+
+@pytest.mark.parametrize(
+    ("model", "expected"),
+    [
+        ("claude-opus-5-5", ModelPrice(4, 5, 8, 0.20, 20)),
+        ("claude-sonnet-5-5", ModelPrice(2, 2.50, 4, 0.10, 10)),
+        ("claude-haiku-5-5", ModelPrice(0.10, 0.125, 0.20, 0.01, 0.50)),
+        ("claude-fable-5-1", ModelPrice(10, 12.50, 20, 0.25, 50)),
+        ("claude-mythos-5-1", ModelPrice(10, 12.50, 20, 0.25, 50)),
+        ("claude-sonnet-5", ModelPrice(2, 2.50, 4, 0.20, 10)),
+        ("claude-3-5-haiku-20241022", ModelPrice(0.80, 1, 1.60, 0.08, 4)),
+    ],
+)
+def test_shipped_prices_match_anthropic_2026_10_29(model: str, expected: ModelPrice) -> None:
+    root = Path(__file__).resolve().parents[2]
+    assert match_price(load_price_table(root / "pricing.csv"), model) == expected
+    timeline = load_price_timeline(root / "pricing.csv", root / "pricing")
+    assert match_price(timeline.current_table(), model) == expected
+
+
+def test_current_csv_and_latest_shipped_history_agree() -> None:
+    root = Path(__file__).resolve().parents[2]
+    table = load_price_table(root / "pricing.csv")
+    timeline = load_price_timeline(root / "pricing.csv", root / "pricing")
+    assert table == timeline.current_table()
+
+
+def test_shipped_sonnet_prices_respect_effective_dates() -> None:
+    root = Path(__file__).resolve().parents[2]
+    baseline = root / "pricing.csv"
+    timeline = load_price_timeline(baseline, root / "pricing")
+    assert match_price(load_price_table(baseline), "claude-sonnet-5").base_input == 2
+    assert timeline.price_for("claude-sonnet-5", "2026-06-30").base_input == 2
+    assert timeline.price_for("claude-sonnet-5", "2026-09-01").base_input == 2
+    old = timeline.price_for("claude-sonnet-5-5", "2026-10-06T23:59:59Z")
+    new = timeline.price_for("claude-sonnet-5-5", "2026-10-07T00:00:00Z")
+    tokens = TokenBreakdown(cache_read=1_000_000)
+    assert cost_usd(old, tokens) == 0.20
+    assert cost_usd(new, tokens) == 0.10
+    assert timeline.price_for("claude-sonnet-5-5", "2026-09-28", historical=False) == new
+
+
+def test_bundled_and_local_history_merge_with_local_rows_winning(tmp_path: Path) -> None:
+    baseline = _write_pricing(tmp_path)
+    bundled = tmp_path / "pricing"
+    bundled.mkdir()
+    local = tmp_path / "local"
+    local.mkdir()
+    _write_sheet(bundled / "pricing-2026-07-01.csv", {"Claude-Opus-4.8": 4, "Claude-Sonnet-4.6": 2})
+    _write_sheet(local / "pricing-2026-07-01.csv", {"Claude-Opus-4.8": 1})
+    _write_sheet(local / "pricing-2026-08-01.csv", {"Claude-Opus-4.8": 0.5})
+    timeline = load_price_timeline(baseline, local)
+    assert timeline.boundaries() == [date(2026, 7, 1), date(2026, 8, 1)]
+    assert timeline.price_for("claude-opus-4-8", "2026-06-30").base_input == 5
+    assert timeline.price_for("claude-opus-4-8", "2026-07-01").base_input == 1
+    assert timeline.price_for("claude-sonnet-4-6", "2026-07-01").base_input == 2
+    assert timeline.price_for("claude-opus-4-8", "2026-08-01").base_input == 0.5
 
 
 def test_normalize_model_key_maps_display_names_to_ids() -> None:

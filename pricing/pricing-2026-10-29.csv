@@ -1,0 +1,2 @@
+model,base-input-tokens,5m-cache-writes,1h-cache-writes,cache-hits-&-refreshes,output-tokens
+Claude-3.5-Haiku-(deprecated),0.80,1,1.60,0.08,4

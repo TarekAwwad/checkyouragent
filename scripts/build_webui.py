@@ -3,7 +3,7 @@
 
 Runs `npm ci && npm run build` in frontend/, then replaces
 backend/src/ccfr/webui/ with the contents of frontend/dist/, and stages the
-runtime data assets (pricing.csv, demo/claude-export/) into
+runtime data assets (pricing.csv, pricing/, demo/claude-export/) into
 backend/src/ccfr/_assets/. Both directories are git-ignored and force-included
 in the wheel (see backend/pyproject.toml); ccfr.config falls back to _assets/
 when not running from a source checkout.
@@ -37,8 +37,11 @@ def stage_data_assets() -> None:
         shutil.rmtree(ASSETS)
     ASSETS.mkdir(parents=True)
     shutil.copy2(REPO / "pricing.csv", ASSETS / "pricing.csv")
+    (ASSETS / "pricing").mkdir()
+    for snapshot in sorted((REPO / "pricing").glob("pricing-*.csv")):
+        shutil.copy2(snapshot, ASSETS / "pricing" / snapshot.name)
     shutil.copytree(REPO / "demo" / "claude-export", ASSETS / "claude-export")
-    print(f"Staged pricing.csv and demo/claude-export -> {ASSETS}")
+    print(f"Staged pricing.csv, pricing/ and demo/claude-export -> {ASSETS}")
 
 
 def main() -> int:

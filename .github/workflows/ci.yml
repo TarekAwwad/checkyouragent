@@ -112,7 +112,7 @@ jobs:
           wheel="$(ls backend/dist/checkyouragent-*.whl)"
           test -f "backend/dist/checkyouragent-${version}.tar.gz"
           python -m zipfile -l "$wheel" > wheel-contents.txt
-          for path in "ccfr/webui/index.html" "ccfr/_assets/pricing.csv" "ccfr/_assets/claude-export/" \
+          for path in "ccfr/webui/index.html" "ccfr/_assets/pricing.csv" "ccfr/_assets/pricing/" "ccfr/_assets/claude-export/" \
                       "ccfr/docs_assets/swagger-ui-bundle.js" "ccfr/docs_assets/swagger-ui.css"; do
             grep -qF "$path" wheel-contents.txt
           done
