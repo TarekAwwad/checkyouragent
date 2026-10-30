@@ -20,7 +20,8 @@ below must be complete first.
   browser-origin controls, and network binding.
 - [ ] Search tracked files for credentials, tokens, private paths, and raw user
   exports.
-- [ ] Run `uv run --locked --with pip-audit pip-audit` from `backend/`.
+- [ ] Run `uv run --locked --extra dev --with pip-audit pip-audit` from `backend/`
+  so the audit includes test dependencies as well as runtime dependencies.
 - [ ] Run `npm audit --audit-level=moderate` from `frontend/`.
 - [ ] Confirm synthetic fixtures and screenshots contain no private data.
 

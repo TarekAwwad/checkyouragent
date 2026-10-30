@@ -43,7 +43,7 @@ jobs:
 
       - name: Audit Python dependencies
         if: matrix.python-version == '3.12'
-        run: uv run --locked --with pip-audit pip-audit
+        run: uv run --locked --extra dev --with pip-audit pip-audit
 
   frontend:
     name: Frontend
