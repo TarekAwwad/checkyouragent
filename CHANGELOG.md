@@ -6,6 +6,30 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-30
+
+### Added
+- Added a sortable Ended column and a Recently ended sort option to the Sessions
+  table.
+
+### Security
+- Restrict Docker and wheel pricing assets to an explicit public snapshot list;
+  exclude local pricing files and stale staged assets from Docker build contexts.
+- Update vulnerable Python and frontend dependencies, require patched AnyIO in
+  installed packages, and bind frontend development and preview servers to loopback.
+
+### Changed
+- Reworked the README quick start and product tour, refreshed screenshots, and
+  removed the demo recording.
+- Refreshed the complete current Anthropic price list in pricing.csv and added
+  dated snapshots for historical calculations:
+  Opus, Sonnet, and Haiku 5.5, Fable and Mythos 5.1, legacy Haiku 3.5, Sonnet 5
+  launch pricing, and the 7 October Sonnet 5.5 cache-read price reduction.
+  Snapshots now ship with installed packages and support local overrides.
+  New model families remain priceable in sanitized Team bundles.
+  Haiku 5.5 uses standard rates for prompts up to 100,000 input tokens; the
+  higher long-prompt tier is not yet applied.
+
 ## [0.2.0] - 2026-08-16
 
 ### Added

@@ -34,8 +34,11 @@ class ModelPrice:
 # sync with this registry.
 PUBLIC_MODEL_KEYS = frozenset(
     {
+        "claude-fable-5-1",
         "claude-fable-5",
+        "claude-mythos-5-1",
         "claude-mythos-5",
+        "claude-opus-5-5",
         "claude-opus-5",
         "claude-opus-4-8",
         "claude-opus-4-7",
@@ -43,10 +46,12 @@ PUBLIC_MODEL_KEYS = frozenset(
         "claude-opus-4-5",
         "claude-opus-4-1",
         "claude-opus-4",
+        "claude-sonnet-5-5",
         "claude-sonnet-5",
         "claude-sonnet-4-6",
         "claude-sonnet-4-5",
         "claude-sonnet-4",
+        "claude-haiku-5-5",
         "claude-haiku-4-5",
         "claude-3-5-sonnet",
         "claude-3-5-haiku",
@@ -271,11 +276,18 @@ class PriceTimeline:
 
 
 def load_price_timeline(baseline_path: Path, sheets_dir: Path) -> PriceTimeline:
-    """Load the baseline CSV plus every pricing-YYYY-MM-DD.csv in ``sheets_dir``."""
+    """Load baseline, bundled history beside it, then optional local snapshots.
+
+    Same-date local entries override bundled entries per model. Merging by date
+    keeps one SQL price-period boundary per effective date.
+    """
     baseline = load_price_table(baseline_path)
-    snapshots: list[_Snapshot] = []
-    if sheets_dir.is_dir():
-        for child in sorted(sheets_dir.iterdir()):
+    by_date: dict[date, dict[str, ModelPrice]] = {}
+    directories = dict.fromkeys([(baseline_path.parent / "pricing").resolve(), sheets_dir.resolve()])
+    for directory in directories:
+        if not directory.is_dir():
+            continue
+        for child in sorted(directory.iterdir()):
             if not child.is_file():
                 continue
             match = _SHEET_RE.match(child.name)
@@ -285,5 +297,6 @@ def load_price_timeline(baseline_path: Path, sheets_dir: Path) -> PriceTimeline:
                 day = date(int(match.group(1)), int(match.group(2)), int(match.group(3)))
             except ValueError:
                 continue
-            snapshots.append(_Snapshot(date=day, table=load_price_table(child)))
+            by_date.setdefault(day, {}).update(load_price_table(child))
+    snapshots = [_Snapshot(date=day, table=table) for day, table in by_date.items()]
     return PriceTimeline(baseline, snapshots)

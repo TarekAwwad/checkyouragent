@@ -121,9 +121,9 @@ def pricing_path() -> Path:
 def pricing_dir() -> Path:
     """Directory of dated price snapshots (pricing-YYYY-MM-DD.csv) layered over pricing.csv.
 
-    Snapshots are optional local data (git-ignored; compose mounts them into
-    Docker), so wheels never package any -- installed apps look under the data
-    dir, where users can actually drop snapshot files."""
+    Bundled history is loaded beside pricing.csv. Installed apps additionally
+    read local overrides from the data dir, where users can drop snapshot files.
+    """
     resolved = _from_env_or_source("CCFR_PRICING_DIR", "pricing")
     return resolved if resolved is not None else data_dir() / "pricing"
 
@@ -199,4 +199,4 @@ def app_version() -> str:
     try:
         return _pkg_version("checkyouragent")
     except PackageNotFoundError:
-        return "0.2.0"
+        return "0.3.0"

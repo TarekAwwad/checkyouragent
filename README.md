@@ -183,7 +183,7 @@ baseline price table bundled with the package.
 | `CCFR_DB_PATH` | `<repo>/.ccfr-data/ccfr.sqlite3` | `~/.checkyouragent/ccfr.sqlite3` | SQLite database file |
 | `CCFR_IMPORT_ROOT` | `<repo>/Data` | `~/.claude/projects` when present, otherwise `./Data` | Root scanned for Claude Code project folders |
 | `CCFR_TEAM_BUNDLE_ROOT` | `<repo>/.ccfr-data/team-bundles` | `~/.checkyouragent/team-bundles` | Team bundle export/import root |
-| `CCFR_PRICING_PATH` | `<repo>/pricing.csv` | Bundled `pricing.csv` | Baseline price table |
+| `CCFR_PRICING_PATH` | `<repo>/pricing.csv` | Bundled `pricing.csv` | Complete current price table |
 | `CCFR_PRICING_DIR` | `<repo>/pricing` | `~/.checkyouragent/pricing` | Optional dated pricing snapshots |
 
 The import root should look like Claude Code's `~/.claude/projects`: one folder
@@ -193,10 +193,24 @@ import root or a descendant; requests outside it are rejected. **Reset local
 data** on the Import screen clears imported sessions while keeping settings and
 imported team bundles.
 
-`pricing.csv` holds baseline prices in US dollars per million tokens, and the
-optional `pricing/` directory holds dated snapshots (`pricing-YYYY-MM-DD.csv`)
-used by historical pricing mode. Models without a price row are labeled as
+`pricing.csv` holds the complete current price list in US dollars per million
+tokens, and `pricing/` holds dated snapshots (`pricing-YYYY-MM-DD.csv`). Historical
+mode applies snapshots through each event's date; current mode applies all of
+them. Update the current CSV and add a new dated snapshot when rates change;
+retain earlier snapshots. The current table and dated history both ship with
+installed packages, which also read optional overrides from
+`~/.checkyouragent/pricing` (or
+`CCFR_PRICING_DIR`). Same-date local rows override bundled rows per model.
+See [pricing history and sources](pricing/README.md).
+Models without a price row are labeled as
 partially priced rather than silently counted as zero.
+
+The bundled pricing history was checked against [Anthropic's published pricing](https://platform.claude.com/docs/en/about-claude/pricing)
+on 29 October 2026. It contains standard global API rates; fast mode, regional
+premiums, and batch discounts are not applied.
+The Haiku 5.5 row covers prompts up to 100,000 input tokens, including cache
+reads and writes. Anthropic charges five times these rates for longer prompts;
+the current flat table does not apply that tier, so those costs are underestimated.
 
 The full configuration reference, data layout, and import behavior are in
 [`docs/architecture.md`](docs/architecture.md).

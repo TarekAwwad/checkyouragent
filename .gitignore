@@ -33,7 +33,10 @@ docs/superpowers/*
 .DS_Store
 docs/PROJECT_STATE.md
 docker-compose-local.yml
-/pricing
+/pricing/*
+!/pricing/README.md
+!/pricing/manifest.json
+!/pricing/pricing-*.csv
 /tmp/
 WIP-plans/
 docs/media/audit/

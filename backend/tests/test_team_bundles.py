@@ -32,6 +32,16 @@ def test_team_bundle_model_and_agent_buckets_are_closed() -> None:
     assert bundle_helpers.bucket_agent_type(None) == "custom"
 
 
+@pytest.mark.parametrize(
+    "model",
+    ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5",
+     "claude-fable-5-1", "claude-mythos-5-1"],
+)
+def test_current_models_keep_their_version_in_team_exports(model: str) -> None:
+    assert bundle_helpers.bucket_model(model) == model
+    assert bundle_helpers.bucket_model(model + "-20261029") == model
+
+
 def test_legacy_team_sequence_symbols_are_sanitized_to_closed_values() -> None:
     assert bundle_helpers.sanitize_symbol("CALL:Bash:git", "tool_call") == "CALL:Bash:git"
     assert bundle_helpers.sanitize_symbol("CALL:Bash:private", "tool_call") == "CALL:Bash:other"

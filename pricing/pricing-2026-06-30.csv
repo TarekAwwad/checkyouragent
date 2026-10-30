@@ -1,0 +1,2 @@
+model,base-input-tokens,5m-cache-writes,1h-cache-writes,cache-hits-&-refreshes,output-tokens
+Claude-Sonnet-5,2,2.50,4,0.20,10

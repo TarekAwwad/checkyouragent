@@ -3,13 +3,15 @@
 
 Runs `npm ci && npm run build` in frontend/, then replaces
 backend/src/ccfr/webui/ with the contents of frontend/dist/, and stages the
-runtime data assets (pricing.csv, demo/claude-export/) into
+runtime data assets (pricing.csv, pricing/, demo/claude-export/) into
 backend/src/ccfr/_assets/. Both directories are git-ignored and force-included
 in the wheel (see backend/pyproject.toml); ccfr.config falls back to _assets/
 when not running from a source checkout.
 """
 from __future__ import annotations
 
+import json
+import re
 import shutil
 import subprocess
 import sys
@@ -33,12 +35,24 @@ def stage_data_assets() -> None:
     Must stage every location ccfr.config falls back to under _assets/;
     a missing source here means installed wheels silently lose that asset.
     """
+    names = json.loads((REPO / "pricing" / "manifest.json").read_text(encoding="utf-8"))
+    snapshots = []
+    for name in names:
+        if not isinstance(name, str) or not re.fullmatch(r"pricing-\d{4}-\d{2}-\d{2}\.csv", name):
+            raise ValueError(f"Invalid public pricing snapshot: {name!r}")
+        snapshot = REPO / "pricing" / name
+        if snapshot.is_symlink() or not snapshot.is_file():
+            raise ValueError(f"Public pricing snapshot must be a regular file: {name}")
+        snapshots.append(snapshot)
     if ASSETS.exists():
         shutil.rmtree(ASSETS)
     ASSETS.mkdir(parents=True)
     shutil.copy2(REPO / "pricing.csv", ASSETS / "pricing.csv")
+    (ASSETS / "pricing").mkdir()
+    for snapshot in snapshots:
+        shutil.copy2(snapshot, ASSETS / "pricing" / snapshot.name)
     shutil.copytree(REPO / "demo" / "claude-export", ASSETS / "claude-export")
-    print(f"Staged pricing.csv and demo/claude-export -> {ASSETS}")
+    print(f"Staged pricing.csv, pricing/ and demo/claude-export -> {ASSETS}")
 
 
 def main() -> int:
