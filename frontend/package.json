@@ -1,6 +1,6 @@
 {
   "name": "checkyouragent-frontend",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "license": "BUSL-1.1",
   "private": true,
   "type": "module",

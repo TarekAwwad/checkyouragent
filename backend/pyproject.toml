@@ -1,6 +1,6 @@
 [project]
 name = "checkyouragent"
-version = "0.2.0"
+version = "0.3.0"
 description = "Local analytics for Claude Code project exports"
 readme = "README.md"
 license = "BUSL-1.1"
