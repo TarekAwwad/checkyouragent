@@ -12,6 +12,16 @@ backend/.pytest_cache/
 backend/.dev*.sqlite3
 backend/.dev-server*.log
 backend/src/ccfr/static/
+backend/src/ccfr/_assets/
+# Only public snapshots may enter the build context. Keep this list in sync
+# with pricing/manifest.json (checked by test_packaged_pricing.py).
+pricing/*
+!pricing/pricing-2026-06-30.csv
+!pricing/pricing-2026-09-01.csv
+!pricing/pricing-2026-09-22.csv
+!pricing/pricing-2026-09-28.csv
+!pricing/pricing-2026-10-07.csv
+!pricing/pricing-2026-10-29.csv
 **/__pycache__/
 **/*.py[cod]
 **/*.sqlite3

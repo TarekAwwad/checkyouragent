@@ -35,6 +35,7 @@ docs/PROJECT_STATE.md
 docker-compose-local.yml
 /pricing/*
 !/pricing/README.md
+!/pricing/manifest.json
 !/pricing/pricing-*.csv
 /tmp/
 WIP-plans/

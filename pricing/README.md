@@ -6,6 +6,12 @@ with the newly effective rates, and update `../pricing.csv` to match. Use the
 effective date rather than the day the file was edited. Existing snapshots
 should not be rewritten when prices change.
 
+Only snapshots listed in `manifest.json` are published. When adding public
+history, update that manifest, the explicit `COPY` list in `../Dockerfile`, and
+the exceptions in `../.dockerignore`; packaging tests check they agree. Local
+files, including additional dated CSVs, remain available at runtime but must
+not be included in distributed artifacts. Build releases from a clean checkout.
+
 Snapshots can contain just the changed rows: historical mode overlays them
 oldest first through each event's date. Models without a historical row fall
 back to the current CSV; the history is not a complete model-release inventory.

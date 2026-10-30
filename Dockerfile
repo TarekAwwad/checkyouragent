@@ -24,7 +24,13 @@ RUN pip install --no-cache-dir uv==0.7.2 \
 # don't invalidate the dependency layer. Bundle dated history too; compose can
 # still mount ./pricing:/app/pricing for runtime updates without a rebuild.
 COPY pricing.csv ./pricing.csv
-COPY pricing ./pricing
+# Explicit public snapshots only; keep in sync with pricing/manifest.json.
+COPY pricing/pricing-2026-06-30.csv \
+     pricing/pricing-2026-09-01.csv \
+     pricing/pricing-2026-09-22.csv \
+     pricing/pricing-2026-09-28.csv \
+     pricing/pricing-2026-10-07.csv \
+     pricing/pricing-2026-10-29.csv ./pricing/
 COPY demo/claude-export ./demo/claude-export
 EXPOSE 8000
 CMD ["uvicorn", "ccfr.main:app", "--host", "0.0.0.0", "--port", "8000"]

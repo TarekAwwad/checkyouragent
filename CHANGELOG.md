@@ -6,6 +6,12 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+- Restrict Docker and wheel pricing assets to an explicit public snapshot list;
+  exclude local pricing files and stale staged assets from Docker build contexts.
+- Update vulnerable Python and frontend dependencies, require patched AnyIO in
+  installed packages, and bind frontend development and preview servers to loopback.
+
 ### Changed
 - Refreshed the complete current Anthropic price list in pricing.csv and added
   dated snapshots for historical calculations:
