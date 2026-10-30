@@ -41,6 +41,7 @@ vi.mock("./api/client", () => ({
     sequence: [],
   })),
   getRuntimeConfig: vi.fn(async () => ({
+    app_version: "9.8.7",
     import_root: "/srv/Data",
     team_bundle_root: "/srv/team-bundles",
     database_path: "/srv/ccfr.sqlite3",
@@ -236,6 +237,7 @@ describe("App", () => {
     renderApp();
 
     expect(await screen.findByText("Check Your Agent")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Check Your Agent version 9.8.7")).toHaveTextContent("v9.8.7");
     expect(await screen.findByText("Mounted source")).toBeInTheDocument();
   });
 

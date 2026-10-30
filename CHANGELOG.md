@@ -6,6 +6,9 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- Show the running app version in the terminal startup banner and sidebar footer.
+
 ## [0.3.0] - 2026-10-30
 
 This release fixes imports blocked by parallel tool results, refreshes current

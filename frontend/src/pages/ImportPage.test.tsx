@@ -16,6 +16,7 @@ function renderPage() {
 beforeEach(() => {
   localStorage.clear();
   vi.spyOn(client, "getRuntimeConfig").mockResolvedValue({
+    app_version: "9.8.7",
     import_root: "/srv/Data",
     database_path: "/srv/ccfr.sqlite3",
     is_docker: false,

@@ -12,6 +12,7 @@ export interface ImportSummary {
 }
 
 export interface RuntimeConfig {
+  app_version: string;
   import_root: string;
   team_bundle_root?: string;
   database_path: string;

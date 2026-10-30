@@ -10,6 +10,7 @@ const SCOPE_OPTIONS: { key: DataScope; label: string }[] = [
 ];
 
 interface Props {
+  appVersion?: string;
   view: View;
   scope: DataScope;
   discoverTechnique: string;
@@ -30,6 +31,7 @@ interface Props {
 }
 
 export default function Sidebar({
+  appVersion,
   view,
   scope,
   discoverTechnique,
@@ -197,6 +199,11 @@ export default function Sidebar({
             {collapsed ? <PanelLeft size={16} /> : <PanelLeftClose size={16} />}
           </button>
         </div>
+        {appVersion && (
+          <div className="sb-version" title={`Check Your Agent v${appVersion}`} aria-label={`Check Your Agent version ${appVersion}`}>
+            v{appVersion}
+          </div>
+        )}
       </div>
     </aside>
   );

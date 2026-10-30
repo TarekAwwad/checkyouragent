@@ -1,6 +1,6 @@
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { listImports, listProjects, listSessions } from "./api/client";
+import { getRuntimeConfig, listImports, listProjects, listSessions } from "./api/client";
 import type { SessionCard } from "./api/types";
 import ImportPage from "./pages/ImportPage";
 import TriageBoard from "./triage/TriageBoard";
@@ -65,6 +65,7 @@ function pushSessionHistory(
 }
 
 function App() {
+  const config = useQuery({ queryKey: ["config"], queryFn: getRuntimeConfig });
   const imports = useQuery({ queryKey: ["imports"], queryFn: listImports });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const sessions = useQuery({ queryKey: ["sessions", {}], queryFn: () => listSessions() });
@@ -185,6 +186,7 @@ function App() {
     <PrivacyModeProvider value={privacyMode}>
     <div className="app-shell">
       <Sidebar
+        appVersion={config.data?.app_version}
         view={view}
         scope={scope}
         discoverTechnique={discoverTechnique}

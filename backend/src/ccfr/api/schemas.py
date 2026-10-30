@@ -11,6 +11,7 @@ class ImportRequest(BaseModel):
 
 
 class RuntimeConfigResponse(BaseModel):
+    app_version: str
     import_root: str
     team_bundle_root: str
     database_path: str

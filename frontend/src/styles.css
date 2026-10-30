@@ -143,6 +143,10 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 }
 
 .sb-foot { display: flex; gap: 8px; padding-top: 8px; }
+.sb-version {
+  padding-top: 8px; color: var(--muted); font-size: 11px;
+  text-align: center; overflow-wrap: anywhere;
+}
 .sb-action {
   width: 34px; height: 34px; display: grid; place-items: center;
   border: 1px solid var(--border); background: var(--bg); color: var(--muted); border-radius: 9px;

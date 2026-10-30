@@ -49,13 +49,15 @@ def _export_body(level="structural", member_name=None, projects=None):
     }
 
 
-def test_config_exposes_team_bundle_root(client):
+def test_config_exposes_team_bundle_root_and_app_version(client, monkeypatch):
     c, _conn, bundle_root = client
+    monkeypatch.setattr(routes.config, "app_version", lambda: "9.8.7")
 
     resp = c.get("/api/config")
 
     assert resp.status_code == 200
     assert resp.json()["team_bundle_root"] == str(bundle_root)
+    assert resp.json()["app_version"] == "9.8.7"
 
 
 def test_team_export_writes_under_bundle_root_without_network(client, monkeypatch):
