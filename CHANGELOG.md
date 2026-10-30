@@ -8,6 +8,10 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.3.0] - 2026-10-30
 
+This release fixes imports blocked by parallel tool results, refreshes current
+and historical Anthropic pricing, and updates dependencies and local-server
+defaults.
+
 ### Fixed
 - Fixed duplicate session finding keys when one transcript event contains multiple
   tool results, which could block imports and team bundle exports (#66).
@@ -33,6 +37,14 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   New model families remain priceable in sanitized Team bundles.
   Haiku 5.5 uses standard rates for prompts up to 100,000 input tokens; the
   higher long-prompt tier is not yet applied.
+
+### Upgrade notes
+- Existing SQLite caches can be reused; no reset is required for this release.
+- If an import failed with a duplicate `session_findings` key, upgrade and run
+  **Import → Sync new and updated** again. Failed projects are retried and their
+  findings are rebuilt. CLI users can rerun `export-bundle` after upgrading.
+- Pricing updates can change estimated API-equivalent costs for existing
+  sessions; these estimates remain distinct from invoiced charges.
 
 ## [0.2.0] - 2026-08-16
 
