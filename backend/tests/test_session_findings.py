@@ -64,10 +64,13 @@ def add_receipt(
     output: str,
     is_error: bool,
     persisted_size: int | None = None,
+    call_event_id: int | None = None,
+    result_event_id: int | None = None,
 ) -> tuple[int, int]:
     ordinal = int(conn.execute("SELECT COUNT(*) FROM tool_calls").fetchone()[0]) + 1
     tool_use_id = f"tool-{ordinal}"
-    call_event_id = add_event(conn, session_id, event_type="assistant")
+    if call_event_id is None:
+        call_event_id = add_event(conn, session_id, event_type="assistant")
     call_json = {
         "type": "tool_use",
         "id": tool_use_id,
@@ -92,7 +95,8 @@ def add_receipt(
             (session_id, f"outputs/{tool_use_id}.txt", persisted_size, output[:80]),
         ).lastrowid
 
-    result_event_id = add_event(conn, session_id, event_type="user")
+    if result_event_id is None:
+        result_event_id = add_event(conn, session_id, event_type="user")
     result_json = {
         "type": "tool_result",
         "tool_use_id": tool_use_id,
@@ -129,6 +133,74 @@ def findings(conn: sqlite3.Connection, session_id: int) -> list[sqlite3.Row]:
 def detector_keys(conn: sqlite3.Connection, session_id: int) -> list[str]:
     rebuild_session_findings(conn, session_ids=[session_id])
     return [str(row["detector_key"]) for row in findings(conn, session_id)]
+
+
+@pytest.mark.parametrize(
+    ("detector_key", "output", "errors", "persisted_size"),
+    [
+        ("permission_rejected", "User rejected tool use", [True, True], None),
+        ("timeout", "operation timed out", [True, True], None),
+        ("missing_dependency_or_command", "command not found", [True, True], None),
+        (
+            "large_tool_result",
+            "large output",
+            [False, False],
+            LARGE_TOOL_RESULT_THRESHOLD_BYTES,
+        ),
+        (
+            "repeated_identical_failure",
+            "same test failure",
+            [True, True, False, True, True],
+            None,
+        ),
+    ],
+)
+def test_findings_distinguish_results_sharing_one_event(
+    detector_key: str,
+    output: str,
+    errors: list[bool],
+    persisted_size: int | None,
+) -> None:
+    conn = memory_conn()
+    session_id = add_session(conn)
+    call_event_id = add_event(conn, session_id, event_type="assistant")
+    result_event_id = add_event(conn, session_id, event_type="user")
+    for is_error in errors:
+        add_receipt(
+            conn,
+            session_id,
+            tool_name="Bash",
+            arguments={"command": "pytest -q"},
+            output=output if is_error else "successful output",
+            is_error=is_error,
+            persisted_size=persisted_size,
+            call_event_id=call_event_id,
+            result_event_id=result_event_id,
+        )
+
+    rebuild_session_findings(conn, session_ids=[session_id])
+
+    rows = findings(conn, session_id)
+    assert sum(row["detector_key"] == detector_key for row in rows) == 2
+    assert len({row["finding_key"] for row in rows}) == len(rows)
+    for row in rows:
+        assert row["start_event_id"] == result_event_id
+        assert row["end_event_id"] == result_event_id
+        evidence = json.loads(row["evidence_json"])
+        if row["detector_key"] == "repeated_identical_failure":
+            assert evidence["occurrence_count"] == 2
+            assert evidence["event_ids"] == [call_event_id, result_event_id] * 2
+        else:
+            assert evidence["event_ids"] == [result_event_id]
+
+    first_snapshot = [
+        {key: row[key] for key in row.keys() if key != "id"} for row in rows
+    ]
+    rebuild_session_findings(conn, session_ids=[session_id])
+    assert [
+        {key: row[key] for key in row.keys() if key != "id"}
+        for row in findings(conn, session_id)
+    ] == first_snapshot
 
 
 def test_normalization_helpers_are_pure_and_deterministic() -> None:

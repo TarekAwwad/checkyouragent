@@ -182,6 +182,90 @@ def test_reimport_rebuilds_session_findings_for_replaced_sessions(tmp_path: Path
     assert conn.execute("SELECT COUNT(*) FROM session_findings").fetchone()[0] == 0
 
 
+@pytest.mark.parametrize("retry_failed_import", [False, True])
+def test_import_parallel_rejections(tmp_path: Path, monkeypatch, retry_failed_import: bool) -> None:
+    import ccfr.ingest.importer as importer_mod
+    from ccfr.ingest import import_all_new
+
+    _write_project(tmp_path, "d--Alpha", "11111111-1111-1111-1111-111111111111")
+    project = tmp_path / "d--Parallel"
+    project.mkdir()
+    rows = [
+        {
+            "type": "assistant",
+            "uuid": "a1",
+            "timestamp": "2026-01-01T00:00:00Z",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "tool_use",
+                        "id": f"tool-{index}",
+                        "name": "Read",
+                        "input": {"file_path": f"src/file-{index}.py"},
+                    }
+                    for index in range(4)
+                ],
+            },
+        },
+        {
+            "type": "user",
+            "uuid": "u1",
+            "parentUuid": "a1",
+            "timestamp": "2026-01-01T00:00:01Z",
+            "message": {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": f"tool-{index}",
+                        "is_error": True,
+                        "content": "User rejected tool use",
+                    }
+                    for index in range(4)
+                ],
+            },
+        },
+    ]
+    (project / "22222222-2222-2222-2222-222222222222.jsonl").write_text(
+        "\n".join(json.dumps(row) for row in rows), encoding="utf-8"
+    )
+    conn = memory_conn()
+
+    if retry_failed_import:
+        def fail_findings_rebuild(*args, **kwargs):
+            raise sqlite3.IntegrityError("simulated pre-fix finding key collision")
+
+        with monkeypatch.context() as patch:
+            patch.setattr(importer_mod, "rebuild_session_findings", fail_findings_rebuild)
+            with pytest.raises(sqlite3.IntegrityError, match="finding key collision"):
+                import_all_new(conn, tmp_path)
+        assert conn.execute(
+            "SELECT status FROM imports ORDER BY id DESC LIMIT 1"
+        ).fetchone()[0] == "failed"
+        assert conn.execute(
+            "SELECT COUNT(*) FROM projects WHERE source_signature IS NULL"
+        ).fetchone()[0] == 2
+
+    summary = import_all_new(conn, tmp_path)
+
+    assert summary.project_count == 2
+    assert summary.error_count == 0
+    assert conn.execute(
+        "SELECT status FROM imports WHERE id = ?", (summary.import_id,)
+    ).fetchone()[0] == "completed"
+    assert conn.execute("SELECT COUNT(*) FROM session_stats").fetchone()[0] == 2
+    assert conn.execute("SELECT COUNT(DISTINCT event_id) FROM tool_results").fetchone()[0] == 1
+    assert conn.execute(
+        "SELECT COUNT(DISTINCT finding_key) FROM session_findings WHERE detector_key = 'permission_rejected'"
+    ).fetchone()[0] == 4
+    assert import_all_new(conn, tmp_path).project_count == 0
+
+    # Bundle exports use this forced reimport path before building the bundle.
+    assert import_export(conn, tmp_path).error_count == 0
+    assert conn.execute("SELECT COUNT(*) FROM session_findings").fetchone()[0] == 4
+
+
 def test_import_all_new_is_additive(tmp_path: Path) -> None:
     from ccfr.ingest import import_all_new
 

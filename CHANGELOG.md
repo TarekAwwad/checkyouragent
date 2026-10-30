@@ -8,6 +8,10 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.3.0] - 2026-10-30
 
+### Fixed
+- Fixed duplicate session finding keys when one transcript event contains multiple
+  tool results, which could block imports and team bundle exports (#66).
+
 ### Added
 - Added a sortable Ended column and a Recently ended sort option to the Sessions
   table.

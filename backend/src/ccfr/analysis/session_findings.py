@@ -269,8 +269,8 @@ def _repeated_failure_findings(
                     session_id=session_id,
                     finding_key=_finding_key(
                         "repeated_identical_failure",
-                        first.result_event_id,
-                        last.result_event_id,
+                        first.result_id,
+                        last.result_id,
                         tool_name,
                         arguments,
                         signature,
@@ -329,7 +329,7 @@ def _observed_error_findings(
         findings.append(
             SessionFinding(
                 session_id=session_id,
-                finding_key=_finding_key(detector_key, receipt.result_event_id, match_type),
+                finding_key=_finding_key(detector_key, receipt.result_id, match_type),
                 detector_key=detector_key,
                 basis="observed",
                 category=category,
@@ -362,7 +362,7 @@ def _large_tool_result_findings(
         findings.append(
             SessionFinding(
                 session_id=session_id,
-                finding_key=_finding_key("large_tool_result", receipt.result_event_id, size),
+                finding_key=_finding_key("large_tool_result", receipt.result_id, size),
                 detector_key="large_tool_result",
                 basis="estimated",
                 category="context",
