@@ -1072,7 +1072,7 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
 }
 .cost-bento .tile-full { grid-column: 1 / -1; }
 .cost-bento .cost-trend-tile,
-.cost-bento .cost-model-tile { height: 420px; min-height: 0; }
+.cost-bento .cost-model-tile { height: 440px; min-height: 0; }
 .cost-bento .cost-model-tile { overflow: hidden; }
 .cost-model-tile > h2 { flex: 0 0 auto; }
 .bucket-sessions-heading { align-items: center; }
@@ -1179,6 +1179,7 @@ button.spike-insight:focus-visible { outline: 1px solid var(--accent); outline-o
   overflow-x: auto; overflow-y: hidden;
 }
 .sot-legend-slot { box-sizing: border-box; flex: 0 0 40px; height: 40px; min-height: 40px; }
+.sot-spike-slot { flex: 0 0 110px; min-height: 0; border-top: 1px solid var(--border); padding-top: 9px; }
 .sot-legend button {
   display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border);
   border-radius: 999px; padding: 3px 7px; background: transparent; color: var(--muted);
@@ -1659,7 +1660,8 @@ button.spike-insight:focus-visible { outline: 1px solid var(--accent); outline-o
   .sot-heading .heat-metric-control { width: 100%; }
   .sot-heading .heat-metric-control button { flex: 1; }
   .sot-plot { height: 150px; flex-basis: 150px; }
-  .cost-bento .cost-trend-tile { height: 440px; }
+  .cost-bento .cost-trend-tile { height: 500px; }
+  .sot-spike-slot { flex-basis: 160px; }
   .cost-bento .cost-model-tile { height: 360px; }
   .cbm-row { grid-template-columns: minmax(0, 1fr) minmax(36px, .7fr) 76px; gap: 8px; }
   .cache-economics { grid-template-columns: 1fr; }

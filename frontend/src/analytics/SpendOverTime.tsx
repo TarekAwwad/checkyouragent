@@ -9,6 +9,7 @@ import {
   FALLBACK_COLOR,
 } from "./chartGeometry";
 import { formatCostPeriod } from "./costPeriods";
+import SpikeInsight from "./SpikeInsight";
 
 interface Props {
   payload: CostAnalyticsResponse;
@@ -87,6 +88,7 @@ export default function SpendOverTime({
         {heading}
         <div className="empty-state">No spend in range.</div>
         <div className="sot-legend-slot" aria-hidden="true" />
+        <div className="sot-spike-slot"><SpikeInsight payload={payload} /></div>
       </div>
     );
   }
@@ -226,6 +228,13 @@ export default function SpendOverTime({
         ) : (
           <span className="sot-total-key"><i style={{ background: ACCENT_COLOR }} />Total spend</span>
         )}
+      </div>
+      <div className="sot-spike-slot">
+        <SpikeInsight
+          payload={payload}
+          selectedBucket={effectiveSelected}
+          onSelectBucket={onSelectBucket ? selectBucket : undefined}
+        />
       </div>
     </div>
   );

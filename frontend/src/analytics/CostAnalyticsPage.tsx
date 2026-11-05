@@ -10,7 +10,6 @@ import CostByProject from "./CostByProject";
 import SpendOverTime from "./SpendOverTime";
 import TokenCategories from "./TokenCategories";
 import CostByModel from "./CostByModel";
-import InsightStrip from "./InsightStrip";
 import LoadingBar from "../components/LoadingBar";
 import SessionInsights, { TurnDistributionSection } from "./SessionInsights";
 import { Blurred } from "../shell/Blurred";
@@ -172,13 +171,6 @@ export default function CostAnalyticsPage({
           <div className="empty-state"><LoadingBar caption="Loading cost analytics…" /></div>
         ) : (
           <>
-            <InsightStrip
-              payload={payload}
-              selectedSpikeBucket={selectedBucket}
-              onSelectSpike={(bucket) => setSelectedBucket((current) => (
-                current === bucket ? null : bucket
-              ))}
-            />
             <div className="cost-bento">
               <section className="tile">
                 <h2>Cost by project</h2>

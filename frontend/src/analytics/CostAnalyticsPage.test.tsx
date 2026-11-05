@@ -241,13 +241,16 @@ describe("CostAnalyticsPage", () => {
     expect(await screen.findAllByText("alpha")).not.toHaveLength(0);
     expect(await screen.findAllByText("Session One")).not.toHaveLength(0);
     expect(await screen.findAllByText("Estimated API-equivalent cache savings")).not.toHaveLength(0);
-    // the cache-savings tile now carries a token equivalent for Max users
-    expect(await screen.findByText(/1M reused vs uncached input/)).toBeInTheDocument();
+    expect(await screen.findByText(/1M read tokens reused/)).toBeInTheDocument();
     expect(await screen.findByText("Session insights")).toBeInTheDocument();
     expect(await screen.findAllByText("Turn distribution")).not.toHaveLength(0);
     expect(screen.queryByRole("button", { name: "Review" })).not.toBeInTheDocument();
     expect(screen.getByText("Estimated API-equivalent cost")).toBeInTheDocument();
-    expect(screen.getAllByText("Estimated API-equivalent cache savings")).not.toHaveLength(0);
+    expect(screen.getAllByText("Estimated API-equivalent cache savings")).toHaveLength(1);
+    expect(screen.queryByLabelText("Cost insights")).not.toBeInTheDocument();
+    expect(screen.getByText("100% of spend")).toBeInTheDocument();
+    const trendTile = screen.getByRole("heading", { name: "Spend over time" }).closest("section")!;
+    expect(within(trendTile).getByText("Largest daily increase")).toBeInTheDocument();
     expect(screen.getAllByText("sonnet-4-5-20250929")).not.toHaveLength(0);
   });
 
@@ -375,8 +378,9 @@ describe("CostAnalyticsPage", () => {
     expect(await screen.findByText("≥$48.00")).toBeInTheDocument();
     expect(screen.getByText(/lower bound.*excludes 1 unpriced model/i)).toBeInTheDocument();
     expect(screen.getByText("Spike comparison unavailable")).toBeInTheDocument();
-    expect(screen.getByText("Model share unavailable")).toBeInTheDocument();
-    expect(screen.getAllByText("Cache comparison unavailable")).toHaveLength(2);
+    expect(screen.getByText("Spend shares are hidden because some model usage is unpriced.")).toBeInTheDocument();
+    expect(screen.queryByText(/% of spend/)).not.toBeInTheDocument();
+    expect(screen.getAllByText("Cache comparison unavailable")).toHaveLength(1);
     expect(screen.getByText("Priced usage only; unpriced models are excluded.")).toBeInTheDocument();
     expect(screen.queryByText("Estimated API-equivalent cache savings")).not.toBeInTheDocument();
   });

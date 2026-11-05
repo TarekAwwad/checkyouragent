@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   ACCENT_COLOR, formatUsd, formatTokens, buildModelColorMap, orderedModels, displayModelName,
   topProjectsWithRollup, stackedSegments, categoryRows, cacheReadPctOfInput, buildSpendArea,
-  largestSpike, topModelSpendSharePct, modelSpendSharePct, modelTokenSharePct,
+  largestSpike, modelSpendSharePct, modelTokenSharePct,
   effectiveUsdPerMillion, formatSignedUsd,
   chartModels, buildTurnBubblePlot, turnDistributionSessions, turnDistributionSummary,
 } from "./chartGeometry";
@@ -220,7 +220,6 @@ describe("insight helpers", () => {
   it("computes model spend/token shares and effective rate", () => {
     const m = model({ model: "opus", usd: 75, tokens: 250_000, effective_usd_per_million: 300 });
     const p = payload({ by_model: [m, model({ model: "sonnet", usd: 25, tokens: 750_000 })] });
-    expect(topModelSpendSharePct(p)).toBe(75);
     expect(modelSpendSharePct(m, p)).toBe(75);
     expect(modelTokenSharePct(m, p)).toBe(25);
     expect(effectiveUsdPerMillion(m)).toBe(300);

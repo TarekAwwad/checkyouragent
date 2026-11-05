@@ -41,6 +41,7 @@ export default function CostByModel({ payload, colors, available }: Props) {
             </div>
             <div className="cbm-val">
               <b>{formatUsd(m.usd)}</b>
+              {spendPct !== null && <span>{spendPct}% of spend</span>}
               <span>{formatTokens(m.tokens)} tok</span>
               <span>{formatUsdPerMillion(effectiveUsdPerMillion(m))}</span>
             </div>
