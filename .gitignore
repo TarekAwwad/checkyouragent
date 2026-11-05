@@ -38,6 +38,7 @@ docker-compose-local.yml
 !/pricing/manifest.json
 !/pricing/pricing-*.csv
 /tmp/
+/artifacts/
 WIP-plans/
 docs/media/audit/
 docs/ux-audit/
