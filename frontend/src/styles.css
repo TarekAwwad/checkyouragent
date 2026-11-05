@@ -1089,6 +1089,17 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
 .cost-insight span { font-size: 10.5px; text-transform: uppercase; letter-spacing: .55px; color: var(--muted); }
 .cost-insight b { color: var(--text); font-size: 16px; line-height: 1.1; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cost-insight small { color: var(--muted); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.spike-insight {
+  display: flex; flex-direction: column; gap: 3px; width: 100%; min-width: 0;
+  padding: 0; border: 0; background: transparent; color: var(--text); text-align: left;
+}
+.spike-insight-label { font-size: 10px; text-transform: uppercase; letter-spacing: .55px; color: var(--muted); }
+.spike-insight-change { font-size: 13px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+.spike-insight small { font-size: 10.5px; line-height: 1.45; white-space: normal; color: var(--muted); }
+.spike-insight .spike-insight-action { color: var(--accent); }
+button.spike-insight:hover .spike-insight-action { text-decoration: underline; }
+button.spike-insight[aria-pressed="true"] .spike-insight-change { color: var(--accent); }
+button.spike-insight:focus-visible { outline: 1px solid var(--accent); outline-offset: 4px; border-radius: 3px; }
 
 /* shared chip legend */
 .chip-legend { display: flex; flex-wrap: wrap; gap: 7px 14px; font-size: 11px; color: var(--muted); }

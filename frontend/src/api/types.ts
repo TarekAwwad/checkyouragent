@@ -269,6 +269,11 @@ export interface TreemapProject {
 
 export interface OverTimeBucket {
   bucket: string;
+  /** Inclusive UTC calendar boundaries; bucket is an opaque identifier. */
+  bucket_start?: string | null;
+  bucket_end?: string | null;
+  baseline_period_count?: number;
+  is_complete?: boolean;
   per_model: Record<string, number>;
   total_usd: number;
   session_count: number;
@@ -389,6 +394,10 @@ export interface SpendSpikeSession {
 
 export interface SpendSpike {
   bucket: string;
+  bucket_start?: string | null;
+  bucket_end?: string | null;
+  baseline_period_count?: number;
+  is_complete?: boolean;
   total_usd: number;
   baseline_usd: number;
   delta_usd: number;

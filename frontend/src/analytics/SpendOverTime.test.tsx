@@ -133,10 +133,10 @@ describe("SpendOverTime", () => {
   it("explains exact spend and price coverage for an inspected bucket", () => {
     render(<SpendOverTime payload={payload} colors={colors} />);
 
-    fireEvent.mouseEnter(screen.getByRole("button", { name: /2026-05-02.*1 of 2 sessions priced/i }));
+    fireEvent.mouseEnter(screen.getByRole("button", { name: /May 2, 2026.*1 of 2 sessions priced/i }));
 
     const tooltip = screen.getByRole("status");
-    expect(tooltip).toHaveTextContent("2026-05-02");
+    expect(tooltip).toHaveTextContent("May 2, 2026");
     expect(tooltip).toHaveTextContent("≥$20.00");
     expect(tooltip).toHaveTextContent("1 of 2 sessions priced");
     expect(tooltip).toHaveTextContent("unknown-9 unpriced");
@@ -147,8 +147,31 @@ describe("SpendOverTime", () => {
     const onSelectBucket = vi.fn();
     render(<SpendOverTime payload={payload} colors={colors} onSelectBucket={onSelectBucket} />);
 
-    fireEvent.keyDown(screen.getByRole("button", { name: /2026-05-01.*2 sessions priced/i }), { key: "Enter" });
+    fireEvent.keyDown(screen.getByRole("button", { name: /May 1, 2026.*2 sessions priced/i }), { key: "Enter" });
 
     expect(onSelectBucket).toHaveBeenCalledWith("2026-05-01");
+  });
+
+  it("shows calendar dates for weekly keys and identifies incomplete periods", () => {
+    const weekly: CostAnalyticsResponse = {
+      ...payload,
+      meta: { ...payload.meta, bucket: "week" },
+      over_time: [bucket("2026-43", { "claude-opus-4-8": 20 }, {
+        bucket_start: "2026-10-26", bucket_end: "2026-11-01", is_complete: false,
+      })],
+    };
+    const onSelectBucket = vi.fn();
+    const view = render(<SpendOverTime payload={weekly} colors={colors} onSelectBucket={onSelectBucket} />);
+    const point = screen.getByRole("button", { name: /Week of Oct 26, 2026.*partial period/i });
+    fireEvent.mouseEnter(point);
+
+    expect(screen.getByRole("status")).toHaveTextContent("Week of Oct 26, 2026");
+    expect(screen.getByRole("status")).toHaveTextContent("Partial period · excluded from spike comparisons");
+    expect(screen.getByText("Oct 26")).toHaveAttribute("title", "Week of Oct 26, 2026");
+    expect(screen.getByText("Week starting (UTC)")).toBeInTheDocument();
+    expect(view.container.textContent).not.toContain("2026-43");
+
+    fireEvent.click(point);
+    expect(onSelectBucket).toHaveBeenCalledWith("2026-43");
   });
 });

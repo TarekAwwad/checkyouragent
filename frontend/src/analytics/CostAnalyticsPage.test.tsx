@@ -330,10 +330,10 @@ describe("CostAnalyticsPage", () => {
     const onOpenSession = vi.fn();
     renderPage(onOpenSession);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Show largest spike sessions for 2026-05-02" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Show largest daily increase sessions for May 2, 2026" }));
 
-    const spikePanel = await screen.findByLabelText("Sessions for 2026-05-02");
-    expect(within(spikePanel).getByRole("heading", { name: "Sessions on 2026-05-02" })).toBeInTheDocument();
+    const spikePanel = await screen.findByLabelText("Sessions for May 2, 2026");
+    expect(within(spikePanel).getByRole("heading", { name: "Sessions on May 2, 2026" })).toBeInTheDocument();
     expect(within(spikePanel).getByText(/\$48\.00 total.*\+\$30\.00 above baseline/)).toBeInTheDocument();
     expect(within(spikePanel).getByText("Session One")).toBeInTheDocument();
 
@@ -341,22 +341,22 @@ describe("CostAnalyticsPage", () => {
 
     expect(onOpenSession).toHaveBeenCalledWith(7);
 
-    fireEvent.click(screen.getByRole("button", { name: "Hide largest spike sessions for 2026-05-02" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hide largest daily increase sessions for May 2, 2026" }));
 
-    expect(screen.queryByLabelText("Sessions for 2026-05-02")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Sessions for May 2, 2026")).not.toBeInTheDocument();
   });
 
   it("opens a bucket's contributor sessions directly from Spend over time", async () => {
     renderPage();
 
-    fireEvent.click(await screen.findByRole("button", { name: /2026-05-02.*1 session priced/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /May 2, 2026.*1 session priced/i }));
 
-    const panel = await screen.findByLabelText("Sessions for 2026-05-02");
+    const panel = await screen.findByLabelText("Sessions for May 2, 2026");
     expect(within(panel).getByText("Session One")).toBeInTheDocument();
 
-    fireEvent.click(within(panel).getByRole("button", { name: "Close sessions for 2026-05-02" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Close sessions for May 2, 2026" }));
 
-    expect(screen.queryByLabelText("Sessions for 2026-05-02")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Sessions for May 2, 2026")).not.toBeInTheDocument();
   });
 
   it("labels partial prices as lower bounds and suppresses unsupported comparisons", async () => {
@@ -374,7 +374,7 @@ describe("CostAnalyticsPage", () => {
 
     expect(await screen.findByText("≥$48.00")).toBeInTheDocument();
     expect(screen.getByText(/lower bound.*excludes 1 unpriced model/i)).toBeInTheDocument();
-    expect(screen.getByText("Spike detection suppressed")).toBeInTheDocument();
+    expect(screen.getByText("Spike comparison unavailable")).toBeInTheDocument();
     expect(screen.getByText("Model share unavailable")).toBeInTheDocument();
     expect(screen.getAllByText("Cache comparison unavailable")).toHaveLength(2);
     expect(screen.getByText("Priced usage only; unpriced models are excluded.")).toBeInTheDocument();

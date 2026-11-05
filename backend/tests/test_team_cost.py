@@ -5,10 +5,10 @@ import sqlite3
 from pathlib import Path
 
 import pytest
-
 from ccfr.analysis import team_bundles, team_cost
 from ccfr.analysis.team_cost import team_cost_analytics
 from ccfr.storage import init_db
+
 from tests.test_team_bundles import _team_level_bundle
 
 OPUS = {"input": 1_000_000, "output": 1_000_000, "base": 1_000_000, "cache_5m": 0, "cache_1h": 0, "cache_read": 0}
@@ -153,6 +153,54 @@ def test_team_cost_project_ids_stable_across_date_filter(seeded: sqlite3.Connect
     pid_by_name_filtered = {p["name"]: p["id"] for p in filtered["meta"]["available_projects"]}
 
     assert pid_by_name_filtered == pid_by_name_baseline
+
+
+def test_team_cost_uses_baseline_history_without_including_its_tokens(seeded: sqlite3.Connection) -> None:
+    bundle_id = seeded.execute("SELECT id FROM team_bundles LIMIT 1").fetchone()["id"]
+    rows = [
+        (bundle_id, "projectA" * 8, "history-only", "2026-05-03", "2026-05-03", json.dumps({"claude-opus-4-8": OPUS})),
+        (bundle_id, "projectA" * 8, "spike-a", "2026-05-04", "2026-05-04", json.dumps({"claude-opus-4-8": OPUS})),
+        (bundle_id, "projectA" * 8, "spike-b", "2026-05-04", "2026-05-04", json.dumps({"claude-opus-4-8": OPUS})),
+    ]
+    seeded.executemany(
+        "INSERT INTO team_bundle_sessions(team_bundle_id, member_id, project_id, session_id, provider, first_date, last_date, tokens_by_model_json) VALUES (?, 'm', ?, ?, 'claude', ?, ?, ?)",
+        rows,
+    )
+    seeded.commit()
+
+    wide = team_cost_analytics(seeded, date_from="2026-05-01", date_to="2026-05-04")
+    narrow = team_cost_analytics(seeded, date_from="2026-05-04", date_to="2026-05-04")
+
+    assert narrow["meta"]["total_usd"] == 60
+    assert narrow["meta"]["total_tokens"] == 4_000_000
+    assert narrow["categories"]["base_input"]["tokens"] == 2_000_000
+    assert len(narrow["by_model"]) == 1
+    assert narrow["by_model"][0]["usd"] == 60
+    assert len(narrow["over_time"]) == 1
+    assert narrow["spikes"] == wide["spikes"]
+    assert narrow["spikes"][0]["baseline_usd"] == 30
+    assert narrow["spikes"][0]["baseline_period_count"] == 3
+
+
+def test_team_cost_merges_new_year_into_one_week(seeded: sqlite3.Connection) -> None:
+    bundle_id = seeded.execute("SELECT id FROM team_bundles LIMIT 1").fetchone()["id"]
+    for day in ("2025-12-30", "2026-01-01"):
+        seeded.execute(
+            "INSERT INTO team_bundle_sessions(team_bundle_id, member_id, project_id, session_id, provider, first_date, last_date, tokens_by_model_json) VALUES (?, 'm', ?, ?, 'claude', ?, ?, ?)",
+            (bundle_id, "projectA" * 8, f"new-year-{day}", day, day, json.dumps({"claude-opus-4-8": OPUS})),
+        )
+    seeded.commit()
+
+    payload = team_cost_analytics(seeded, date_from="2025-09-25", date_to="2026-01-03")
+
+    assert payload["meta"]["bucket"] == "week"
+    nonzero = [row for row in payload["over_time"] if row["total_usd"]]
+    assert len(nonzero) == 1
+    assert nonzero[0]["bucket"] == "2025-52"
+    assert nonzero[0]["bucket_start"] == "2025-12-29"
+    assert nonzero[0]["bucket_end"] == "2026-01-04"
+    assert nonzero[0]["total_usd"] == 60
+    assert sum(row["total_usd"] for row in payload["over_time"]) == payload["meta"]["total_usd"] == 60
 
 
 def _team_conn() -> sqlite3.Connection:

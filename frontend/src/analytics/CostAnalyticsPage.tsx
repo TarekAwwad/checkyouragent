@@ -2,7 +2,7 @@ import React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { X } from "lucide-react";
 import { getCostAnalytics, getTeamCostAnalytics } from "../api/client";
-import type { CostAnalyticsFilters, OverTimeBucket } from "../api/types";
+import type { CostAnalyticsFilters, CostAnalyticsMeta, OverTimeBucket } from "../api/types";
 import type { DataScope } from "../shell/useDataScope";
 import { buildModelColorMap, formatSignedUsd, formatTokens, formatUsd } from "./chartGeometry";
 import FilterBar from "./FilterBar";
@@ -14,6 +14,7 @@ import InsightStrip from "./InsightStrip";
 import LoadingBar from "../components/LoadingBar";
 import SessionInsights, { TurnDistributionSection } from "./SessionInsights";
 import { Blurred } from "../shell/Blurred";
+import { formatCostPeriod, spikeBaselineDescription } from "./costPeriods";
 
 interface Props {
   onOpenSession: (sessionId: number) => void;
@@ -34,10 +35,12 @@ function defaultFrom(): string {
 
 function BucketSessionsPanel({
   bucket,
+  bucketSize,
   onOpenSession,
   onClose,
 }: {
   bucket: OverTimeBucket;
+  bucketSize: CostAnalyticsMeta["bucket"];
   onOpenSession: (sessionId: number) => void;
   onClose: () => void;
 }) {
@@ -46,19 +49,20 @@ function BucketSessionsPanel({
     [bucket.sessions],
   );
   const total = `${bucket.costs_are_lower_bound ? "≥" : ""}${formatUsd(bucket.total_usd)} total`;
+  const period = formatCostPeriod(bucket, bucketSize);
   const comparison = bucket.is_spike && bucket.delta_usd !== null
     ? ` - ${formatSignedUsd(bucket.delta_usd)} above baseline`
     : "";
 
   return (
-    <section className="tile tile-full" aria-label={`Sessions for ${bucket.bucket}`}>
+    <section className="tile tile-full" aria-label={`Sessions for ${period}`}>
       <div className="session-visual-heading bucket-sessions-heading">
-        <h2>Sessions on {bucket.bucket}</h2>
+        <h2>{bucketSize === "week" ? `Sessions for ${period}` : `Sessions on ${period}`}</h2>
         <button
           type="button"
           className="ghost-action bucket-panel-close"
           onClick={onClose}
-          aria-label={`Close sessions for ${bucket.bucket}`}
+          aria-label={`Close sessions for ${period}`}
         >
           <X size={14} aria-hidden={true} />
         </button>
@@ -66,6 +70,13 @@ function BucketSessionsPanel({
       <p className="tile-note">
         {total}{comparison}
       </p>
+      {bucket.is_spike && bucket.baseline_usd !== null && bucket.delta_usd !== null && (
+        <p className="tile-note">
+          {bucket.baseline_usd === 0 ? "Increased from $0" : `${formatUsd(bucket.baseline_usd)} baseline`} · {spikeBaselineDescription({
+            ...bucket, baseline_usd: bucket.baseline_usd, delta_usd: bucket.delta_usd,
+          }, bucketSize)}
+        </p>
+      )}
       {rows.length === 0 ? (
         <div className="empty-state">No contributor sessions are available for this bucket.</div>
       ) : (
@@ -194,6 +205,7 @@ export default function CostAnalyticsPage({
               {!isTeam && selectedTrendBucket && (
                 <BucketSessionsPanel
                   bucket={selectedTrendBucket}
+                  bucketSize={payload.meta.bucket}
                   onOpenSession={onOpenSession}
                   onClose={() => setSelectedBucket(null)}
                 />

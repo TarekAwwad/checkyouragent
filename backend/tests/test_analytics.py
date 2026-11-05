@@ -2,13 +2,17 @@
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
-
 from ccfr.analysis.cost_trends import build_cost_trend
 from ccfr.api import analytics
-from ccfr.api.analytics import bucket_for_range, cost_analytics, session_turn_cost_breakdown
+from ccfr.api.analytics import (
+    bucket_for_range,
+    cost_analytics,
+    session_turn_cost_breakdown,
+)
 from ccfr.storage import init_db
 
 
@@ -107,6 +111,10 @@ def test_cost_trend_uses_seven_bucket_median_for_qualifying_spike() -> None:
 
     assert spikes == [{
         "bucket": "2026-05-09",
+        "bucket_start": "2026-05-09",
+        "bucket_end": "2026-05-09",
+        "baseline_period_count": 7,
+        "is_complete": True,
         "total_usd": 16,
         "baseline_usd": 10,
         "delta_usd": 6,
@@ -156,6 +164,135 @@ def test_cost_trend_zero_fills_weekly_buckets() -> None:
 
     assert [row["bucket"] for row in over_time] == ["2026-01", "2026-02", "2026-03"]
     assert over_time[1]["total_usd"] == 0
+
+
+def test_cost_trend_keeps_final_week_for_midweek_range() -> None:
+    rows, spikes = build_cost_trend(
+        {"2026-01": _trend_bucket(3), "2026-03": _trend_bucket(30)},
+        bucket_size="week",
+        range_start="2026-01-07",
+        range_end="2026-01-19",
+    )
+
+    assert [row["bucket"] for row in rows] == ["2026-01", "2026-02", "2026-03"]
+    assert sum(row["total_usd"] for row in rows) == 33
+    assert [row["is_complete"] for row in rows] == [False, True, False]
+    assert rows[-1]["bucket_start"] == "2026-01-19"
+    assert rows[-1]["bucket_end"] == "2026-01-25"
+    assert spikes == []
+
+
+def test_cost_trend_uses_single_week_across_new_year() -> None:
+    rows, _ = build_cost_trend(
+        {"2025-52": _trend_bucket(12), "2026-02": _trend_bucket(7)},
+        bucket_size="week",
+        range_start="2026-01-01",
+        range_end="2026-01-12",
+    )
+
+    assert [row["bucket"] for row in rows] == ["2025-52", "2026-01", "2026-02"]
+    assert [row["bucket_start"] for row in rows] == ["2025-12-29", "2026-01-05", "2026-01-12"]
+    assert rows[0]["total_usd"] == 12
+
+
+def test_cost_trend_uses_history_without_returning_its_spend() -> None:
+    history = {f"2026-05-{day:02d}": _trend_bucket(10) for day in range(2, 9)}
+    rows, spikes = build_cost_trend(
+        {"2026-05-09": _trend_bucket(30)},
+        bucket_size="day",
+        range_start="2026-05-09",
+        range_end="2026-05-09",
+        history=history,
+        history_start="2026-05-02",
+    )
+
+    assert len(rows) == 1
+    assert rows[0]["total_usd"] == 30
+    assert spikes[0]["baseline_usd"] == 10
+    assert spikes[0]["baseline_period_count"] == 7
+    assert spikes[0]["delta_pct"] == 200
+
+
+@pytest.mark.parametrize(
+    ("bucket_size", "keys", "wide_start", "narrow_start", "end"),
+    [
+        ("day", [f"2026-05-{day:02d}" for day in range(1, 5)], "2026-05-01", "2026-05-03T12:00:00Z", "2026-05-04"),
+        ("week", [f"2026-{week:02d}" for week in range(1, 5)], "2026-01-05", "2026-01-21", "2026-02-01"),
+    ],
+)
+def test_clipped_first_period_uses_full_history_for_later_baselines(
+    bucket_size: str, keys: list[str], wide_start: str, narrow_start: str, end: str,
+) -> None:
+    history = {key: _trend_bucket(total) for key, total in zip(keys, [5, 10, 20, 50], strict=True)}
+    _, wide_spikes = build_cost_trend(history, bucket_size=bucket_size, range_start=wide_start, range_end=end)
+    visible = {keys[2]: _trend_bucket(1), keys[3]: history[keys[3]]}
+    rows, narrow_spikes = build_cost_trend(
+        visible, bucket_size=bucket_size, range_start=narrow_start, range_end=end,
+        history={key: history[key] for key in keys[:3]}, history_start=wide_start,
+    )
+
+    assert rows[0]["is_complete"] is False
+    assert rows[0]["total_usd"] == 1
+    assert rows[-1]["baseline_period_count"] == 3
+    assert rows[-1]["baseline_usd"] == 10
+    assert narrow_spikes == wide_spikes
+
+
+def test_visible_zeros_before_imported_coverage_do_not_create_a_spike() -> None:
+    rows, spikes = build_cost_trend(
+        {"2026-05-04": _trend_bucket(30)}, bucket_size="day",
+        range_start="2026-05-01", range_end="2026-05-04", coverage_start="2026-05-04",
+    )
+
+    assert [row["total_usd"] for row in rows] == [0, 0, 0, 30]
+    assert rows[-1]["baseline_usd"] is None
+    assert rows[-1]["baseline_period_count"] == 0
+    assert spikes == []
+
+
+def test_cost_trend_does_not_compare_clipped_days_or_use_them_in_baseline() -> None:
+    rows, spikes = build_cost_trend(
+        {f"2026-05-{day:02d}": _trend_bucket(30 if day in (1, 4) else 10) for day in range(1, 5)},
+        bucket_size="day",
+        range_start="2026-05-01T12:00:00Z",
+        range_end="2026-05-04T23:59:59.999Z",
+    )
+
+    assert rows[0]["is_complete"] is False
+    assert rows[-1]["is_complete"] is True
+    assert rows[-1]["baseline_period_count"] == 2
+    assert rows[-1]["baseline_usd"] is None
+    assert spikes == []
+
+
+def test_cost_trend_suppresses_unfinished_current_day() -> None:
+    today = datetime.now(timezone.utc).date()
+    history = {(today - timedelta(days=days)).isoformat(): _trend_bucket(10) for days in range(1, 8)}
+    rows, spikes = build_cost_trend(
+        {today.isoformat(): _trend_bucket(50)},
+        bucket_size="day",
+        range_start=today.isoformat(),
+        range_end=today.isoformat(),
+        history=history,
+    )
+
+    assert rows[0]["is_complete"] is False
+    assert rows[0]["baseline_usd"] == 10
+    assert spikes == []
+
+
+def test_cost_trend_does_not_treat_unpriced_history_as_zero_spend() -> None:
+    rows, spikes = build_cost_trend(
+        {"2026-05-04": _trend_bucket(30)},
+        bucket_size="day",
+        range_start="2026-05-04",
+        range_end="2026-05-04",
+        history={f"2026-05-{day:02d}": _trend_bucket(0, unpriced_models=("unknown",)) for day in range(1, 4)},
+    )
+
+    assert rows[0]["baseline_period_count"] == 0
+    assert rows[0]["baseline_usd"] is None
+    assert spikes == []
 
 
 def test_cost_trend_marks_partial_buckets_and_suppresses_spikes() -> None:
@@ -437,6 +574,86 @@ def test_cost_analytics_does_not_call_short_history_a_spike(seeded: sqlite3.Conn
     may3 = next(bucket for bucket in payload["over_time"] if bucket["bucket"] == "2026-05-03")
     assert may3["is_spike"] is False
     assert may3["baseline_usd"] is None
+
+
+def test_cost_analytics_spike_baseline_survives_date_filter_without_leaking_totals(seeded: sqlite3.Connection) -> None:
+    session_ids = [row["id"] for row in seeded.execute("SELECT id FROM sessions ORDER BY id")]
+    _add_message(seeded, session_ids[0], "2026-05-03T01:00:00Z", "claude-opus-4-8", 1_000_000, 0, 0, 0, 1_000_000)
+    for session_id in session_ids:
+        _add_message(seeded, session_id, "2026-05-04T01:00:00Z", "claude-opus-4-8", 1_000_000, 0, 0, 0, 1_000_000)
+    seeded.commit()
+
+    wide = cost_analytics(seeded, date_from="2026-05-01T00:00:00Z", date_to="2026-05-04T23:59:59.999Z")
+    narrow = cost_analytics(seeded, date_from="2026-05-04T00:00:00Z", date_to="2026-05-04T23:59:59.999Z")
+
+    assert narrow["meta"]["total_usd"] == 60
+    assert narrow["meta"]["total_tokens"] == 4_000_000
+    assert narrow["categories"]["base_input"]["tokens"] == 2_000_000
+    assert [row["usd"] for row in narrow["sessions"]] == [30, 30]
+    assert len(narrow["over_time"]) == 1
+    assert narrow["spikes"] == wide["spikes"]
+    assert narrow["spikes"][0]["baseline_usd"] == 30
+    assert narrow["spikes"][0]["baseline_period_count"] == 3
+
+
+@pytest.mark.parametrize(
+    ("days", "narrow_start", "range_end"),
+    [
+        (["2026-01-05", "2026-01-06", "2026-01-07", "2026-01-08"], "2026-01-07T12:00:00Z", "2026-01-08T23:59:59.999Z"),
+        (["2026-01-05", "2026-01-12", "2026-01-19", "2026-01-26"], "2026-01-21T00:00:00Z", "2026-04-30T23:59:59.999Z"),
+    ],
+)
+def test_cost_analytics_clipped_first_day_or_week_preserves_later_baselines(
+    seeded: sqlite3.Connection, days: list[str], narrow_start: str, range_end: str,
+) -> None:
+    session_ids = [row["id"] for row in seeded.execute("SELECT id FROM sessions ORDER BY id")]
+    for day, total in zip(days, [5, 10, 20, 50], strict=True):
+        for session_id in session_ids:
+            _add_message(seeded, session_id, f"{day}T01:00:00Z", "claude-opus-4-8", total * 100_000, 0, 0, 0, 0)
+    seeded.commit()
+
+    wide = cost_analytics(seeded, date_from="2026-01-05T00:00:00Z", date_to=range_end)
+    narrow = cost_analytics(seeded, date_from=narrow_start, date_to=range_end)
+
+    assert narrow["meta"]["total_usd"] == 50
+    assert narrow["over_time"][0]["total_usd"] == 0
+    assert narrow["over_time"][0]["is_complete"] is False
+    assert narrow["spikes"] == wide["spikes"]
+    assert narrow["spikes"][0]["baseline_usd"] == 10
+    assert narrow["spikes"][0]["baseline_period_count"] == 3
+
+
+def test_cost_analytics_excludes_zeros_before_first_imported_activity_from_baselines(seeded: sqlite3.Connection) -> None:
+    session_ids = [row["id"] for row in seeded.execute("SELECT id FROM sessions ORDER BY id")]
+    for session_id in session_ids:
+        _add_message(seeded, session_id, "2026-04-15T01:00:00Z", "claude-opus-4-8", 1_000_000, 0, 0, 0, 1_000_000)
+    seeded.commit()
+
+    payload = cost_analytics(seeded, date_from="2026-04-01T00:00:00Z", date_to="2026-04-15T23:59:59.999Z")
+
+    assert len(payload["over_time"]) == 15
+    assert payload["over_time"][-1]["total_usd"] == 60
+    assert payload["over_time"][-1]["baseline_period_count"] == 0
+    assert payload["spikes"] == []
+
+
+def test_cost_analytics_groups_new_year_into_one_monday_based_week(seeded: sqlite3.Connection) -> None:
+    session_id = seeded.execute("SELECT id FROM sessions ORDER BY id LIMIT 1").fetchone()["id"]
+    for day in ("2025-12-30", "2026-01-01"):
+        _add_message(seeded, session_id, f"{day}T01:00:00Z", "claude-opus-4-8", 1_000_000, 0, 0, 0, 1_000_000)
+    seeded.commit()
+
+    payload = cost_analytics(seeded, date_from="2025-09-25T00:00:00Z", date_to="2026-01-03T23:59:59.999Z")
+
+    assert payload["meta"]["bucket"] == "week"
+    assert payload["meta"]["total_usd"] == 60
+    nonzero = [row for row in payload["over_time"] if row["total_usd"]]
+    assert len(nonzero) == 1
+    assert nonzero[0]["bucket"] == "2025-52"
+    assert nonzero[0]["bucket_start"] == "2025-12-29"
+    assert nonzero[0]["bucket_end"] == "2026-01-04"
+    assert nonzero[0]["total_usd"] == 60
+    assert sum(row["total_usd"] for row in payload["over_time"]) == payload["meta"]["total_usd"]
 
 
 def test_cost_analytics_marks_partial_costs_and_suppresses_spikes(

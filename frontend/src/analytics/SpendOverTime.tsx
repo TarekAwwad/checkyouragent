@@ -8,6 +8,7 @@ import {
   orderedModels,
   FALLBACK_COLOR,
 } from "./chartGeometry";
+import { formatCostPeriod } from "./costPeriods";
 
 interface Props {
   payload: CostAnalyticsResponse;
@@ -100,6 +101,7 @@ export default function SpendOverTime({
   const activeBucketKey = hoveredBucket ?? effectiveSelected;
   const activeBucket = payload.over_time.find((bucket) => bucket.bucket === activeBucketKey) ?? null;
   const activePoint = area.points.find((point) => point.bucket === activeBucketKey) ?? null;
+  const periods = new Map(payload.over_time.map((bucket) => [bucket.bucket, bucket]));
   const selectBucket = (bucket: string) => {
     const next = effectiveSelected === bucket ? null : bucket;
     if (!controlled) setLocalSelectedBucket(next);
@@ -146,7 +148,7 @@ export default function SpendOverTime({
               key={bucket.bucket}
               className={`sot-hit${effectiveSelected === bucket.bucket ? " is-selected" : ""}`}
               style={{ left: `${(before / W) * 100}%`, width: `${((after - before) / W) * 100}%` }}
-              aria-label={`${bucket.bucket}: ${costLabel(bucket)}, ${coverageLabel(bucket)}`}
+              aria-label={`${formatCostPeriod(bucket, payload.meta.bucket)}: ${costLabel(bucket)}, ${coverageLabel(bucket)}${bucket.is_complete === false ? ", partial period" : ""}`}
               onMouseEnter={() => setHoveredBucket(bucket.bucket)}
               onMouseLeave={() => setHoveredBucket(null)}
               onFocus={() => setHoveredBucket(bucket.bucket)}
@@ -175,9 +177,10 @@ export default function SpendOverTime({
             className={`sot-tooltip${activePoint.x > W * 0.58 ? " is-left" : ""}`}
             role="status"
           >
-            <strong>{activeBucket.bucket}</strong>
+            <strong>{formatCostPeriod(activeBucket, payload.meta.bucket)}</strong>
             <b>{costLabel(activeBucket)}</b>
             <span>{coverageLabel(activeBucket)}</span>
+            {activeBucket.is_complete === false && <span>Partial period · excluded from spike comparisons</span>}
             {Object.entries(activeBucket.per_model)
               .filter(([, usd]) => usd > 0)
               .sort(([, a], [, b]) => b - a)
@@ -196,11 +199,12 @@ export default function SpendOverTime({
             key={x.label}
             className={index === 0 ? "is-first" : index === area.xLabels.length - 1 ? "is-last" : ""}
             style={{ left: `${(x.x / W) * 100}%` }}
+            title={formatCostPeriod(periods.get(x.label) ?? { bucket: x.label }, payload.meta.bucket)}
           >
-            {x.label}
+            {formatCostPeriod(periods.get(x.label) ?? { bucket: x.label }, payload.meta.bucket, true)}
           </span>
         ))}
-        <b>Date</b>
+        <b>{payload.meta.bucket === "week" ? "Week starting (UTC)" : "Date (UTC)"}</b>
       </div>
       <div className="chip-legend card-bottom-legend sot-legend sot-legend-slot" aria-label="Spend legend">
         {mode === "model" ? (

@@ -14,10 +14,10 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
-from ccfr.analysis.cost_trends import build_cost_trend
+from ccfr.analysis.cost_trends import build_cost_trend, lookback_bounds
 from ccfr.analysis.pricing import (
     ModelPrice,
     TokenBreakdown,
@@ -87,7 +87,9 @@ def _bucket_key(first_date: str | None, bucket: str) -> str | None:
     day = _coerce_day(first_date)
     if day is None:
         return None
-    return day.isoformat() if bucket == "day" else day.strftime("%Y-%W")
+    if bucket == "day":
+        return day.isoformat()
+    return (day - timedelta(days=day.weekday())).strftime("%Y-%W")
 
 
 def team_cost_analytics(
@@ -144,6 +146,22 @@ def team_cost_analytics(
 
     first_dates = [row["first_date"] for row in rows if row["first_date"]]
     bucket = _bucket_for_range(date_from or (min(first_dates) if first_dates else None), date_to or (max(first_dates) if first_dates else None))
+    project_clause = " WHERE project_id = ?" if project_id is not None else ""
+    project_params = [id_pid.get(project_id, "")] if project_id is not None else []
+    data_start = conn.execute(
+        f"SELECT MIN(first_date) AS lo FROM team_bundle_sessions{project_clause}",
+        project_params,
+    ).fetchone()["lo"]
+    history_bounds = lookback_bounds(date_from, bucket, data_start=data_start)
+    history_rows: list[sqlite3.Row] = []
+    if history_bounds:
+        history_clause = " WHERE first_date >= ? AND first_date < ?"
+        if project_id is not None:
+            history_clause += " AND project_id = ?"
+        history_rows = conn.execute(
+            f"SELECT id, project_id, first_date, tokens_by_model_json FROM team_bundle_sessions{history_clause}",
+            [*history_bounds, *project_params],
+        ).fetchall()
 
     treemap: dict[int, dict[str, Any]] = {}
     by_model: dict[str, dict[str, Any]] = {}
@@ -157,12 +175,13 @@ def team_cost_analytics(
         "by_model": {},
     }
     trend_buckets: dict[str, dict[str, Any]] = {}
+    history_buckets: dict[str, dict[str, Any]] = {}
     available_models: set[str] = set()
     unpriced: set[str] = set()
     total_usd = 0.0
     total_tokens = 0
 
-    for row in rows:
+    for row, in_range in [(row, True) for row in rows] + [(row, False) for row in history_rows]:
         pid = str(row["project_id"])
         first_date = row["first_date"]
         try:
@@ -175,19 +194,20 @@ def team_cost_analytics(
             if not isinstance(tokens, dict):
                 continue
             family = str(raw_family)
-            available_models.add(family)
+            if in_range:
+                available_models.add(family)
             if not matches(family):
                 continue
             breakdown = _breakdown_from_tokens(tokens)
             used = any(getattr(breakdown, cat) for cat in _CATEGORIES)
             price = timeline.price_for(family, first_date, historical=historical)
             usd = cost_usd(price, breakdown) if price else 0.0
-            if price is None and used:
+            if in_range and price is None and used:
                 unpriced.add(family)
 
             key = _bucket_key(first_date, bucket)
             if used and key is not None:
-                trend = trend_buckets.setdefault(
+                trend = (trend_buckets if in_range else history_buckets).setdefault(
                     key,
                     {
                         "per_model": {},
@@ -207,6 +227,9 @@ def team_cost_analytics(
                     trend["priced_session_ids"].add(row["id"])
                     if usd != 0:
                         trend["per_model"][family] = trend["per_model"].get(family, 0.0) + usd
+
+            if not in_range:
+                continue
 
             for cat in _CATEGORIES:
                 tok = getattr(breakdown, cat)
@@ -299,9 +322,12 @@ def team_cost_analytics(
     over_time_out, spikes_out = build_cost_trend(
         trend_buckets,
         bucket_size=bucket,
-        range_start=date_from or (min(first_dates) if first_dates else None),
-        range_end=date_to or (max(first_dates) if first_dates else None),
+        range_start=date_from,
+        range_end=date_to,
         suppress_spikes=not price_available or bool(unpriced),
+        history=history_buckets,
+        history_start=history_bounds[0] if history_bounds else None,
+        coverage_start=data_start,
     )
     cache_economics_out = {
         "observed_input_usd": round(cache_economics["observed_input_usd"], 6),
