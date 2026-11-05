@@ -300,7 +300,11 @@ def _session_subjects(
             p.export_name,
             p.inferred_cwd,
             COALESCE(ss.tool_call_count, 0) AS tool_call_count,
-            COALESCE(ss.subagent_count, 0) AS subagent_count
+            COALESCE(ss.subagent_count, 0) AS subagent_count,
+            (
+                SELECT MIN(e.is_replay) FROM events e JOIN messages m ON m.event_id = e.id
+                WHERE e.session_id = s.id
+            ) AS replay_only
         FROM sessions s
         JOIN projects p ON p.id = s.project_id
         LEFT JOIN session_stats ss ON ss.session_id = s.id
@@ -309,6 +313,9 @@ def _session_subjects(
         """,
         _project_params(project_id),
     ).fetchall()
+    # Replay-only sessions are $0 by attribution, not cheap: copies are not new
+    # observations, so they stay out of both the threshold and the sample.
+    rows = [row for row in rows if not row["replay_only"]]
     model_counts = _models_by_session(conn, project_id=project_id)
     tool_counts = _tools_by_session(conn, project_id=project_id)
     threshold = _percentile([costs.get(int(row["id"]), 0.0) for row in rows], 0.9)

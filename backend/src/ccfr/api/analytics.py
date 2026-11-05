@@ -224,6 +224,7 @@ def session_turn_cost_breakdown(conn: sqlite3.Connection, session_id: int, *, hi
         ).fetchall()
     }
 
+    active_turn_starts: set[int] = set()
     for row in conn.execute(
         f"""
         SELECT
@@ -236,6 +237,7 @@ def session_turn_cost_breakdown(conn: sqlite3.Connection, session_id: int, *, hi
         FROM events e
         LEFT JOIN messages m ON m.event_id = e.id
         WHERE e.session_id = ?
+          AND e.is_replay = 0
         ORDER BY e.id
         """,
         (session_id,),
@@ -248,6 +250,8 @@ def session_turn_cost_breakdown(conn: sqlite3.Connection, session_id: int, *, hi
         start_event_id = turn_ids[turn_index]
         turn = turns_by_start[start_event_id]
         turn["event_count"] += 1
+        if row["role"] in {"user", "assistant"}:
+            active_turn_starts.add(start_event_id)
         if row["role"] == "assistant":
             turn["assistant_message_count"] += 1
         turn["tool_call_count"] += tool_call_count_by_event.get(event_id, 0)
@@ -271,6 +275,11 @@ def session_turn_cost_breakdown(conn: sqlite3.Connection, session_id: int, *, hi
         turn["cache_write_tokens"] += _cache_write_tokens_total(breakdown)
         turn["_models"].add(str(model))
 
+    # Keep every prompt as a boundary (a resume can continue an old prompt),
+    # but require a non-replayed user or assistant message to retain its turn.
+    # UUID-less metadata copies, such as file-history snapshots, cannot keep old
+    # turns as zero-cost observations. New messages still count without a price.
+    turns = [turn for turn in turns if turn["start_event_id"] in active_turn_starts]
     values = [turn["usd"] for turn in turns]
     stats = _turn_cost_stat(values)
     threshold = _outlier_threshold(values)
@@ -332,7 +341,7 @@ def _turn_cost_stats(
         FROM events e
         JOIN messages m ON m.event_id = e.id
         JOIN sessions s ON s.id = e.session_id
-        {where}
+        {where} {'AND' if where else 'WHERE'} e.is_replay = 0
         ORDER BY e.session_id, e.id
         """,
         params,

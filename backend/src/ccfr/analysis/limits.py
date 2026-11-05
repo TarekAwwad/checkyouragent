@@ -156,7 +156,7 @@ def detect_limit_hits(
     Events sharing (kind, reset stamp) are one hit; without a parsed stamp the
     fallback key buckets timestamps into 5-minute slots.
     """
-    where = ["m.model = ?"]
+    where = ["m.model = ?", "e.is_replay = 0"]
     params: list[Any] = [SYNTHETIC_MODEL]
     if date_from:
         where.append("date(e.timestamp) >= date(?)")

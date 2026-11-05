@@ -12,6 +12,7 @@ from typing import Any, Callable
 from ccfr.analysis.session_findings import rebuild_session_findings
 from ccfr.ingest.file_ext import file_ext_from_tool_input
 from ccfr.storage.database import init_db
+from ccfr.storage.replay import reconcile_replays, token_usage
 
 
 PERSISTED_RE = re.compile(r"Full output saved to:\s*(?P<path>.+?)(?:\r?\n|$)")
@@ -39,17 +40,6 @@ class DiscoveredProject:
     session_count: int
     last_imported_at: str | None
     stale: bool = False
-
-
-@dataclass
-class MessageUsageOwner:
-    message_row_id: int
-    input_tokens: int
-    output_tokens: int
-
-    @property
-    def total_tokens(self) -> int:
-        return self.input_tokens + self.output_tokens
 
 
 def import_export(conn: sqlite3.Connection, source_root: Path) -> ImportSummary:
@@ -266,14 +256,12 @@ def _import_one_project(
 
     persisted_by_export_path = _index_persisted_outputs(conn, source_root, project_dir, project_id)
     _notify_progress(progress_callback, summary, "importing")
-    message_usage_owner: dict[tuple[int, str], MessageUsageOwner] = {}
 
     for session_file in sorted(project_dir.glob("*.jsonl")):
         session_pk = _ensure_session(conn, project_id, session_file.stem)
         _parse_jsonl(
             conn, summary, source_root, session_file, session_pk,
             is_sidechain=False, persisted_by_export_path=persisted_by_export_path,
-            message_usage_owner=message_usage_owner,
         )
         _notify_progress(progress_callback, summary, "importing")
 
@@ -289,10 +277,12 @@ def _import_one_project(
                 _parse_jsonl(
                     conn, summary, source_root, agent_file, session_pk,
                     is_sidechain=True, agent_id=agent_id, persisted_by_export_path=persisted_by_export_path,
-                    message_usage_owner=message_usage_owner,
                 )
                 _notify_progress(progress_callback, summary, "importing")
 
+    # In the project's transaction: its signature commits with it, so a project
+    # is never committed with usage that no later import would reconcile.
+    reconcile_replays(conn, project_ids=[project_id])
     session_ids = [int(r["id"]) for r in conn.execute(
         "SELECT id FROM sessions WHERE project_id = ?", (project_id,)
     ).fetchall()]
@@ -472,7 +462,6 @@ def _parse_jsonl(
     *,
     is_sidechain: bool,
     persisted_by_export_path: dict[str, int],
-    message_usage_owner: dict[tuple[int, str], MessageUsageOwner],
     agent_id: str | None = None,
 ) -> None:
     rel_path = _rel(root, path)
@@ -491,7 +480,7 @@ def _parse_jsonl(
                 continue
             event_id = _insert_event(conn, session_pk, rel_path, line_no, obj, is_sidechain, agent_id)
             _update_session_from_event(conn, session_pk, obj)
-            _insert_message_content(conn, session_pk, event_id, obj, persisted_by_export_path, message_usage_owner)
+            _insert_message_content(conn, session_pk, event_id, obj, persisted_by_export_path)
 
 
 def _insert_event(
@@ -508,9 +497,9 @@ def _insert_event(
         """
         INSERT INTO events(
             session_id, source_path, line_no, uuid, parent_uuid, type, timestamp,
-            is_sidechain, agent_id, raw_json
+            is_sidechain, agent_id, origin_session_id, raw_json
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             session_pk,
@@ -522,6 +511,7 @@ def _insert_event(
             obj.get("timestamp"),
             1 if is_sidechain else 0,
             agent_id,
+            obj.get("sessionId") if isinstance(obj.get("sessionId"), str) else None,
             _json(_compact_for_storage(obj)),
         ),
     )
@@ -562,7 +552,6 @@ def _insert_message_content(
     event_id: int,
     obj: dict[str, Any],
     persisted_by_export_path: dict[str, int],
-    message_usage_owner: dict[tuple[int, str], MessageUsageOwner],
 ) -> None:
     message = obj.get("message")
     if not isinstance(message, dict):
@@ -571,42 +560,10 @@ def _insert_message_content(
         return
 
     usage = message.get("usage") if isinstance(message.get("usage"), dict) else {}
-    # The bulk of input lives in the cache fields; the bare `input_tokens` is only the
-    # uncached new tokens (often a handful). Sum all four so "input" reflects the real
-    # context size the model processed (otherwise total ~= output). Keep each category
-    # broken out so cost can be priced separately (cache hits are ~10x cheaper).
-    base_input_tokens = int(usage.get("input_tokens") or 0)
-    cache_read_tokens = int(usage.get("cache_read_input_tokens") or 0)
-    cache_creation_total = int(usage.get("cache_creation_input_tokens") or 0)
-    cache_creation = usage.get("cache_creation") if isinstance(usage.get("cache_creation"), dict) else {}
-    cache_5m_tokens = int(cache_creation.get("ephemeral_5m_input_tokens") or 0)
-    cache_1h_tokens = int(cache_creation.get("ephemeral_1h_input_tokens") or 0)
-    # Older exports lack the 5m/1h split; attribute the whole creation total to 5m
-    # (Claude Code's default ephemeral cache) so the categories still sum to input_tokens.
-    if cache_5m_tokens == 0 and cache_1h_tokens == 0:
-        cache_5m_tokens = cache_creation_total
-    input_tokens = base_input_tokens + cache_5m_tokens + cache_1h_tokens + cache_read_tokens
-    output_tokens = int(usage.get("output_tokens") or 0)
-    raw_input_tokens = input_tokens
-    raw_output_tokens = output_tokens
-    message_usage_key = _message_usage_key(session_pk, message)
-    previous_usage_owner = (
-        message_usage_owner.get(message_usage_key)
-        if message_usage_key is not None
-        else None
-    )
-    replaces_previous_usage = False
-    if previous_usage_owner is not None:
-        current_total = raw_input_tokens + raw_output_tokens
-        if current_total > previous_usage_owner.total_tokens:
-            replaces_previous_usage = True
-        else:
-            input_tokens = 0
-            output_tokens = 0
-            base_input_tokens = 0
-            cache_5m_tokens = 0
-            cache_1h_tokens = 0
-            cache_read_tokens = 0
+    (
+        input_tokens, output_tokens, base_input_tokens,
+        cache_5m_tokens, cache_1h_tokens, cache_read_tokens,
+    ) = token_usage(usage)
 
     text_preview = _message_text_preview(message.get("content"))
     cur = conn.execute(
@@ -632,29 +589,6 @@ def _insert_message_content(
         ),
     )
     message_id = int(cur.lastrowid)
-    if message_usage_key is not None and previous_usage_owner is None:
-        message_usage_owner[message_usage_key] = MessageUsageOwner(
-            message_row_id=message_id,
-            input_tokens=raw_input_tokens,
-            output_tokens=raw_output_tokens,
-        )
-    elif message_usage_key is not None and replaces_previous_usage:
-        assert previous_usage_owner is not None
-        conn.execute(
-            """
-            UPDATE messages
-            SET input_tokens = 0, output_tokens = 0, base_input_tokens = 0,
-                cache_5m_tokens = 0, cache_1h_tokens = 0, cache_read_tokens = 0
-            WHERE id = ?
-            """,
-            (previous_usage_owner.message_row_id,),
-        )
-        message_usage_owner[message_usage_key] = MessageUsageOwner(
-            message_row_id=message_id,
-            input_tokens=raw_input_tokens,
-            output_tokens=raw_output_tokens,
-        )
-
     for block in _content_blocks(message.get("content")):
         _insert_content_block(conn, session_pk, event_id, message_id, block, persisted_by_export_path)
 
@@ -678,13 +612,6 @@ def _insert_non_message_searchable_content(
         )
         message_id = int(cur.lastrowid)
         _insert_content_block(conn, session_pk, event_id, message_id, {"type": "attachment", "content": attachment}, persisted_by_export_path)
-
-
-def _message_usage_key(session_pk: int, message: dict[str, Any]) -> tuple[int, str] | None:
-    message_id = message.get("id")
-    if not isinstance(message_id, str) or not message_id:
-        return None
-    return (session_pk, message_id)
 
 
 def _content_blocks(content: Any) -> list[Any]:

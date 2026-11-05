@@ -180,7 +180,7 @@ def load_events(
 ) -> list[EventRec]:
     """All assistant events in the filtered corpus, with their tool calls,
     result error flags, and priced cost. Order: session, then time."""
-    where = ["m.role = 'assistant'"]
+    where = ["m.role = 'assistant'", "e.is_replay = 0"]
     params: list[Any] = []
     if project_id is not None:
         where.append("s.project_id = ?")
@@ -215,10 +215,10 @@ def load_events(
     ).fetchall()
 
     # tool_calls rows exist only for assistant events, so the messages/projects
-    # joins from the events query add nothing here — filter on the optional
-    # project/date terms only. tool_results is pre-aggregated per
+    # joins from the events query add nothing here — filter on replays and the
+    # optional project/date terms only. tool_results is pre-aggregated per
     # (session_id, tool_use_id) so duplicate result rows never fan out calls.
-    call_where = ["1=1"]
+    call_where = ["e.is_replay = 0"]
     call_params: list[Any] = []
     if project_id is not None:
         call_where.append("s.project_id = ?")

@@ -77,8 +77,54 @@ The importer:
    session directories.
 4. Indexes metadata and the first-line preview of `tool-results/*.txt` files.
 5. Parses events, messages, tool calls/results, token usage, and subagent data.
-6. Rebuilds event edges, subagent/session statistics, full-text search rows,
+6. Reconciles replayed events and API-message usage across each changed project.
+7. Rebuilds event edges, subagent/session statistics, full-text search rows,
    and evidence-backed session findings.
+
+Replay accounting preserves every source row. Shared API message IDs and event
+UUIDs join copies into one usage group, including multiple streamed blocks and
+copies with a missing message ID. Groups never cross project boundaries; rows
+without either identity remain independent. The most complete recorded usage
+(largest input-plus-output total, matching the previous within-session rule)
+is counted once, without combining counters from different records.
+
+Equal-usage copies prefer a record claiming its containing session as origin,
+then the earliest session start, stable session ID, main transcript and source
+position. A restamped fork can share the original timestamps, so this provides
+stable attribution rather than reconstructing unavailable session lineage.
+Session costs/tokens show attributed usage and sum to corpus totals; a partial
+copy can lose ownership to a more complete record in another session.
+
+`messages` token columns contain counted usage; other copies contain zero.
+`events.raw_json` retains their original usage for inspection and rebuilding.
+Separately, `events.is_replay` marks repeated event UUIDs, preferring the usage
+owner when choosing the canonical event. Corpus/project event counts, usage
+activity and limit-hit detection exclude those replays. Full session timelines,
+turn boundaries, session activity/finding/error counts and import record counts
+still describe the retained transcript. A new response after a replayed prompt
+therefore remains attached to its turn. Cost turn breakdowns omit pure replay
+turns so they do not dilute medians with artificial zero-cost observations.
+A retained turn must contain a non-replayed user or assistant message; copied
+metadata such as file-history snapshots does not qualify on its own. New
+messages still qualify when their recorded usage is zero or pricing is unknown.
+
+The versioned replay migration reconstructs counted usage from the cache's
+retained records and refreshes session token summaries without source files or
+a re-import. Later project replacements recompute ownership from the remaining
+source files. Previously exported/imported team bundles are aggregate-only and
+cannot be repaired by this migration: regenerate and re-import those bundles.
+
+Reconciliation runs inside each project's import transaction, so a project and
+its source signature are never committed with unreconciled usage.
+
+Context economics reads a copy's recorded usage from `events.raw_json` because a
+resumed thread really did re-send that history. Copies keep the context curve
+accurate but cost $0, so only calls that own their usage pay carry. Contributors
+carried only through copies are left to the session that counts them: they create
+no findings and do not widen per-tool size baselines. Threads are deduplicated per
+agent, so a subagent keeps the context it inherited from its parent. Discovery's
+cost associations likewise leave out sessions whose messages are all replays, from
+both the expensive-session threshold and the sample.
 
 The project signature covers relative file paths, sizes, and modification
 times. When it changes, that project's cache rows are deleted and rebuilt from
