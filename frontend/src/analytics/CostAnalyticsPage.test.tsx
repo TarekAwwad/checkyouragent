@@ -193,6 +193,48 @@ function renderPage(
 }
 
 describe("CostAnalyticsPage", () => {
+  it("keeps the chart panels mounted while a different date range loads", async () => {
+    let finishRequest!: (value: CostAnalyticsResponse) => void;
+    getCostAnalytics.mockResolvedValueOnce(payload).mockImplementationOnce(() => (
+      new Promise<CostAnalyticsResponse>((resolve) => { finishRequest = resolve; })
+    ));
+    renderPage();
+    const heading = await screen.findByRole("heading", { name: "Spend over time" });
+    const modelCosts = screen.getByRole("region", { name: "Model costs" });
+
+    fireEvent.change(screen.getByLabelText("Date range"), { target: { value: "7" } });
+
+    expect(await screen.findByText("Updating…")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Spend over time" })).toBe(heading);
+    expect(screen.getByRole("region", { name: "Model costs" })).toBe(modelCosts);
+    expect(screen.queryByText("Loading cost analytics…")).not.toBeInTheDocument();
+
+    finishRequest({ ...payload, meta: { ...payload.meta, total_usd: 99 } });
+    expect(await screen.findByText("$99.00")).toBeInTheDocument();
+    await vi.waitFor(() => expect(screen.queryByText("Updating…")).not.toBeInTheDocument());
+  });
+
+  it.each(["scope", "pricing"] as const)("does not retain results across a %s change", async (change) => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const view = render(
+      <QueryClientProvider client={qc}>
+        <CostAnalyticsPage onOpenSession={() => {}} scope="local" historical />
+      </QueryClientProvider>,
+    );
+    await screen.findByRole("heading", { name: "Cost by model" });
+    if (change === "scope") getTeamCostAnalytics.mockImplementation(() => new Promise(() => {}));
+    else getCostAnalytics.mockImplementation(() => new Promise(() => {}));
+
+    view.rerender(
+      <QueryClientProvider client={qc}>
+        <CostAnalyticsPage onOpenSession={() => {}} scope={change === "scope" ? "team" : "local"} historical={change === "scope"} />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("Loading cost analytics…")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Cost by model" })).not.toBeInTheDocument();
+  });
+
   it("renders the total, a project row, and a clickable session", async () => {
     renderPage();
     expect(await screen.findAllByText(/\$48\.00/)).not.toHaveLength(0);

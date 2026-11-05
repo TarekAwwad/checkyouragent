@@ -48,6 +48,12 @@ export default function SpendOverTime({
   const [isolatedModel, setIsolatedModel] = React.useState<string | null>(null);
   const [hoveredBucket, setHoveredBucket] = React.useState<string | null>(null);
   const [localSelectedBucket, setLocalSelectedBucket] = React.useState<string | null>(null);
+  const fullOrder = orderedModels(payload.by_model);
+  const effectiveIsolation = isolatedModel && fullOrder.includes(isolatedModel) ? isolatedModel : null;
+
+  React.useEffect(() => {
+    if (isolatedModel && !effectiveIsolation) setIsolatedModel(null);
+  }, [isolatedModel, effectiveIsolation]);
 
   const heading = (
     <div className="session-visual-heading sot-heading">
@@ -83,8 +89,7 @@ export default function SpendOverTime({
       </div>
     );
   }
-  const fullOrder = orderedModels(payload.by_model);
-  const order = isolatedModel ? fullOrder.filter((model) => model === isolatedModel) : fullOrder;
+  const order = effectiveIsolation ? [effectiveIsolation] : fullOrder;
   const chartBuckets = mode === "total"
     ? payload.over_time.map((bucket) => ({ ...bucket, per_model: { total: bucket.total_usd } }))
     : payload.over_time;
@@ -204,9 +209,9 @@ export default function SpendOverTime({
             <button
               type="button"
               key={model}
-              className={isolatedModel && isolatedModel !== model ? "is-muted" : ""}
-              aria-pressed={isolatedModel === model}
-              aria-label={isolatedModel === model ? `Show all models` : `Show only ${displayModelName(model)}`}
+              className={effectiveIsolation && effectiveIsolation !== model ? "is-muted" : ""}
+              aria-pressed={effectiveIsolation === model}
+              aria-label={effectiveIsolation === model ? `Show all models` : `Show only ${displayModelName(model)}`}
               onClick={() => setIsolatedModel((current) => current === model ? null : model)}
             >
               <i style={{ background: colors[model] ?? FALLBACK_COLOR }} />

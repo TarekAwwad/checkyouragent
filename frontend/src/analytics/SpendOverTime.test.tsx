@@ -86,6 +86,29 @@ const colors = {
 };
 
 describe("SpendOverTime", () => {
+  it("clears isolation when a date-range update removes the selected model", () => {
+    const view = render(<SpendOverTime payload={payload} colors={colors} />);
+    fireEvent.click(screen.getByRole("radio", { name: "Spend by model" }));
+    fireEvent.click(screen.getByRole("button", { name: "Show only opus-4-8" }));
+
+    const filtered = {
+      ...payload,
+      by_model: payload.by_model.filter((model) => model.model === "claude-sonnet-4-6"),
+      over_time: payload.over_time.map((period) => ({
+        ...period,
+        total_usd: period.per_model["claude-sonnet-4-6"],
+        per_model: { "claude-sonnet-4-6": period.per_model["claude-sonnet-4-6"] },
+      })),
+    };
+    view.rerender(<SpendOverTime payload={filtered} colors={colors} />);
+    expect(view.container.querySelector('[data-series="claude-sonnet-4-6"]')).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show only sonnet-4-6" })).toHaveAttribute("aria-pressed", "false");
+
+    view.rerender(<SpendOverTime payload={payload} colors={colors} />);
+    expect(view.container.querySelector('[data-series="claude-opus-4-8"]')).toBeInTheDocument();
+    expect(view.container.querySelector('[data-series="claude-sonnet-4-6"]')).toBeInTheDocument();
+  });
+
   it("switches between total and model series and reuses the shared model palette", () => {
     const view = render(<SpendOverTime payload={payload} colors={colors} />);
 

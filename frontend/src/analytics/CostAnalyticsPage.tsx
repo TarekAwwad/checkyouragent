@@ -111,6 +111,13 @@ export default function CostAnalyticsPage({
     // refetch that could be served stale from cache.
     queryKey: ["cost-analytics", scope, filters, historical],
     queryFn: () => (isTeam ? getTeamCostAnalytics(filters, historical) : getCostAnalytics(filters, historical)),
+    // Keep the chart layout while dates change, without showing local data in
+    // team scope or labeling old estimates with a different pricing mode.
+    placeholderData: (previousData, previousQuery) => (
+      previousQuery?.queryKey[1] === scope && previousQuery?.queryKey[3] === historical
+        ? previousData
+        : undefined
+    ),
   });
 
   const payload = query.data;
@@ -128,7 +135,7 @@ export default function CostAnalyticsPage({
   }, [payload, selectedBucket]);
 
   return (
-    <main className="cost-page">
+    <main className="cost-page" aria-busy={query.isFetching}>
       <div className="cost-page-inner">
         <FilterBar
           filters={filters}
@@ -141,6 +148,9 @@ export default function CostAnalyticsPage({
           {historical
             ? "Estimated API-equivalent cost is priced at the rates in effect on each session's date."
             : "Estimated API-equivalent cost is priced at current rates for every session."}
+          <span className="cost-query-status" role="status">
+            {query.isFetching && payload ? "Updating…" : ""}
+          </span>
         </p>
         {query.isError ? (
           <div className="empty-state panel-error">
@@ -167,7 +177,7 @@ export default function CostAnalyticsPage({
                 <h2>Input/cache economics</h2>
                 <TokenCategories payload={payload} />
               </section>
-              <section className="tile">
+              <section className="tile cost-trend-tile">
                 <SpendOverTime
                   payload={payload}
                   colors={colors}
@@ -177,7 +187,7 @@ export default function CostAnalyticsPage({
                   ))}
                 />
               </section>
-              <section className="tile">
+              <section className="tile cost-model-tile">
                 <h2>Cost by model</h2>
                 <CostByModel payload={payload} colors={colors} available={payload.meta.available} />
               </section>
