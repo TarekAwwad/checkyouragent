@@ -1,6 +1,7 @@
 // frontend/src/analytics/FilterBar.tsx
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CostAnalyticsFilters, CostAnalyticsMeta } from "../api/types";
+import type { DataScope } from "../shell/useDataScope";
 import { displayModelName, formatTokens, formatUsd } from "./chartGeometry";
 
 interface Props {
@@ -9,6 +10,9 @@ interface Props {
   historical: boolean;
   onChange: (next: CostAnalyticsFilters) => void;
   onHistoricalChange: (value: boolean) => void;
+  scope?: DataScope;
+  rangeKey?: string;
+  onRangeKeyChange?: (value: string) => void;
 }
 
 const RANGE_OPTIONS: { key: string; label: string; days: number | null }[] = [
@@ -45,8 +49,33 @@ export default function FilterBar({
   historical,
   onChange,
   onHistoricalChange,
+  scope = "local",
+  rangeKey: controlledRangeKey,
+  onRangeKeyChange,
 }: Props) {
-  const [rangeKey, setRangeKey] = useState(() => !filters.dateFrom && !filters.dateTo ? "all" : "custom");
+  const [localRangeKey, setLocalRangeKey] = useState(() => !filters.dateFrom && !filters.dateTo ? "all" : "custom");
+  const rangeKey = controlledRangeKey ?? localRangeKey;
+  const setRangeKey = (value: string) => {
+    if (controlledRangeKey === undefined) setLocalRangeKey(value);
+    onRangeKeyChange?.(value);
+  };
+  const projectNames = useRef({ scope, names: new Map<number, string>() });
+
+  useEffect(() => {
+    const names = projectNames.current.scope === scope ? projectNames.current.names : new Map<number, string>();
+    for (const project of meta?.available_projects ?? []) names.set(project.id, project.name);
+    projectNames.current = { scope, names };
+  }, [scope, meta?.available_projects]);
+
+  const missingProject = filters.projectId != null
+    && !meta?.available_projects.some((project) => project.id === filters.projectId);
+  const selectedProjectName = filters.projectId != null && projectNames.current.scope === scope
+    ? projectNames.current.names.get(filters.projectId)
+    : undefined;
+  const missingModel = Boolean(filters.model && !meta?.available_models.includes(filters.model));
+  // Missing metadata means the range is still loading. Keep the active filter
+  // visible, and only describe zero activity once a response confirms it.
+  const missingSuffix = meta ? " (no activity in range)" : "";
   const dateFromValue = useMemo(() => toDateInputValue(filters.dateFrom), [filters.dateFrom]);
   const dateToValue = useMemo(() => toDateInputValue(filters.dateTo), [filters.dateTo]);
 
@@ -97,6 +126,11 @@ export default function FilterBar({
         onChange={(e) => onChange({ ...filters, projectId: e.target.value ? Number(e.target.value) : null })}
       >
         <option value="">All projects</option>
+        {missingProject && (
+          <option value={filters.projectId!}>
+            {selectedProjectName || `Project ${filters.projectId}`}{missingSuffix}
+          </option>
+        )}
         {meta?.available_projects.map((p) => (
           <option key={p.id} value={p.id}>{p.name}</option>
         ))}
@@ -108,6 +142,9 @@ export default function FilterBar({
         onChange={(e) => onChange({ ...filters, model: e.target.value || null })}
       >
         <option value="">All models</option>
+        {missingModel && (
+          <option value={filters.model!}>{displayModelName(filters.model!)}{missingSuffix}</option>
+        )}
         {meta?.available_models.map((m) => (
           <option key={m} value={m}>{displayModelName(m)}</option>
         ))}
