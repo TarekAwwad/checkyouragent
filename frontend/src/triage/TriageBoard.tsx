@@ -3,15 +3,17 @@ import { AlertTriangle, Network, Search } from "lucide-react";
 import type { Project, SessionCard } from "../api/types";
 import { Blurred } from "../shell/Blurred";
 import LoadingBar from "../components/LoadingBar";
+import type { SessionSortKey, SessionsViewState } from "../shell/investigationState";
 
 interface Props {
   projects: Project[];
   sessions: SessionCard[];
   loading: boolean;
   onOpenSession: (session: SessionCard) => void;
+  memory?: React.MutableRefObject<SessionsViewState>;
 }
 
-type SortKey = "first_ts" | "last_ts" | "cost_usd" | "error_count" | "finding_count" | "event_count" | "subagent_count";
+type SortKey = SessionSortKey;
 
 const SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
   { key: "first_ts", label: "Newest first" },
@@ -61,15 +63,30 @@ function supportedFinding(session: SessionCard): { title: string; detail: string
   return { title: "No supported finding detected", detail: "", tone: "calm" };
 }
 
-function TriageBoard({ projects, sessions, loading, onOpenSession }: Props) {
-  const [query, setQuery] = React.useState("");
-  const [projectId, setProjectId] = React.useState<number | "all">("all");
-  const [onlyErrors, setOnlyErrors] = React.useState(false);
-  const [sortKey, setSortKey] = React.useState<SortKey>("first_ts");
+function TriageBoard({ projects, sessions, loading, onOpenSession, memory }: Props) {
+  const [query, setQuery] = React.useState(() => memory?.current.query ?? "");
+  const [projectId, setProjectId] = React.useState<number | "all">(() => memory?.current.projectId ?? "all");
+  const [onlyErrors, setOnlyErrors] = React.useState(() => memory?.current.onlyErrors ?? false);
+  const [sortKey, setSortKey] = React.useState<SortKey>(() => memory?.current.sortKey ?? "first_ts");
+  const tableRef = React.useRef<HTMLDivElement>(null);
+  const restoredScroll = React.useRef(false);
+
+  React.useLayoutEffect(() => {
+    if (memory) memory.current = { ...memory.current, query, projectId, onlyErrors, sortKey };
+  }, [memory, query, projectId, onlyErrors, sortKey]);
+  React.useLayoutEffect(() => {
+    if (!loading && !restoredScroll.current && tableRef.current) {
+      tableRef.current.scrollTop = memory?.current.scrollTop ?? 0;
+      restoredScroll.current = true;
+    }
+  }, [loading, memory]);
+  React.useEffect(() => {
+    if (!loading && projectId !== "all" && !projects.some((project) => project.id === projectId)) setProjectId("all");
+  }, [loading, projects, projectId]);
 
   const activeProjectId = React.useMemo<number | "all">(() => {
     if (projectId === "all") return projectId;
-    return projects.some((project) => project.id === projectId) ? projectId : (projects[0]?.id ?? "all");
+    return projects.some((project) => project.id === projectId) ? projectId : "all";
   }, [projectId, projects]);
 
   const rows = React.useMemo(() => {
@@ -147,7 +164,13 @@ function TriageBoard({ projects, sessions, loading, onOpenSession }: Props) {
             {costAvailable ? <>Total cost <b>{formatUsd(totalCost)}</b></> : "Cost unavailable"}
           </span>
         </div>
-        <div className="triage-table-wrap">
+        <div
+          ref={tableRef}
+          className="triage-table-wrap"
+          onScroll={(event) => {
+            if (memory && restoredScroll.current) memory.current.scrollTop = event.currentTarget.scrollTop;
+          }}
+        >
           {loading ? (
             <div className="empty-state"><LoadingBar caption="Loading sessions…" /></div>
           ) : rows.length === 0 ? (

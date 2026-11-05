@@ -4,6 +4,8 @@ import { X } from "lucide-react";
 import { getCostAnalytics, getTeamCostAnalytics } from "../api/client";
 import type { CostAnalyticsFilters, CostAnalyticsMeta, OverTimeBucket } from "../api/types";
 import type { DataScope } from "../shell/useDataScope";
+import type { CostViewState } from "../shell/investigationState";
+import { initialCostViewState } from "../shell/investigationState";
 import { buildModelColorMap, formatSignedUsd, formatTokens, formatUsd } from "./chartGeometry";
 import FilterBar from "./FilterBar";
 import CostByProject from "./CostByProject";
@@ -24,6 +26,8 @@ interface Props {
   /** In team scope, Cost is computed from imported bundles and the session-level
    * panels (which have no team equivalent) are hidden. Defaults to local. */
   scope?: DataScope;
+  /** Scoped, in-memory context supplied by the app while this page unmounts. */
+  memory?: React.MutableRefObject<CostViewState>;
 }
 
 function BucketSessionsPanel({
@@ -98,15 +102,27 @@ export default function CostAnalyticsPage({
   historical = true,
   onHistoricalChange = () => {},
   scope = "local",
+  memory,
 }: Props) {
   const isTeam = scope === "team";
-  const [filters, setFilters] = React.useState<CostAnalyticsFilters>({ dateFrom: null, dateTo: null });
-  const [selectedBucket, setSelectedBucket] = React.useState<string | null>(null);
+  const [filters, setFilters] = React.useState<CostAnalyticsFilters>(() => memory?.current.filters ?? initialCostViewState().filters);
+  const [rangeKey, setRangeKey] = React.useState(() => memory?.current.rangeKey ?? "all");
+  const [selectedBucket, setSelectedBucket] = React.useState<string | null>(() => memory?.current.selectedBucket ?? null);
+  const [spendView, setSpendView] = React.useState(() => memory?.current.spend ?? initialCostViewState().spend);
+  const pageRef = React.useRef<HTMLElement>(null);
+  const restoredScroll = React.useRef(false);
+  const previousScope = React.useRef(scope);
+
+  React.useLayoutEffect(() => {
+    if (memory) memory.current = { ...memory.current, filters, rangeKey, selectedBucket, spend: spendView };
+  }, [memory, filters, rangeKey, selectedBucket, spendView]);
 
   // projectId/model are scope-namespaced (local ids vs team synthetic ids /
   // bucketed families); carrying them across a scope switch mis-filters the
   // other scope's data. Dates are scope-agnostic and survive the switch.
   React.useEffect(() => {
+    if (previousScope.current === scope) return;
+    previousScope.current = scope;
     setFilters((f) => (f.projectId || f.model ? { ...f, projectId: null, model: null } : f));
   }, [scope]);
   const query = useQuery({
@@ -125,6 +141,12 @@ export default function CostAnalyticsPage({
   });
 
   const payload = query.data;
+  React.useLayoutEffect(() => {
+    if (!restoredScroll.current && payload && pageRef.current) {
+      pageRef.current.scrollTop = memory?.current.scrollTop ?? 0;
+      restoredScroll.current = true;
+    }
+  }, [payload, memory]);
   const errorMessage = query.error instanceof Error ? query.error.message : "Unable to load cost analytics.";
   const colors = React.useMemo(
     () => buildModelColorMap(payload?.meta.available_models ?? []),
@@ -139,7 +161,14 @@ export default function CostAnalyticsPage({
   }, [payload, selectedBucket]);
 
   return (
-    <main className="cost-page" aria-busy={query.isFetching}>
+    <main
+      ref={pageRef}
+      className="cost-page"
+      aria-busy={query.isFetching}
+      onScroll={(event) => {
+        if (memory && restoredScroll.current) memory.current.scrollTop = event.currentTarget.scrollTop;
+      }}
+    >
       <div className="cost-page-inner">
         <FilterBar
           filters={filters}
@@ -147,6 +176,9 @@ export default function CostAnalyticsPage({
           historical={historical}
           onChange={setFilters}
           onHistoricalChange={onHistoricalChange}
+          scope={scope}
+          rangeKey={rangeKey}
+          onRangeKeyChange={setRangeKey}
         />
         <p className="cost-pricing-note">
           {historical
@@ -178,6 +210,8 @@ export default function CostAnalyticsPage({
                 <SpendOverTime
                   payload={payload}
                   colors={colors}
+                  viewState={spendView}
+                  onViewStateChange={setSpendView}
                   selectedBucket={isTeam ? undefined : selectedBucket}
                   onSelectBucket={isTeam ? undefined : (bucket) => setSelectedBucket((current) => (
                     current === bucket ? null : bucket

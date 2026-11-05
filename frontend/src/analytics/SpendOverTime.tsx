@@ -11,18 +11,19 @@ import {
 } from "./chartGeometry";
 import { formatCostPeriod } from "./costPeriods";
 import SpikeInsight from "./SpikeInsight";
+import type { SpendViewState } from "../shell/investigationState";
 
 interface Props {
   payload: CostAnalyticsResponse;
   colors: Record<string, string>;
   selectedBucket?: string | null;
   onSelectBucket?: (bucket: string) => void;
+  viewState?: SpendViewState;
+  onViewStateChange?: React.Dispatch<React.SetStateAction<SpendViewState>>;
 }
 
 const W = 600;
 const H = 150;
-
-type DisplayMode = "total" | "model";
 
 function coverageLabel(bucket: OverTimeBucket): string {
   if (bucket.session_count === 0) return "no sessions";
@@ -46,9 +47,16 @@ export default function SpendOverTime({
   colors,
   selectedBucket,
   onSelectBucket,
+  viewState,
+  onViewStateChange,
 }: Props) {
-  const [mode, setMode] = React.useState<DisplayMode>("total");
-  const [isolatedModel, setIsolatedModel] = React.useState<string | null>(null);
+  const [localView, setLocalView] = React.useState<SpendViewState>({ mode: "total", isolatedModel: null });
+  const { mode, isolatedModel } = viewState ?? localView;
+  const setView = onViewStateChange ?? setLocalView;
+  const setMode = (next: SpendViewState["mode"]) => setView((current) => ({ ...current, mode: next }));
+  const setIsolatedModel = React.useCallback((next: React.SetStateAction<string | null>) => {
+    setView((current) => ({ ...current, isolatedModel: typeof next === "function" ? next(current.isolatedModel) : next }));
+  }, [setView]);
   const [hoveredBucket, setHoveredBucket] = React.useState<string | null>(null);
   const [localSelectedBucket, setLocalSelectedBucket] = React.useState<string | null>(null);
   const gradientId = `spend-fill-${React.useId().replace(/:/g, "")}`;
@@ -57,7 +65,7 @@ export default function SpendOverTime({
 
   React.useEffect(() => {
     if (isolatedModel && !effectiveIsolation) setIsolatedModel(null);
-  }, [isolatedModel, effectiveIsolation]);
+  }, [isolatedModel, effectiveIsolation, setIsolatedModel]);
 
   const heading = (
     <div className="session-visual-heading sot-heading">

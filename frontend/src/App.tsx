@@ -22,6 +22,7 @@ import { useSettings } from "./shell/useSettings";
 import { PrivacyModeProvider } from "./shell/PrivacyModeContext";
 import { useTheme } from "./theme/useTheme";
 import LoadingBar from "./components/LoadingBar";
+import { initialCostViewState, initialSessionsViewState } from "./shell/investigationState";
 
 type SessionOrigin = Extract<View, "map" | "cost" | "discover">;
 
@@ -88,6 +89,39 @@ function App() {
   const { historicalPricing, setHistoricalPricing, privacyMode, setPrivacyMode } = useSettings();
   const { seen: glossaryHintSeen, dismiss: dismissGlossaryHint } = useGlossaryHint();
   const [glossaryOpen, setGlossaryOpen] = React.useState(false);
+  // Investigation state stays in this app visit, separate from the persisted
+  // landing-page preference and from the other data scope's identifiers.
+  const costMemory = React.useRef({
+    local: { current: initialCostViewState() },
+    team: { current: initialCostViewState() },
+  });
+  const sessionsMemory = React.useRef(initialSessionsViewState());
+  const [contextEpoch, setContextEpoch] = React.useState({ local: 0, team: 0 });
+  const hadLocalData = React.useRef(false);
+  const teamDataset = React.useRef<string | null>(null);
+
+  React.useEffect(() => {
+    if (!sessions.isSuccess) return;
+    const populated = sessions.data.length > 0;
+    if (hadLocalData.current && !populated) {
+      costMemory.current.local.current = initialCostViewState();
+      sessionsMemory.current = initialSessionsViewState();
+      setContextEpoch((current) => ({ ...current, local: current.local + 1 }));
+    }
+    hadLocalData.current = populated;
+  }, [sessions.isSuccess, sessions.data]);
+
+  React.useEffect(() => {
+    if (!teamImports.isSuccess) return;
+    const dataset = teamImports.data.map((record) => `${record.id}:${record.bundle_id}:${record.imported_at}`).sort().join("|");
+    if (teamDataset.current !== null && teamDataset.current !== dataset) {
+      // Team project ids are synthetic and can be reassigned after bundles
+      // change. Discard their old context instead of selecting another project.
+      costMemory.current.team.current = initialCostViewState();
+      setContextEpoch((current) => ({ ...current, team: current.team + 1 }));
+    }
+    teamDataset.current = dataset;
+  }, [teamImports.isSuccess, teamImports.data]);
 
   // Keep analytical and data-management pages addressable. Session navigation
   // retains its origin entry so browser Back returns to the investigation.
@@ -246,6 +280,8 @@ function App() {
         {view === "map" && scope === "team" && <TeamOverview onGoToImport={() => setView("import")} />}
         {view === "map" && scope === "local" && (
           <TriageBoard
+            key={contextEpoch.local}
+            memory={sessionsMemory}
             projects={projects.data ?? []}
             sessions={sessions.data ?? []}
             loading={projects.isLoading || sessions.isLoading}
@@ -254,6 +290,8 @@ function App() {
         )}
         {view === "cost" && (
           <CostAnalyticsPage
+            key={`${scope}:${contextEpoch[scope]}`}
+            memory={costMemory.current[scope]}
             scope={scope}
             onOpenSession={scope === "team" ? () => {} : (sessionId) => openSessionById(sessionId, null, "cost")}
             historical={historicalPricing}
