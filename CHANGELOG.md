@@ -6,10 +6,43 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-05
+
+This release corrects replayed usage accounting, makes Cost the default
+analytical entry point, and keeps session investigations connected to their
+filters and search context.
+
 ### Added
 - Show the running app version in the terminal startup banner and sidebar footer.
 
+### Changed
+- Put Cost, Sessions, and Explore first in the local sidebar. Sources & sync and
+  Share team bundle now sit in a separate Data group. Team scope exposes Cost
+  and Overview, with Manage bundles under Data.
+- Start Cost with all imported history and restore the last analytical page for
+  each data scope on returning visits. Empty scopes retain onboarding, and
+  successful imports offer an explicit View costs action.
+- Consolidate cache, model-share, and spend-change insights into their charts.
+  Bound the model list with its own scroll area, wrap long spend legends, and
+  keep charts visible while date ranges load.
+- Add a subtle total-spend gradient and labelled markers for qualified spend
+  increases. Cache savings and unusual increases use distinct, theme-aware
+  colors while partial-pricing comparisons remain suppressed.
+
 ### Fixed
+- Keep selected project and model filters visible when the date range has no
+  activity for them, so the controls match the request instead of showing All.
+- Preserve Cost filters and Sessions search, filters, and sorting when returning
+  from a session drilldown.
+- Display calendar dates for daily and weekly spend periods, including chart
+  labels, tooltips, and contributor drilldowns. Explain each spend increase with
+  its dollar amount, baseline, and comparison window.
+- Keep the final weekly bucket for ranges that start midweek and group a week
+  consistently across New Year. Fetch baseline history separately from visible
+  totals, exclude incomplete or unpriced periods from comparisons, and avoid
+  creating a baseline from days before imported history begins.
+- Clear isolated model selections when date or project filters remove that
+  model, keeping the remaining chart series visible.
 - Resumed and forked transcripts no longer multiply cost and token totals (#41).
   Usage is reconciled per project by API message ID and event UUID, including
   partial streamed messages and copied subagent history. Shared history is
@@ -24,6 +57,11 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Context economics keeps a resumed thread's replayed context without repaying it
   or repeating its findings, including context a subagent inherits. Discovery's
   cost associations leave replay-only sessions out of the threshold and the sample.
+
+### Security
+- Handle extreme calendar bounds as validated analytics input instead of
+  unhandled server errors. Compare date-only and timezone-aware bounds
+  consistently, retaining explicit offsets.
 
 ### Upgrade notes
 - Existing SQLite caches are corrected automatically on first open; no reset or

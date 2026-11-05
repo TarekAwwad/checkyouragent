@@ -43,13 +43,18 @@ persistent command, run `uv tool install checkyouragent` (or
 
 On first use, choose **Sync new and updated**, then **View costs** for an
 overview of the imported history. Returning visits restore the last analytical
-page for the active data scope, defaulting to **Cost**. Use **Sessions** to find
+page for the active data scope, defaulting to **Cost**. Cost initially uses
+**All time**, so older imported sessions are included. Use **Sessions** to find
 sessions worth investigating and **Explore** for aggregate findings.
 
 The sidebar puts **Cost**, **Sessions**, and **Explore** first. The lower
 **Data** group contains **Sources & sync** and **Share team bundle**. In team
 scope, the analytical pages are **Cost** and **Overview**, with **Manage bundles**
 under **Data**.
+
+Opening a session and returning with **Back** preserves the Cost filters or
+Sessions search, filters, and sorting used to find it for the current workspace
+visit.
 
 ## What it does
 
@@ -65,7 +70,8 @@ under **Data**.
 - **Cost** breaks estimated API-equivalent cost down by project, model, and
   token category, with a cost-over-time chart, spike detection, turn
   distribution, and session outliers. Historical pricing is optional and
-  date-aware.
+  date-aware. Spend increases show their comparison baseline, and long model
+  legends wrap while the model list scrolls within its panel.
 - **Explore** covers limit hits, context economics, and usage drivers, plus an
   experimental section with the Usage Mindmap and subgroup discovery.
 - **Team bundles** export allowlisted aggregates (no raw conversation content)

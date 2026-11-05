@@ -30,6 +30,17 @@ Flags:
 - `--no-browser` — do not open a browser.
 - `--demo` — use the bundled synthetic demo dataset instead of a real export.
 
+On first use, **Sources & sync** offers **Sync new and updated**, followed by
+**View costs**. Cost initially shows **All time** so older imported history is
+included. Returning visits restore the last analytical page for the active data
+scope, defaulting to Cost.
+
+The main local pages are **Cost**, **Sessions**, and **Explore**. **Sources &
+sync** and **Share team bundle** sit in the lower **Data** group. Team scope has
+**Cost** and **Overview**, plus **Manage bundles** under Data. Returning from a
+session preserves the Cost filters or Sessions search, filters, and sorting for
+the current workspace visit.
+
 ## What It Shows
 
 - **Sessions** — an investigation board with supported findings, observed
@@ -40,7 +51,9 @@ Flags:
   finding back to the recorded events.
 - **Cost** — estimated API-equivalent cost by project, model, and token
   category; cost over time, spike detection, turn distribution, and session
-  outliers, with optional date-aware historical pricing.
+  outliers, with optional date-aware historical pricing. Spend increases show
+  their baseline and comparison window; model legends wrap and the model list
+  scrolls within its panel.
 - **Limit hits** — recorded limit notices and reconstructed five-hour windows,
   viewed by recorded token volume or estimated API-equivalent cost.
 - **Context Economics** — explicitly defined opportunity signals with receipts

@@ -30,6 +30,22 @@ const settle = (ms) => new Promise((r) => setTimeout(r, ms));
 const nav = (page, label) =>
   page.locator(".app-sidebar nav").getByRole("button", { name: label, exact: true }).click();
 
+// App panels scroll inside the viewport. A full element screenshot includes
+// blank pixels below that scroll container, so capture only its visible area.
+// Cost's overview ends after the model tile; turn details have their own shot.
+async function captureVisibleElement(page, element, path, lastElement) {
+  const box = await element.boundingBox();
+  const end = lastElement ? await lastElement.boundingBox() : box;
+  const viewport = page.viewportSize();
+  if (!box || !end || !viewport) throw new Error("Capture region is unavailable.");
+  const x = Math.max(0, box.x);
+  const y = Math.max(0, box.y);
+  const width = Math.min(viewport.width, box.x + box.width) - x;
+  const height = Math.min(viewport.height, end.y + end.height) - y;
+  if (width <= 0 || height <= 0) throw new Error("Capture region is outside the viewport.");
+  await page.screenshot({ path, clip: { x, y, width, height } });
+}
+
 // Keep captures on the full fixed demo corpus even if date-filter defaults
 // change later.
 async function selectAllTime(p) {
@@ -79,7 +95,7 @@ async function main() {
   // clips into the left edge of these stills — this runs before any app
   // script so useGlossaryHint's initial read already sees it as seen.
   await context.addInitScript(() => {
-    window.localStorage.setItem("ccfr-glossary-hint-seen", "1");
+    if (window.location.origin !== "null") window.localStorage.setItem("ccfr-glossary-hint-seen", "1");
   });
   const page = await context.newPage();
   await page.goto(DEMO_URL, { waitUntil: "domcontentloaded" });
@@ -99,12 +115,12 @@ async function main() {
   await page.locator("tbody tr").first().waitFor(WAIT);
   await assertSyntheticSessions(page);
 
-  const shot = async (file, selector, pre = 400) => {
+  const shot = async (file, selector, pre = 400, endSelector) => {
     const el = page.locator(selector).first();
     await el.waitFor(WAIT);
     await el.scrollIntoViewIfNeeded();
     await settle(pre);
-    await el.screenshot({ path: join(SHOTS_DIR, file) });
+    await captureVisibleElement(page, el, join(SHOTS_DIR, file), endSelector ? page.locator(endSelector).first() : undefined);
     console.log(`shot: ${file}`);
   };
 
@@ -126,7 +142,7 @@ async function main() {
   // 04 — Project & session cost.
   await nav(page, "Cost");
   await selectAllTime(page);
-  await shot("cost.png", ".cost-bento", 600);
+  await shot("cost.png", ".cost-bento", 600, ".cost-model-tile");
 
   // 06 — Turn outlier analysis (a Cost-page tile, always shown in local scope).
   const turnTile = page
@@ -136,7 +152,7 @@ async function main() {
   await turnTile.waitFor(WAIT);
   await turnTile.scrollIntoViewIfNeeded();
   await settle(400);
-  await turnTile.screenshot({ path: join(SHOTS_DIR, "turns.png") });
+  await captureVisibleElement(page, turnTile, join(SHOTS_DIR, "turns.png"));
   console.log("shot: turns.png");
 
   // 05 — Session forensics (open the first triage session).
@@ -153,7 +169,7 @@ async function main() {
   // separate browser context with its own localStorage, so the "seen" flag
   // must be seeded here too.
   await readmeCtx.addInitScript(() => {
-    window.localStorage.setItem("ccfr-glossary-hint-seen", "1");
+    if (window.location.origin !== "null") window.localStorage.setItem("ccfr-glossary-hint-seen", "1");
   });
   const rp = await readmeCtx.newPage();
   await rp.goto(DEMO_URL, { waitUntil: "domcontentloaded" });
@@ -169,12 +185,12 @@ async function main() {
     await rp.screenshot({ path: join(README_DIR, file) });
     console.log(`readme shot: ${file}`);
   };
-  const rshotEl = async (file, selector, pre = 400) => {
+  const rshotEl = async (file, selector, pre = 400, endSelector) => {
     const el = rp.locator(selector).first();
     await el.waitFor(WAIT);
     await el.scrollIntoViewIfNeeded();
     await settle(pre);
-    await el.screenshot({ path: join(README_DIR, file) });
+    await captureVisibleElement(rp, el, join(README_DIR, file), endSelector ? rp.locator(endSelector).first() : undefined);
     console.log(`readme shot: ${file}`);
   };
 
@@ -219,7 +235,7 @@ async function main() {
   // cost-analytics-1.png — Cost dashboard.
   await nav(rp, "Cost");
   await selectAllTime(rp);
-  await rshotEl("cost-analytics-1.png", ".cost-bento", 600);
+  await rshotEl("cost-analytics-1.png", ".cost-bento", 600, ".cost-model-tile");
 
   // cost-analytics-2.png — turn distribution / outlier tile.
   const rTurnTile = rp
@@ -229,7 +245,7 @@ async function main() {
   await rTurnTile.waitFor(WAIT);
   await rTurnTile.scrollIntoViewIfNeeded();
   await settle(400);
-  await rTurnTile.screenshot({ path: join(README_DIR, "cost-analytics-2.png") });
+  await captureVisibleElement(rp, rTurnTile, join(README_DIR, "cost-analytics-2.png"));
   console.log("readme shot: cost-analytics-2.png");
 
   // subgroup.png — Subgroups on its default, explicitly non-causal view.
