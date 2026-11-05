@@ -41,7 +41,7 @@ export default function TokenCategories({ payload }: Props) {
           <span>Estimated no-cache input cost</span>
           <b>{partial ? `≥${formatUsd(cache.no_cache_input_usd)}` : formatUsd(cache.no_cache_input_usd)}</b>
         </div>
-        <div className={!partial ? (cache.net_savings_usd >= 0 ? "positive" : "negative") : ""}>
+        <div className={!partial && payload.meta.available ? (cache.net_savings_usd > 0 ? "positive" : cache.net_savings_usd < 0 ? "negative" : "") : ""}>
           <span>{partial ? "Cache comparison unavailable" : cacheDeltaLabel}</span>
           <b>{partial ? "Partial pricing" : formatUsd(Math.abs(cache.net_savings_usd))}</b>
         </div>

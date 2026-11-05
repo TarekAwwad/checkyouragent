@@ -4,6 +4,7 @@ import {
   ACCENT_COLOR,
   buildSpendArea,
   displayModelName,
+  formatSignedUsd,
   formatUsd,
   orderedModels,
   FALLBACK_COLOR,
@@ -50,6 +51,7 @@ export default function SpendOverTime({
   const [isolatedModel, setIsolatedModel] = React.useState<string | null>(null);
   const [hoveredBucket, setHoveredBucket] = React.useState<string | null>(null);
   const [localSelectedBucket, setLocalSelectedBucket] = React.useState<string | null>(null);
+  const gradientId = `spend-fill-${React.useId().replace(/:/g, "")}`;
   const fullOrder = orderedModels(payload.by_model);
   const effectiveIsolation = isolatedModel && fullOrder.includes(isolatedModel) ? isolatedModel : null;
 
@@ -98,6 +100,13 @@ export default function SpendOverTime({
     : payload.over_time;
   const chartOrder = mode === "total" ? ["total"] : order;
   const area = buildSpendArea(chartBuckets, chartOrder, W, H);
+  const qualifiedSpikes = new Set(
+    mode === "total" && payload.meta.available && !payload.meta.costs_partial
+      ? payload.over_time
+        .filter((bucket) => bucket.is_spike && bucket.is_complete !== false && !bucket.costs_are_lower_bound)
+        .map((bucket) => bucket.bucket)
+      : [],
+  );
   const controlled = selectedBucket !== undefined;
   const effectiveSelected = controlled ? selectedBucket : localSelectedBucket;
   const activeBucketKey = hoveredBucket ?? effectiveSelected;
@@ -116,6 +125,12 @@ export default function SpendOverTime({
       <div className="sot-plot">
         <span className="sot-axis-title sot-axis-title-y">Estimated cost (USD)</span>
         <svg className="sot-svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label="Spend over time">
+          <defs>
+            <linearGradient id={gradientId} x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor={ACCENT_COLOR} stopOpacity={0.3} />
+              <stop offset="100%" stopColor={ACCENT_COLOR} stopOpacity={0.02} />
+            </linearGradient>
+          </defs>
           {area.yTicks.map((t) => (
             <line key={t.y} className="sot-grid" x1={0} y1={t.y} x2={W} y2={t.y} />
           ))}
@@ -123,8 +138,8 @@ export default function SpendOverTime({
             <g key={p.model}>
               <path
                 d={p.areaPath}
-                fill={p.model === "total" ? ACCENT_COLOR : colors[p.model] ?? FALLBACK_COLOR}
-                fillOpacity={p.model === "total" ? 0.16 : 0.2}
+                fill={p.model === "total" ? `url(#${gradientId})` : colors[p.model] ?? FALLBACK_COLOR}
+                fillOpacity={p.model === "total" ? 1 : 0.2}
               />
               <path
                 data-series={p.model}
@@ -150,7 +165,7 @@ export default function SpendOverTime({
               key={bucket.bucket}
               className={`sot-hit${effectiveSelected === bucket.bucket ? " is-selected" : ""}`}
               style={{ left: `${(before / W) * 100}%`, width: `${((after - before) / W) * 100}%` }}
-              aria-label={`${formatCostPeriod(bucket, payload.meta.bucket)}: ${costLabel(bucket)}, ${coverageLabel(bucket)}${bucket.is_complete === false ? ", partial period" : ""}`}
+              aria-label={`${formatCostPeriod(bucket, payload.meta.bucket)}: ${costLabel(bucket)}, ${coverageLabel(bucket)}${bucket.is_complete === false ? ", partial period" : ""}${qualifiedSpikes.has(bucket.bucket) ? ", unusual increase" : ""}`}
               onMouseEnter={() => setHoveredBucket(bucket.bucket)}
               onMouseLeave={() => setHoveredBucket(null)}
               onFocus={() => setHoveredBucket(bucket.bucket)}
@@ -165,11 +180,19 @@ export default function SpendOverTime({
             />
           );
         })}
+        {area.points.filter((point) => qualifiedSpikes.has(point.bucket)).map((point) => (
+          <i
+            key={point.bucket}
+            className="sot-spike-marker"
+            style={{ left: `${(point.x / W) * 100}%`, top: plotTop(point.y) }}
+            aria-hidden="true"
+          />
+        ))}
         {activePoint && (
           <>
             <i className="sot-crosshair" style={{ left: `${(activePoint.x / W) * 100}%` }} />
             <i
-              className="sot-point"
+              className={`sot-point${qualifiedSpikes.has(activePoint.bucket) ? " is-spike" : ""}`}
               style={{ left: `${(activePoint.x / W) * 100}%`, top: plotTop(activePoint.y) }}
             />
           </>
@@ -182,6 +205,11 @@ export default function SpendOverTime({
             <strong>{formatCostPeriod(activeBucket, payload.meta.bucket)}</strong>
             <b>{costLabel(activeBucket)}</b>
             <span>{coverageLabel(activeBucket)}</span>
+            {qualifiedSpikes.has(activeBucket.bucket) && (
+              <span className="sot-tooltip-spike">
+                Unusual increase{activeBucket.delta_usd !== null ? ` · ${formatSignedUsd(activeBucket.delta_usd)} above baseline` : ""}
+              </span>
+            )}
             {activeBucket.is_complete === false && <span>Partial period · excluded from spike comparisons</span>}
             {Object.entries(activeBucket.per_model)
               .filter(([, usd]) => usd > 0)
@@ -228,6 +256,7 @@ export default function SpendOverTime({
         ) : (
           <span className="sot-total-key"><i style={{ background: ACCENT_COLOR }} />Total spend</span>
         )}
+        {qualifiedSpikes.size > 0 && <span className="sot-spike-key"><i />Unusual increase</span>}
       </div>
       <div className="sot-spike-slot">
         <SpikeInsight

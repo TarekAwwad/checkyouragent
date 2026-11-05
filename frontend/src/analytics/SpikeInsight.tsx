@@ -60,12 +60,12 @@ export default function SpikeInsight({ payload, selectedBucket, onSelectBucket }
   return onSelectBucket ? (
     <button
       type="button"
-      className="spike-insight"
+      className="spike-insight has-spike"
       aria-pressed={selected}
       aria-label={`${selected ? "Hide" : "Show"} largest ${frequency} increase sessions for ${period}`}
       onClick={() => onSelectBucket(spike.bucket)}
     >
       {content}
     </button>
-  ) : <div className="spike-insight">{content}</div>;
+  ) : <div className="spike-insight has-spike">{content}</div>;
 }

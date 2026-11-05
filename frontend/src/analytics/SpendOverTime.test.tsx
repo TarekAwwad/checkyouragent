@@ -86,6 +86,33 @@ const colors = {
 };
 
 describe("SpendOverTime", () => {
+  it("identifies qualified total-spend spikes without marking partial or model-only comparisons", () => {
+    const onSelectBucket = vi.fn();
+    const complete = {
+      ...payload,
+      meta: { ...payload.meta, costs_partial: false, costs_are_lower_bound: false, unpriced_models: [] },
+      over_time: [bucket("2026-05-01", { "claude-opus-4-8": 30 }, {
+        is_spike: true, is_complete: true, baseline_usd: 10, delta_usd: 20, delta_pct: 200,
+      })],
+    };
+    const view = render(<SpendOverTime payload={complete} colors={colors} onSelectBucket={onSelectBucket} />);
+    const point = screen.getByRole("button", { name: /May 1, 2026.*unusual increase/i });
+    expect(view.container.querySelectorAll(".sot-spike-marker")).toHaveLength(1);
+    fireEvent.mouseEnter(point);
+    expect(screen.getByRole("status")).toHaveTextContent("Unusual increase · +$20.00 above baseline");
+    fireEvent.click(point);
+    expect(onSelectBucket).toHaveBeenCalledWith("2026-05-01");
+
+    fireEvent.click(screen.getByRole("radio", { name: "Spend by model" }));
+    expect(view.container.querySelector(".sot-spike-marker")).not.toBeInTheDocument();
+    expect(screen.queryByText("Unusual increase")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("radio", { name: "Total spend" }));
+    view.rerender(<SpendOverTime payload={{ ...complete, meta: { ...complete.meta, costs_partial: true } }} colors={colors} />);
+    expect(view.container.querySelector(".sot-spike-marker")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /unusual increase/i })).not.toBeInTheDocument();
+  });
+
   it("clears isolation when a date-range update removes the selected model", () => {
     const view = render(<SpendOverTime payload={payload} colors={colors} />);
     fireEvent.click(screen.getByRole("radio", { name: "Spend by model" }));
