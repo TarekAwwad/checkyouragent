@@ -12,16 +12,24 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Fixed
 - Resumed and forked transcripts no longer multiply cost and token totals (#41).
   Usage is reconciled per project by API message ID and event UUID, including
-  partial streamed messages and copied subagent history. Session summaries,
-  analytics and team exports use the same counted usage. Existing caches are
-  corrected on open without a re-import; full session history is retained.
-- Corpus/project event totals and rate-limit session lists exclude replayed
-  events. Per-session activity counts continue to describe the full transcript.
+  partial streamed messages and copied subagent history. Shared history is
+  attributed to one session (the one its records name as origin, otherwise the
+  earliest), so a resumed or forked session shows only the usage it added.
+  Session summaries, analytics and team exports use the same counted usage.
+  Full session history is retained.
+- Corpus/project event totals, the usage map and rate-limit session lists exclude
+  replayed events. Per-session activity counts continue to describe the full transcript.
 - Copied file-history snapshots no longer preserve old turns as zero-cost
   observations in resumed-session turn counts and cost statistics.
 - Context economics keeps a resumed thread's replayed context without repaying it
   or repeating its findings, including context a subagent inherits. Discovery's
   cost associations leave replay-only sessions out of the threshold and the sample.
+
+### Upgrade notes
+- Existing SQLite caches are corrected automatically on first open; no reset or
+  re-import is required.
+- Team bundles exported before this release still contain double-counted totals.
+  Regenerate them and re-import them on receiving machines.
 
 ## [0.3.0] - 2026-10-30
 
