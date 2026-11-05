@@ -46,7 +46,7 @@ export default function FilterBar({
   onChange,
   onHistoricalChange,
 }: Props) {
-  const [rangeKey, setRangeKey] = useState("30");
+  const [rangeKey, setRangeKey] = useState(() => !filters.dateFrom && !filters.dateTo ? "all" : "custom");
   const dateFromValue = useMemo(() => toDateInputValue(filters.dateFrom), [filters.dateFrom]);
   const dateToValue = useMemo(() => toDateInputValue(filters.dateTo), [filters.dateTo]);
 

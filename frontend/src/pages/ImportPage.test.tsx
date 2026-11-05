@@ -4,11 +4,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ImportPage from "./ImportPage";
 import * as client from "../api/client";
 
-function renderPage() {
+function renderPage(onViewCosts?: () => void) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <ImportPage />
+      <ImportPage onViewCosts={onViewCosts} />
     </QueryClientProvider>,
   );
 }
@@ -42,6 +42,36 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("ImportPage", () => {
+  it("offers View costs after a first successful sync without leaving its results", async () => {
+    const onViewCosts = vi.fn();
+    vi.spyOn(client, "discoverSourceProjects").mockResolvedValue([
+      { name: "d--Alpha", display_name: "Alpha", imported: false, session_count: 0, last_imported_at: null },
+    ]);
+    vi.spyOn(client, "createImport").mockImplementation(async () => {
+      vi.mocked(client.getCacheStats).mockResolvedValue({
+        project_count: 1, session_count: 1, event_count: 2,
+        subagent_count: 0, persisted_output_count: 0,
+        observed_date_from: "2026-06-01", observed_date_to: "2026-06-01",
+        last_successful_sync_at: "2026-06-01T12:00:00Z", latest_import_error_count: 0,
+      });
+      return {
+        import_id: 1, source_path: "/srv/Data", project_count: 1, session_count: 1,
+        event_count: 2, subagent_count: 0, persisted_output_count: 0,
+        file_count: 1, error_count: 0, errors: [],
+      };
+    });
+    renderPage(onViewCosts);
+    await screen.findByText("d--Alpha");
+    expect(screen.queryByRole("button", { name: "View costs" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Sync new and updated" }));
+    const viewCosts = await screen.findByRole("button", { name: "View costs" });
+    await waitFor(() => expect(viewCosts).toBeEnabled());
+    expect(screen.getByRole("heading", { name: "Projects in source" })).toBeInTheDocument();
+    expect(onViewCosts).not.toHaveBeenCalled();
+    fireEvent.click(viewCosts);
+    expect(onViewCosts).toHaveBeenCalledOnce();
+  });
+
   it("lists source projects and imports one against the active root", async () => {
     vi.spyOn(client, "discoverSourceProjects").mockResolvedValue([
       { name: "d--Alpha", display_name: "Alpha", imported: true, session_count: 3, last_imported_at: "2026-05-31T00:00:00Z" },

@@ -27,7 +27,7 @@ uvx checkyouragent          # or: pipx run checkyouragent
 This serves the app on `http://127.0.0.1:8000`, opens your browser, and uses
 `~/.claude/projects` as the import root when it exists, otherwise `./Data`. No
 exports handy? Add `--demo` to explore a bundled, fully synthetic dataset that
-exercises every screen (the Import screen also offers **Load demo data** when
+exercises every screen (**Sources & sync** also offers **Load demo data** when
 the cache is empty).
 
 ```bash
@@ -41,14 +41,19 @@ persistent command, run `uv tool install checkyouragent` (or
 `pipx install checkyouragent`). A persistent install also provides the shorter
 `cya` alias, which behaves identically to `checkyouragent`.
 
-In the app, open **Import** and choose **Sync new and updated**, use
-**Sessions** to find sessions worth a closer look, open one to inspect its
-timeline, trace, subagents, and supported findings, then use **Cost** and
-**Explore** for the aggregate views.
+On first use, choose **Sync new and updated**, then **View costs** for an
+overview of the imported history. Returning visits restore the last analytical
+page for the active data scope, defaulting to **Cost**. Use **Sessions** to find
+sessions worth investigating and **Explore** for aggregate findings.
+
+The sidebar puts **Cost**, **Sessions**, and **Explore** first. The lower
+**Data** group contains **Sources & sync** and **Share team bundle**. In team
+scope, the analytical pages are **Cost** and **Overview**, with **Manage bundles**
+under **Data**.
 
 ## What it does
 
-- **Import** synchronizes Claude Code project folders from a read-only export
+- **Sources & sync** synchronizes Claude Code project folders from a read-only export
   root into a rebuildable SQLite index. Re-importing a changed project rebuilds
   it from source.
 - **Sessions** is an investigation board: supported findings, observed errors,
@@ -190,7 +195,7 @@ The import root should look like Claude Code's `~/.claude/projects`: one folder
 per project containing `<session-id>.jsonl` files, with optional per-session
 subagent logs and tool results. The UI path field can select the configured
 import root or a descendant; requests outside it are rejected. **Reset local
-data** on the Import screen clears imported sessions while keeping settings and
+data** in Sources & sync clears imported sessions while keeping settings and
 imported team bundles.
 
 `pricing.csv` holds the complete current price list in US dollars per million

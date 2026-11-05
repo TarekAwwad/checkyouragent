@@ -30,7 +30,7 @@ const DEMO_SESSION_COUNT = 46;
 const dwell = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const nav = (page, label) =>
-  page.locator("nav.sb-nav").getByRole("button", { name: label, exact: true }).click();
+  page.locator(".app-sidebar nav").getByRole("button", { name: label, exact: true }).click();
 
 async function assertSyntheticSessions(page) {
   const sessions = await page.evaluate(async () => {

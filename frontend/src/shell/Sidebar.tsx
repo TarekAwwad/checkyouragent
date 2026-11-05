@@ -11,7 +11,7 @@ const SCOPE_OPTIONS: { key: DataScope; label: string }[] = [
 
 interface Props {
   appVersion?: string;
-  view: View;
+  view: View | null;
   scope: DataScope;
   discoverTechnique: string;
   collapsed: boolean;
@@ -67,8 +67,8 @@ export default function Sidebar({
         <strong className="sb-monogram" aria-hidden="true">CYA!</strong>
       </div>
 
-      <nav className="sb-nav">
-        {navItems.map((item) => {
+      <nav className="sb-nav" aria-label="Analysis">
+        {navItems.filter((item) => item.group === "analysis").map((item) => {
           const Icon = item.icon;
           const active = view === item.key;
           const label = navItemLabel(item, scope);
@@ -78,9 +78,10 @@ export default function Sidebar({
                 className={`sb-item ${active ? "active" : ""}`}
                 onClick={() => onSelectView(item.key)}
                 aria-label={label}
+                aria-current={active ? "page" : undefined}
                 title={label}
               >
-                <Icon className="sb-ic" size={16} />
+                <Icon className="sb-ic" size={16} aria-hidden="true" />
                 <span className="sb-label">{label}</span>
               </button>
 
@@ -121,6 +122,28 @@ export default function Sidebar({
       </nav>
 
       <div className="sb-bottom">
+        <nav className="sb-data-nav" aria-label="Data management">
+          <span className="sb-data-label" aria-hidden="true">Data</span>
+          {navItems.filter((item) => item.group === "data").map((item) => {
+            const Icon = item.icon;
+            const label = navItemLabel(item, scope);
+            const active = view === item.key;
+            return (
+              <button
+                key={item.key}
+                type="button"
+                className={`sb-item sb-data-item ${active ? "active" : ""}`}
+                onClick={() => onSelectView(item.key)}
+                aria-label={label}
+                aria-current={active ? "page" : undefined}
+                title={label}
+              >
+                <Icon className="sb-ic" size={16} aria-hidden="true" />
+                <span className="sb-label">{label}</span>
+              </button>
+            );
+          })}
+        </nav>
         <div className="sb-scope-row">
           <div className="sb-scope segmented-control" role="group" aria-label="Data scope">
             {SCOPE_OPTIONS.map((option) => (

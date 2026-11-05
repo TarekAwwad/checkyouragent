@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import * as client from "./api/client";
@@ -213,11 +213,12 @@ function mockImportedSession() {
 
 function renderApp() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  const rendered = render(
     <QueryClientProvider client={queryClient}>
       <App />
     </QueryClientProvider>,
   );
+  return { ...rendered, queryClient };
 }
 
 beforeEach(() => {
@@ -226,6 +227,7 @@ beforeEach(() => {
   vi.mocked(client.listImports).mockResolvedValue([] as never);
   vi.mocked(client.listProjects).mockResolvedValue([] as never);
   vi.mocked(client.listSessions).mockResolvedValue([] as never);
+  vi.mocked(client.listTeamImports).mockResolvedValue([] as never);
 });
 afterEach(() => {
   vi.restoreAllMocks();
@@ -233,6 +235,84 @@ afterEach(() => {
 });
 
 describe("App", () => {
+  it("opens Cost for a populated index without flashing the import screen", async () => {
+    let finish!: (sessions: SessionCard[]) => void;
+    vi.mocked(client.listSessions).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    renderApp();
+    expect(screen.queryByText("Mounted source")).not.toBeInTheDocument();
+    expect(screen.getByText("Opening your workspace…")).toBeInTheDocument();
+    await act(async () => finish([appSession(7)]));
+    expect(await screen.findByRole("button", { name: "Open cost session" })).toBeInTheDocument();
+    expect(screen.queryByText("Mounted source")).not.toBeInTheDocument();
+  });
+
+  it("restores the last analytical page for a returning local user", async () => {
+    mockImportedSession();
+    localStorage.setItem("ccfr.lastAnalyticalPage.local", "map");
+    renderApp();
+    expect(await screen.findByText("App test session")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sessions" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("uses team bundles for the team landing even when local data exists", async () => {
+    mockImportedSession();
+    localStorage.setItem("ccfr.dataScope", "team");
+    renderApp();
+    expect(await screen.findByRole("heading", { name: "Import a team bundle" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open cost session" })).not.toBeInTheDocument();
+  });
+
+  it("opens Cost for existing team bundles without requiring local imports", async () => {
+    localStorage.setItem("ccfr.dataScope", "team");
+    vi.mocked(client.listTeamImports).mockResolvedValue([{ bundle_id: "existing", member_id: "member", session_count: 2 }] as never);
+    renderApp();
+    expect(await screen.findByRole("button", { name: "Open cost session" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cost" })).toHaveClass("active");
+  });
+
+  it("does not mistake a failed availability check for an empty index", async () => {
+    vi.mocked(client.listSessions).mockRejectedValueOnce(new Error("Index temporarily unavailable"));
+    renderApp();
+    expect(await screen.findByRole("button", { name: "Open cost session" })).toBeInTheDocument();
+    expect(screen.queryByText("Mounted source")).not.toBeInTheDocument();
+  });
+
+  it("keeps first-import results visible and offers View costs", async () => {
+    const { queryClient } = renderApp();
+    await screen.findByText("Mounted source");
+    act(() => {
+      queryClient.setQueryData(["sessions", {}], [appSession(7)]);
+      queryClient.setQueryData(["stats"], { project_count: 1, session_count: 1 });
+    });
+    expect(screen.getByText("Mounted source")).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("button", { name: "View costs" }));
+    expect(await screen.findByRole("button", { name: "Open cost session" })).toBeInTheDocument();
+  });
+
+  it("honors an explicit session URL and keeps its origin and event focus", async () => {
+    mockImportedSession();
+    window.history.replaceState({ cya: { view: "session", sessionId: 7, origin: "discover", eventId: 42 } }, "", "#session/7");
+    renderApp();
+    expect(await screen.findByRole("button", { name: "Back to Explore" })).toBeInTheDocument();
+    expect(screen.getByTestId("session-initial-event")).toHaveTextContent("42");
+  });
+
+  it("follows supported hash navigation when no saved history state is present", async () => {
+    mockImportedSession();
+    renderApp();
+    await screen.findByRole("button", { name: "Open cost session" });
+    act(() => {
+      window.history.replaceState(null, "", "#explore");
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
+    expect(await screen.findByRole("heading", { name: "What drives usage patterns" })).toBeInTheDocument();
+    act(() => {
+      window.history.replaceState(null, "", "#sessions");
+      window.dispatchEvent(new PopStateEvent("popstate", { state: null }));
+    });
+    expect(await screen.findByText("App test session")).toBeInTheDocument();
+  });
+
   it("renders the import screen shell", async () => {
     renderApp();
 
@@ -241,21 +321,19 @@ describe("App", () => {
     expect(await screen.findByText("Mounted source")).toBeInTheDocument();
   });
 
-  it("lets you navigate back to Import after an import exists", async () => {
-    vi.mocked(client.listImports).mockResolvedValue([
-      { import_id: 1, source_path: "/srv/Data" },
-    ] as never);
+  it("lets you navigate back to Sources & sync after data exists", async () => {
+    mockImportedSession();
 
     renderApp();
 
-    // With imports present, the app auto-advances to Sessions on first load.
-    await waitFor(() => expect(screen.getByRole("button", { name: "Sessions" })).toHaveClass("active"));
+    // Indexed sessions make Cost the first analytical destination.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Cost" })).toHaveClass("active"));
 
-    fireEvent.click(screen.getByRole("button", { name: "Import" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sources & sync" }));
 
     // The Import view must stick, not bounce back to Triage.
     expect(await screen.findByText("Projects in source")).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByRole("button", { name: "Import" })).toHaveClass("active"));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Sources & sync" })).toHaveClass("active"));
   });
 
   it("shows the Cost tab in the top nav", async () => {
@@ -309,15 +387,15 @@ describe("App", () => {
     renderApp();
 
     // Local scope: Export shares this machine's bundle.
-    fireEvent.click(await screen.findByRole("button", { name: "Export" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Share team bundle" }));
     expect(await screen.findByRole("heading", { name: /Export a team bundle/i })).toBeInTheDocument();
 
     // Team scope drops Export (nothing local to share) and the Import view
     // becomes the team-bundle importer, not the projects importer.
     fireEvent.click(screen.getByRole("button", { name: "Team" }));
-    await waitFor(() => expect(screen.queryByRole("button", { name: "Export" })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Share team bundle" })).not.toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole("button", { name: "Import" }));
+    fireEvent.click(screen.getByRole("button", { name: "Manage bundles" }));
     expect(await screen.findByRole("heading", { name: /Import a team bundle/i })).toBeInTheDocument();
     expect(screen.queryByText("Projects in source")).not.toBeInTheDocument();
   });
@@ -326,6 +404,7 @@ describe("App", () => {
     mockImportedSession();
     renderApp();
 
+    fireEvent.click(await screen.findByRole("button", { name: "Sessions" }));
     fireEvent.click(await screen.findByText("App test session"));
 
     expect(screen.getByTestId("session-historical-pricing")).toHaveTextContent("true");
@@ -341,6 +420,7 @@ describe("App", () => {
     const pushState = vi.spyOn(window.history, "pushState");
     renderApp();
 
+    fireEvent.click(await screen.findByRole("button", { name: "Sessions" }));
     fireEvent.click(await screen.findByText("App test session"));
 
     expect(pushState).toHaveBeenCalledWith(
@@ -367,6 +447,7 @@ describe("App", () => {
     const back = vi.spyOn(window.history, "back").mockImplementation(() => {});
     renderApp();
 
+    fireEvent.click(await screen.findByRole("button", { name: "Sessions" }));
     fireEvent.click(await screen.findByText("App test session"));
     fireEvent.keyDown(document.body, { key: "Backspace" });
 
@@ -383,7 +464,7 @@ describe("App", () => {
   it("returns from a session to the originating Cost view", async () => {
     mockImportedSession();
     renderApp();
-    await screen.findByText("App test session");
+    await screen.findByRole("button", { name: "Open cost session" });
 
     fireEvent.click(screen.getByRole("button", { name: "Cost" }));
     fireEvent.click(await screen.findByRole("button", { name: "Open cost session" }));
@@ -397,7 +478,7 @@ describe("App", () => {
   it("returns from a deep-linked session to Explore and preserves the event focus", async () => {
     mockImportedSession();
     renderApp();
-    await screen.findByText("App test session");
+    await screen.findByRole("button", { name: "Open cost session" });
 
     fireEvent.click(screen.getByRole("button", { name: "Explore" }));
     fireEvent.click(await screen.findByRole("button", { name: "Open explore event" }));

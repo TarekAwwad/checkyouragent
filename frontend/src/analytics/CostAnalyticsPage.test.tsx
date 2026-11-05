@@ -193,6 +193,15 @@ function renderPage(
 }
 
 describe("CostAnalyticsPage", () => {
+  it("opens with all imported history so the initial landing is not limited to recent activity", async () => {
+    renderPage();
+    await screen.findByRole("heading", { name: "Cost by model" });
+    expect(screen.getByLabelText("Date range")).toHaveValue("all");
+    expect(screen.getByLabelText("Start date")).toHaveValue("");
+    expect(screen.getByLabelText("End date")).toHaveValue("");
+    expect(getCostAnalytics.mock.calls[0][0]).toMatchObject({ dateFrom: null, dateTo: null });
+  });
+
   it("keeps the chart panels mounted while a different date range loads", async () => {
     let finishRequest!: (value: CostAnalyticsResponse) => void;
     getCostAnalytics.mockResolvedValueOnce(payload).mockImplementationOnce(() => (

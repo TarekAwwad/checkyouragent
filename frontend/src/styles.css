@@ -81,7 +81,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   font-size: 15px; font-weight: 500; letter-spacing: .02em; color: var(--text);
 }
 
-.sb-nav { display: flex; flex-direction: column; gap: 2px; }
+.sb-nav { display: flex; flex-direction: column; gap: 2px; min-height: 0; overflow-y: auto; }
 .sb-item {
   width: 100%; display: flex; align-items: center; gap: 10px;
   border: 0; background: transparent; color: var(--muted);
@@ -93,6 +93,8 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   color: var(--accent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 .sb-item:disabled { opacity: .4; }
+.sb-item:focus-visible,
+.sb-subitem:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
 .sb-ic { flex: none; }
 
 .sb-subnav {
@@ -118,8 +120,14 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
   color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 1px 6px; }
 
 .sb-bottom {
-  margin-top: auto;
+  margin-top: auto; flex: 0 0 auto;
 }
+.sb-data-nav {
+  display: flex; flex-direction: column; gap: 2px;
+  margin: 12px 0 10px; padding-top: 12px; border-top: 1px solid var(--border);
+}
+.sb-data-label { padding: 0 10px 4px; color: var(--faint); font-size: 9px; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; }
+.sb-data-item { font-size: 11.5px; font-weight: 500; }
 
 .sb-scope-row {
   padding-top: 8px;
@@ -167,6 +175,7 @@ button:disabled { cursor: not-allowed; opacity: 0.5; }
 .app-sidebar.is-collapsed .sb-wordmark,
 .app-sidebar.is-collapsed .sb-tagline,
 .app-sidebar.is-collapsed .sb-subnav { display: none; }
+.app-sidebar.is-collapsed .sb-data-label { display: none; }
 .app-sidebar.is-collapsed .sb-brand { justify-content: center; }
 .app-sidebar.is-collapsed .sb-monogram { display: block; }
 .app-sidebar.is-collapsed .sb-item { justify-content: center; padding: 9px 0; }
@@ -1642,6 +1651,7 @@ button.spike-insight:focus-visible { outline: 1px solid var(--accent); outline-o
   .app-sidebar .sb-tag,
   .app-sidebar .sb-brand-text,
   .app-sidebar .sb-subnav { display: none; }
+  .app-sidebar .sb-data-label { display: none; }
   .app-sidebar .sb-scope-row { display: none; }
   .app-sidebar .sb-scope-action { display: grid; }
   .app-sidebar .sb-brand { justify-content: center; }

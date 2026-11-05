@@ -60,7 +60,7 @@ function errorMessage(error: unknown): string {
 
 // Browser-selected JSON is posted to the app's local backend; a server-visible
 // path is read there directly. Neither route sends the bundle to a remote service.
-export default function TeamBundleImport() {
+export default function TeamBundleImport({ onViewCosts }: { onViewCosts?: () => void }) {
   const queryClient = useQueryClient();
   const config = useQuery({ queryKey: ["config"], queryFn: getRuntimeConfig });
   const imports = useQuery({ queryKey: ["team-import-list"], queryFn: listTeamImports });
@@ -107,6 +107,7 @@ export default function TeamBundleImport() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["team-import-list"] });
       queryClient.invalidateQueries({ queryKey: ["team-dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["cost-analytics", "team"] });
     },
   });
 
@@ -115,6 +116,7 @@ export default function TeamBundleImport() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["team-import-list"] });
       queryClient.invalidateQueries({ queryKey: ["team-dashboard"] });
+      queryClient.invalidateQueries({ queryKey: ["cost-analytics", "team"] });
     },
   });
 
@@ -249,6 +251,9 @@ export default function TeamBundleImport() {
 
               {importer.isError && (
                 <span className="flow-error">Import failed: {errorMessage(importer.error)}. The team dashboard was not changed.</span>
+              )}
+              {onViewCosts && !importer.isPending && (importedRecords.length > 0 || fileResults?.some((result) => ["imported", "replaced", "duplicate"].includes(result.status))) && (
+                <button type="button" className="ghost-action" onClick={onViewCosts}>View costs</button>
               )}
             </div>
           </section>

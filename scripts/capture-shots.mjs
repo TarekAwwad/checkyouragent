@@ -28,13 +28,10 @@ const MASKED_ROOT = "<configured Claude export root>";
 const settle = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const nav = (page, label) =>
-  page.locator("nav.sb-nav").getByRole("button", { name: label, exact: true }).click();
+  page.locator(".app-sidebar nav").getByRole("button", { name: label, exact: true }).click();
 
-// The Cost filter defaults to the last 30 days, but the bundled demo corpus is
-// fixed in time (2026-05-05 .. 2026-06-26). Once that corpus is older than the
-// default window every tile renders "no data in range", so the Cost stills must
-// select All time first. Without this the page still screenshots successfully,
-// it just captures empty states.
+// Keep captures on the full fixed demo corpus even if date-filter defaults
+// change later.
 async function selectAllTime(p) {
   await p.getByLabel("Date range").selectOption("all");
   await p
@@ -160,10 +157,9 @@ async function main() {
   });
   const rp = await readmeCtx.newPage();
   await rp.goto(DEMO_URL, { waitUntil: "domcontentloaded" });
-  // App.tsx auto-routes off Import to Sessions on first load once the imports
-  // query resolves (frontend/src/App.tsx, the autoRouted effect). A nav click
-  // issued before that resolves is silently undone, which captures the Sessions
-  // board into import.png. Wait for the auto-route to land before navigating.
+  // Returning users land on Cost. Open Sessions explicitly before checking
+  // the synthetic dataset and capturing the source-management page.
+  await nav(rp, "Sessions");
   await rp.locator("tbody tr").first().waitFor(WAIT);
 
   const README_DIR = join(REPO_ROOT, "docs", "screenshots");
@@ -185,7 +181,7 @@ async function main() {
   // import.png — Import screen with populated cache totals.
   // exact: true — the page also has an "Import all new" action button whose
   // accessible name would otherwise substring-match the sidebar nav button.
-  await nav(rp, "Import");
+  await nav(rp, "Sources & sync");
   const sourcePath = rp.getByPlaceholder("Path to the Claude Code export root");
   await sourcePath.waitFor(WAIT);
   // fill(), not a raw input.value assignment: this input is React-controlled

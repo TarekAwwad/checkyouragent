@@ -26,12 +26,6 @@ interface Props {
   scope?: DataScope;
 }
 
-function defaultFrom(): string {
-  const d = new Date();
-  d.setDate(d.getDate() - 30);
-  return d.toISOString();
-}
-
 function BucketSessionsPanel({
   bucket,
   bucketSize,
@@ -106,7 +100,7 @@ export default function CostAnalyticsPage({
   scope = "local",
 }: Props) {
   const isTeam = scope === "team";
-  const [filters, setFilters] = React.useState<CostAnalyticsFilters>({ dateFrom: defaultFrom() });
+  const [filters, setFilters] = React.useState<CostAnalyticsFilters>({ dateFrom: null, dateTo: null });
   const [selectedBucket, setSelectedBucket] = React.useState<string | null>(null);
 
   // projectId/model are scope-namespaced (local ids vs team synthetic ids /
