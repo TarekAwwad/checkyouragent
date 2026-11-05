@@ -6,7 +6,13 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
-from ccfr.analysis.cost_trends import build_cost_trend
+from ccfr.analysis.cost_trends import (
+    CostTrendRangeError,
+    _bound_instant,
+    _range_keys,
+    build_cost_trend,
+    lookback_bounds,
+)
 from ccfr.api import analytics
 from ccfr.api.analytics import (
     bucket_for_range,
@@ -27,6 +33,52 @@ def test_bucket_for_range_weekly_beyond_threshold() -> None:
 def test_bucket_for_range_defaults_to_day_on_missing_or_bad_bounds() -> None:
     assert bucket_for_range(None, "2026-02-01T00:00:00Z") == "day"
     assert bucket_for_range("not-a-date", "also-bad") == "day"
+
+
+@pytest.mark.parametrize(
+    ("start", "end", "expected"),
+    [
+        ("2026-01-01", "2026-02-01T00:00:00Z", "day"),
+        ("2026-01-01T00:00:00Z", "2026-02-01", "day"),
+        ("2026-01-01", "2026-04-04T00:00:00Z", "week"),
+        ("2026-01-01T00:00:00-02:00", "2026-04-04T01:00:00Z", "day"),
+    ],
+)
+def test_bucket_for_range_normalizes_naive_dates_and_preserves_offsets(start: str, end: str, expected: str) -> None:
+    assert bucket_for_range(start, end) == expected
+
+
+@pytest.mark.parametrize("bucket_size", ["day", "week"])
+def test_lookback_clamps_to_calendar_start(bucket_size: str) -> None:
+    assert lookback_bounds("0001-01-01", bucket_size) is None
+    assert lookback_bounds("0001-01-08", bucket_size) == ("0001-01-01", "0001-01-08")
+
+
+@pytest.mark.parametrize(
+    ("value", "end"),
+    [("9999-12-31", True), ("9999-12-31T23:59:59.999999Z", True), ("0001-01-01T00:00:00+01:00", False)],
+)
+def test_exclusive_date_bounds_reject_unrepresentable_instants(value: str, end: bool) -> None:
+    with pytest.raises(CostTrendRangeError, match="calendar bounds"):
+        _bound_instant(value, end=end)
+
+
+@pytest.mark.parametrize("bucket_size", ["day", "week"])
+def test_bucket_iteration_stops_at_last_representable_period(bucket_size: str) -> None:
+    keys = _range_keys({}, bucket_size=bucket_size, range_start="9999-12-30", range_end="9999-12-31")
+
+    assert keys == (["9999-12-30", "9999-12-31"] if bucket_size == "day" else ["9999-52"])
+
+
+def test_first_calendar_day_does_not_require_history_before_year_one() -> None:
+    rows, spikes = build_cost_trend(
+        {}, bucket_size="day", range_start="0001-01-01", range_end="0001-01-02",
+        history={"0001-01-01": {"per_model": {"demo": 1}}},
+    )
+
+    assert len(rows) == 2
+    assert rows[0]["baseline_period_count"] == 0
+    assert spikes == []
 
 
 def _trend_bucket(

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import sqlite3
 from bisect import bisect_right
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from ccfr.analysis.cost_trends import build_cost_trend, lookback_bounds
@@ -48,6 +48,12 @@ def bucket_for_range(start: str | None, end: str | None) -> str:
         e = datetime.fromisoformat(end.replace("Z", "+00:00"))
     except ValueError:
         return "day"
+    # Date-only bounds and timestamps without an offset represent UTC, matching
+    # the analytics bucket boundaries. Keep explicit offsets in aware values.
+    if s.tzinfo is None:
+        s = s.replace(tzinfo=timezone.utc)
+    if e.tzinfo is None:
+        e = e.replace(tzinfo=timezone.utc)
     return "week" if (e - s).days > 92 else "day"
 
 

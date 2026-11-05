@@ -3,14 +3,23 @@ from __future__ import annotations
 from collections.abc import Mapping
 from datetime import date, datetime, time, timedelta, timezone
 from statistics import median
-from typing import Any, Literal
+from typing import Any, Literal, TypeVar
 
 BucketSize = Literal["day", "week"]
 MAX_TREND_BUCKETS = 3_660
+_CalendarValue = TypeVar("_CalendarValue", date, datetime)
+_CALENDAR_BOUNDS_MESSAGE = "date range exceeds supported calendar bounds (years 0001 through 9999)"
 
 
 class CostTrendRangeError(ValueError):
     """An invalid or excessive requested trend range."""
+
+
+def _calendar_add(value: _CalendarValue, delta: timedelta) -> _CalendarValue:
+    try:
+        return value + delta
+    except OverflowError as exc:
+        raise CostTrendRangeError(_CALENDAR_BOUNDS_MESSAGE) from exc
 
 
 def _coerce_day(value: str | None) -> date | None:
@@ -56,10 +65,11 @@ def lookback_bounds(
     if day is None:
         return None
     end = _period_start(day, bucket_size)
-    start = end - timedelta(days=7 * (1 if bucket_size == "day" else 7))
+    lookback_days = min(7 * (1 if bucket_size == "day" else 7), (end - date.min).days)
+    start = end - timedelta(days=lookback_days)
     lower = _bound_instant(range_start, end=False)
     if lower is not None and lower > datetime.combine(end, time.min, timezone.utc):
-        end += timedelta(days=1 if bucket_size == "day" else 7)
+        end = _calendar_add(end, timedelta(days=1 if bucket_size == "day" else 7))
     first_day = _coerce_day(data_start)
     if first_day is not None:
         start = max(start, _period_start(first_day, bucket_size))
@@ -73,15 +83,18 @@ def _bound_instant(value: str | None, *, end: bool) -> datetime | None:
     if day is None:
         return None
     if len(value) == 10:
-        return datetime.combine(day + timedelta(days=int(end)), time.min, timezone.utc)
+        return datetime.combine(_calendar_add(day, timedelta(days=int(end))), time.min, timezone.utc)
     try:
         instant = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
-    instant = instant.replace(tzinfo=timezone.utc) if instant.tzinfo is None else instant.astimezone(timezone.utc)
+    try:
+        instant = instant.replace(tzinfo=timezone.utc) if instant.tzinfo is None else instant.astimezone(timezone.utc)
+    except OverflowError as exc:
+        raise CostTrendRangeError(_CALENDAR_BOUNDS_MESSAGE) from exc
     # The date picker uses inclusive 23:59:59.999 boundaries. Normalize that
     # final millisecond to the following midnight when assessing completeness.
-    return instant + timedelta(milliseconds=1) if end else instant
+    return _calendar_add(instant, timedelta(milliseconds=1)) if end else instant
 
 
 def _is_complete(
@@ -91,7 +104,7 @@ def _is_complete(
     range_end: str | None,
 ) -> bool:
     first = datetime.combine(start, time.min, timezone.utc)
-    after = first + timedelta(days=1 if bucket_size == "day" else 7)
+    after = _calendar_add(first, timedelta(days=1 if bucket_size == "day" else 7))
     lower = _bound_instant(range_start, end=False)
     upper = _bound_instant(range_end, end=True)
     return bool(
@@ -149,6 +162,8 @@ def _range_keys(
         if key not in seen:
             keys.append(key)
             seen.add(key)
+        if cursor == end:
+            break
         cursor += timedelta(days=step_days)
     return keys
 
@@ -180,7 +195,7 @@ def build_cost_trend(
     )
     if keys and (history or history_start):
         first_day = _day_for_bucket_key(keys[0], bucket_size)
-        if first_day is not None:
+        if first_day is not None and first_day > date.min:
             for history_key in _range_keys(
                 history,
                 bucket_size=bucket_size,
@@ -238,7 +253,7 @@ def build_cost_trend(
 
         period_metadata = {
             "bucket_start": start.isoformat() if start is not None else None,
-            "bucket_end": (start + timedelta(days=0 if bucket_size == "day" else 6)).isoformat() if start is not None else None,
+            "bucket_end": _calendar_add(start, timedelta(days=0 if bucket_size == "day" else 6)).isoformat() if start is not None else None,
             "baseline_period_count": len(preceding),
             "is_complete": complete,
         }

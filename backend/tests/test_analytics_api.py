@@ -4,14 +4,14 @@ import sqlite3
 from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
-
-from ccfr.api import analytics, repository
-from ccfr.analysis import usage_map
-from ccfr.api.deps import get_db
 from ccfr import settings as settings_mod
+from ccfr.analysis import usage_map
+from ccfr.api import analytics, repository
+from ccfr.api.deps import get_db
 from ccfr.main import create_app
 from ccfr.storage import init_db
+from fastapi.testclient import TestClient
+
 from tests.test_analytics import _seed  # reuse the deterministic seed
 
 
@@ -68,6 +68,49 @@ def test_cost_analytics_endpoint_rejects_oversized_or_invalid_date_range(
     assert "too many buckets" in oversized.json()["detail"]
     assert invalid.status_code == 400
     assert "date_from" in invalid.json()["detail"]
+
+
+@pytest.mark.parametrize("endpoint", ["/api/analytics/cost", "/api/team/analytics/cost"])
+def test_cost_endpoints_accept_representable_early_dates(client: TestClient, endpoint: str) -> None:
+    response = client.get(endpoint, params={"date_from": "0001-01-01", "date_to": "0001-01-02"})
+
+    assert response.status_code == 200
+    assert [row["bucket"] for row in response.json()["over_time"]] == ["0001-01-01", "0001-01-02"]
+    assert response.json()["meta"]["total_usd"] == 0
+
+
+@pytest.mark.parametrize("endpoint", ["/api/analytics/cost", "/api/team/analytics/cost"])
+@pytest.mark.parametrize(
+    ("date_from", "date_to"),
+    [("2026-05-01", "2026-05-03T00:00:00Z"), ("2026-05-01T00:00:00Z", "2026-05-03")],
+)
+def test_cost_endpoints_accept_mixed_date_and_timestamp_bounds(
+    client: TestClient, endpoint: str, date_from: str, date_to: str,
+) -> None:
+    response = client.get(endpoint, params={"date_from": date_from, "date_to": date_to})
+
+    assert response.status_code == 200
+    assert response.json()["meta"]["bucket"] == "day"
+
+
+@pytest.mark.parametrize("endpoint", ["/api/analytics/cost", "/api/team/analytics/cost"])
+@pytest.mark.parametrize(
+    ("date_from", "date_to"),
+    [
+        ("9999-12-30", "9999-12-31"),
+        ("9999-12-31T12:00:00Z", "9999-12-31T23:59:59.999Z"),
+        ("9999-09-01", "9999-12-30"),
+        ("0001-01-01T00:00:00+01:00", "0001-01-02T00:00:00Z"),
+        ("0001-01-01T00:00:00+01:00", "0001-01-02"),
+    ],
+)
+def test_cost_endpoints_reject_unrepresentable_calendar_arithmetic(
+    client: TestClient, endpoint: str, date_from: str, date_to: str,
+) -> None:
+    response = client.get(endpoint, params={"date_from": date_from, "date_to": date_to})
+
+    assert response.status_code == 400
+    assert "calendar bounds" in response.json()["detail"]
 
 
 def test_cost_analytics_endpoint_applies_model_filter(client: TestClient) -> None:
