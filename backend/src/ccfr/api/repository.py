@@ -155,7 +155,7 @@ def cache_stats(conn: sqlite3.Connection) -> dict[str, Any]:
     counts = {
         "project_count": "SELECT COUNT(*) FROM projects",
         "session_count": "SELECT COUNT(*) FROM sessions",
-        "event_count": "SELECT COUNT(*) FROM events",
+        "event_count": "SELECT COUNT(*) FROM events WHERE is_replay = 0",
         "subagent_count": "SELECT COUNT(*) FROM subagents",
         "persisted_output_count": "SELECT COUNT(*) FROM persisted_outputs",
     }
@@ -244,7 +244,7 @@ def list_projects(conn: sqlite3.Connection, *, historical: bool = True) -> list[
             p.export_name,
             p.inferred_cwd,
             COUNT(DISTINCT s.id) AS session_count,
-            COUNT(DISTINCT e.id) AS event_count,
+            COUNT(DISTINCT CASE WHEN e.is_replay = 0 THEN e.id END) AS event_count,
             COUNT(DISTINCT sa.id) AS subagent_count
         FROM projects p
         LEFT JOIN sessions s ON s.project_id = p.id

@@ -24,9 +24,15 @@ is the separate action that starts the PyPI workflow.
 - [ ] `backend/pyproject.toml`, the `checkyouragent` entry in `backend/uv.lock`,
   `frontend/package.json`, and both root version fields in
   `frontend/package-lock.json` contain the same version.
+- [ ] The backend `__version__` and the missing-package fallback in
+  `ccfr.config.app_version()` agree with the release version.
 - [ ] `CHANGELOG.md` has a dated section for that version and no release work is
   left only under `Unreleased`.
 - [ ] Documentation, screenshots, and demo media describe the release behavior.
+- [ ] Cost project/model selections remain visible when a date range has no
+  activity for them, and clearing a selection updates the request.
+- [ ] Cost and Sessions preserve their investigation context when returning
+  from a session; local and team state remain separate.
 - [ ] License files, project links, and package metadata are current.
 
 ## Security and Privacy

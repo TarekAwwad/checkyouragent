@@ -37,10 +37,10 @@ const DEMO_SESSION_COUNT = 46;
 // awaited on a visible element (condition-based), never on the sleep alone.
 const settle = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// Sidebar navigation, scoped to .sb-nav so page-body buttons with the same
+// Sidebar navigation, including both analysis and data groups, so page-body buttons with the same
 // accessible name ("Export PNG", "Import all new", …) never collide.
 const nav = (page, label) =>
-  page.locator("nav.sb-nav").getByRole("button", { name: label, exact: true }).click();
+  page.locator(".app-sidebar nav").getByRole("button", { name: label, exact: true }).click();
 
 async function assertSyntheticSessions(page) {
   const sessions = await page.evaluate(async () => {
@@ -166,7 +166,7 @@ const SCREENS = [
   {
     name: "import",
     go: async (page) => {
-      await nav(page, "Import");
+      await nav(page, "Sources & sync");
     },
     ready: "input[placeholder='Path to the Claude Code export root']",
     pre: 400,
@@ -174,7 +174,7 @@ const SCREENS = [
   {
     name: "team-export",
     go: async (page) => {
-      await nav(page, "Export");
+      await nav(page, "Share team bundle");
     },
     ready: ".team-export-page .card",
     pre: 400,

@@ -1,5 +1,34 @@
 # Documentation Audit
 
+## 0.4.0 documentation update — 2026-11-05
+
+Release documentation and metadata were updated for the 0.4.0 candidate. The
+earlier 0.2.0 audit below is retained as a historical snapshot rather than being
+presented as a new audit of every listed file.
+
+- Local navigation now leads with Cost, Sessions, and Explore. Sources & sync
+  and Share team bundle live under Data. Team navigation leads with Cost and
+  Overview, with Manage bundles under Data.
+- Cost initially includes all imported history. Returning visits restore the
+  last analytical page for the active scope; import results retain an explicit
+  View costs action. Returning from a session preserves Cost filters or Sessions
+  search, filters, and sorting for the current workspace visit.
+- Cost documentation and the glossary describe complete-period spike baselines,
+  lookback history separate from visible totals, suppressed partial-pricing
+  comparisons, readable weekly dates, and visible zero-activity filter selections.
+- The 0.4.0 changelog records replay-accounting corrections, Cost/navigation
+  changes, and date-input hardening. Upgrade notes retain the requirement to
+  regenerate older team bundles and the automatic local-cache correction.
+- Release metadata and lockfile root versions agree on 0.4.0 without changing
+  dependency versions. Publication still requires the checks in
+  [the release checklist](release-checklist.md), including green CI for the
+  merged release commit and an installed candidate-wheel smoke test.
+- README and landing-carousel screenshots were refreshed from the installed
+  0.4.0 candidate using only the bundled synthetic demo. The capture script
+  bounds scrollable panels to the visible region and masks the source path.
+
+## Historical 0.2.0 audit
+
 Audit date: 2026-08-16.
 
 This is a dated repository snapshot, not a promise that documentation will stay

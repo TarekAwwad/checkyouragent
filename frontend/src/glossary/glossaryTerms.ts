@@ -65,7 +65,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     category: "Structure",
     term: "Large output",
     definition:
-      "A tool output big enough that it was stored on its own rather than inline with the event — typically a heavy file read or verbose command output. The Import page's \"Large outputs\" stat counts these.",
+      "A tool output big enough that it was stored on its own rather than inline with the event — typically a heavy file read or verbose command output. The Sources & sync page's \"Large outputs\" stat counts these.",
   },
 
   // Activity — what happens inside a session.
@@ -320,6 +320,12 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     category: "Cost",
     term: "Spend spike",
     definition:
-      "A point in time where cost jumped sharply above the surrounding baseline. The Cost page's \"Largest spike\" names the date bucket and how much it jumped.",
+      "A complete day or week whose estimated cost rose enough above recent typical spend to qualify for investigation. The Cost chart labels the largest daily or weekly increase with its date, dollar increase, total, baseline, and comparison window.",
+    detail: [
+      "Baseline: median of the usable complete periods among the preceding 7 days or weeks; at least 3 are required.",
+      "Qualification: at least 2 fully priced sessions, an increase of at least $5, and at least 50% above a positive baseline. A zero baseline can qualify without a percentage.",
+      "History before the visible range can inform the baseline without adding to the displayed totals. Incomplete periods and unpriced periods do not contribute to the baseline; periods before imported history begins do not create invented zero-spend history.",
+      "Spike comparisons require complete pricing for the selected range. Percentages are omitted for zero or very small baselines.",
+    ],
   },
 ];

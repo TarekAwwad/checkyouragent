@@ -193,19 +193,73 @@ function renderPage(
 }
 
 describe("CostAnalyticsPage", () => {
+  it("opens with all imported history so the initial landing is not limited to recent activity", async () => {
+    renderPage();
+    await screen.findByRole("heading", { name: "Cost by model" });
+    expect(screen.getByLabelText("Date range")).toHaveValue("all");
+    expect(screen.getByLabelText("Start date")).toHaveValue("");
+    expect(screen.getByLabelText("End date")).toHaveValue("");
+    expect(getCostAnalytics.mock.calls[0][0]).toMatchObject({ dateFrom: null, dateTo: null });
+  });
+
+  it("keeps the chart panels mounted while a different date range loads", async () => {
+    let finishRequest!: (value: CostAnalyticsResponse) => void;
+    getCostAnalytics.mockResolvedValueOnce(payload).mockImplementationOnce(() => (
+      new Promise<CostAnalyticsResponse>((resolve) => { finishRequest = resolve; })
+    ));
+    renderPage();
+    const heading = await screen.findByRole("heading", { name: "Spend over time" });
+    const modelCosts = screen.getByRole("region", { name: "Model costs" });
+
+    fireEvent.change(screen.getByLabelText("Date range"), { target: { value: "7" } });
+
+    expect(await screen.findByText("Updating…")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Spend over time" })).toBe(heading);
+    expect(screen.getByRole("region", { name: "Model costs" })).toBe(modelCosts);
+    expect(screen.queryByText("Loading cost analytics…")).not.toBeInTheDocument();
+
+    finishRequest({ ...payload, meta: { ...payload.meta, total_usd: 99 } });
+    expect(await screen.findByText("$99.00")).toBeInTheDocument();
+    await vi.waitFor(() => expect(screen.queryByText("Updating…")).not.toBeInTheDocument());
+  });
+
+  it.each(["scope", "pricing"] as const)("does not retain results across a %s change", async (change) => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const view = render(
+      <QueryClientProvider client={qc}>
+        <CostAnalyticsPage onOpenSession={() => {}} scope="local" historical />
+      </QueryClientProvider>,
+    );
+    await screen.findByRole("heading", { name: "Cost by model" });
+    if (change === "scope") getTeamCostAnalytics.mockImplementation(() => new Promise(() => {}));
+    else getCostAnalytics.mockImplementation(() => new Promise(() => {}));
+
+    view.rerender(
+      <QueryClientProvider client={qc}>
+        <CostAnalyticsPage onOpenSession={() => {}} scope={change === "scope" ? "team" : "local"} historical={change === "scope"} />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("Loading cost analytics…")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Cost by model" })).not.toBeInTheDocument();
+  });
+
   it("renders the total, a project row, and a clickable session", async () => {
     renderPage();
     expect(await screen.findAllByText(/\$48\.00/)).not.toHaveLength(0);
     expect(await screen.findAllByText("alpha")).not.toHaveLength(0);
     expect(await screen.findAllByText("Session One")).not.toHaveLength(0);
     expect(await screen.findAllByText("Estimated API-equivalent cache savings")).not.toHaveLength(0);
-    // the cache-savings tile now carries a token equivalent for Max users
-    expect(await screen.findByText(/1M reused vs uncached input/)).toBeInTheDocument();
+    expect(await screen.findByText(/1M read tokens reused/)).toBeInTheDocument();
     expect(await screen.findByText("Session insights")).toBeInTheDocument();
     expect(await screen.findAllByText("Turn distribution")).not.toHaveLength(0);
     expect(screen.queryByRole("button", { name: "Review" })).not.toBeInTheDocument();
     expect(screen.getByText("Estimated API-equivalent cost")).toBeInTheDocument();
-    expect(screen.getAllByText("Estimated API-equivalent cache savings")).not.toHaveLength(0);
+    expect(screen.getAllByText("Estimated API-equivalent cache savings")).toHaveLength(1);
+    expect(screen.queryByLabelText("Cost insights")).not.toBeInTheDocument();
+    expect(screen.getByText("100% of spend")).toBeInTheDocument();
+    const trendTile = screen.getByRole("heading", { name: "Spend over time" }).closest("section")!;
+    expect(within(trendTile).getByText("Largest daily increase")).toBeInTheDocument();
     expect(screen.getAllByText("sonnet-4-5-20250929")).not.toHaveLength(0);
   });
 
@@ -288,10 +342,10 @@ describe("CostAnalyticsPage", () => {
     const onOpenSession = vi.fn();
     renderPage(onOpenSession);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Show largest spike sessions for 2026-05-02" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Show largest daily increase sessions for May 2, 2026" }));
 
-    const spikePanel = await screen.findByLabelText("Sessions for 2026-05-02");
-    expect(within(spikePanel).getByRole("heading", { name: "Sessions on 2026-05-02" })).toBeInTheDocument();
+    const spikePanel = await screen.findByLabelText("Sessions for May 2, 2026");
+    expect(within(spikePanel).getByRole("heading", { name: "Sessions on May 2, 2026" })).toBeInTheDocument();
     expect(within(spikePanel).getByText(/\$48\.00 total.*\+\$30\.00 above baseline/)).toBeInTheDocument();
     expect(within(spikePanel).getByText("Session One")).toBeInTheDocument();
 
@@ -299,22 +353,22 @@ describe("CostAnalyticsPage", () => {
 
     expect(onOpenSession).toHaveBeenCalledWith(7);
 
-    fireEvent.click(screen.getByRole("button", { name: "Hide largest spike sessions for 2026-05-02" }));
+    fireEvent.click(screen.getByRole("button", { name: "Hide largest daily increase sessions for May 2, 2026" }));
 
-    expect(screen.queryByLabelText("Sessions for 2026-05-02")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Sessions for May 2, 2026")).not.toBeInTheDocument();
   });
 
   it("opens a bucket's contributor sessions directly from Spend over time", async () => {
     renderPage();
 
-    fireEvent.click(await screen.findByRole("button", { name: /2026-05-02.*1 session priced/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /May 2, 2026.*1 session priced/i }));
 
-    const panel = await screen.findByLabelText("Sessions for 2026-05-02");
+    const panel = await screen.findByLabelText("Sessions for May 2, 2026");
     expect(within(panel).getByText("Session One")).toBeInTheDocument();
 
-    fireEvent.click(within(panel).getByRole("button", { name: "Close sessions for 2026-05-02" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Close sessions for May 2, 2026" }));
 
-    expect(screen.queryByLabelText("Sessions for 2026-05-02")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Sessions for May 2, 2026")).not.toBeInTheDocument();
   });
 
   it("labels partial prices as lower bounds and suppresses unsupported comparisons", async () => {
@@ -332,9 +386,10 @@ describe("CostAnalyticsPage", () => {
 
     expect(await screen.findByText("≥$48.00")).toBeInTheDocument();
     expect(screen.getByText(/lower bound.*excludes 1 unpriced model/i)).toBeInTheDocument();
-    expect(screen.getByText("Spike detection suppressed")).toBeInTheDocument();
-    expect(screen.getByText("Model share unavailable")).toBeInTheDocument();
-    expect(screen.getAllByText("Cache comparison unavailable")).toHaveLength(2);
+    expect(screen.getByText("Spike comparison unavailable")).toBeInTheDocument();
+    expect(screen.getByText("Spend shares are hidden because some model usage is unpriced.")).toBeInTheDocument();
+    expect(screen.queryByText(/% of spend/)).not.toBeInTheDocument();
+    expect(screen.getAllByText("Cache comparison unavailable")).toHaveLength(1);
     expect(screen.getByText("Priced usage only; unpriced models are excluded.")).toBeInTheDocument();
     expect(screen.queryByText("Estimated API-equivalent cache savings")).not.toBeInTheDocument();
   });

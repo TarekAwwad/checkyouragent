@@ -8,6 +8,7 @@ import webbrowser
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+from ccfr.config import app_version
 from ccfr.cli_export import add_export_bundle_parser
 
 # Hosts for which serve keeps the Host-header guard on by default. Anything else
@@ -100,7 +101,7 @@ def _cya_banner(color: bool) -> str:
     cya = f"{green}CYA{reset}" if color else "CYA"
     tagline = f"{green}Cover Your Assets{reset}" if color else "Cover Your Assets"
     return "\n".join((
-        f"{cya} - Check Your Agent  //  {tagline}",
+        f"{cya} - Check Your Agent v{app_version()}  //  {tagline}",
         "Source-available forensics for AI coding-agent spend. Runs local; "
         "nothing leaves this machine.",
         "https://checkyouragent.dev",

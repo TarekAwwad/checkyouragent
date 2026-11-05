@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import sqlite3
 from bisect import bisect_right
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
-from ccfr.analysis.cost_trends import build_cost_trend
+from ccfr.analysis.cost_trends import build_cost_trend, lookback_bounds
 from ccfr.analysis.pricing import (
     ModelPrice,
     PriceTimeline,
@@ -22,8 +22,8 @@ from ccfr.analysis.pricing import (
     match_price,
     normalize_model_key,
 )
-from ccfr.naming import project_display_name
 from ccfr.config import pricing_dir, pricing_path
+from ccfr.naming import project_display_name
 
 # Payload category -> messages column. input_tokens == base+5m+1h+read, so we sum the four
 # breakdown columns plus output and never touch input_tokens (avoids double counting).
@@ -48,6 +48,12 @@ def bucket_for_range(start: str | None, end: str | None) -> str:
         e = datetime.fromisoformat(end.replace("Z", "+00:00"))
     except ValueError:
         return "day"
+    # Date-only bounds and timestamps without an offset represent UTC, matching
+    # the analytics bucket boundaries. Keep explicit offsets in aware values.
+    if s.tzinfo is None:
+        s = s.replace(tzinfo=timezone.utc)
+    if e.tzinfo is None:
+        e = e.replace(tzinfo=timezone.utc)
     return "week" if (e - s).days > 92 else "day"
 
 
@@ -224,6 +230,7 @@ def session_turn_cost_breakdown(conn: sqlite3.Connection, session_id: int, *, hi
         ).fetchall()
     }
 
+    active_turn_starts: set[int] = set()
     for row in conn.execute(
         f"""
         SELECT
@@ -236,6 +243,7 @@ def session_turn_cost_breakdown(conn: sqlite3.Connection, session_id: int, *, hi
         FROM events e
         LEFT JOIN messages m ON m.event_id = e.id
         WHERE e.session_id = ?
+          AND e.is_replay = 0
         ORDER BY e.id
         """,
         (session_id,),
@@ -248,6 +256,8 @@ def session_turn_cost_breakdown(conn: sqlite3.Connection, session_id: int, *, hi
         start_event_id = turn_ids[turn_index]
         turn = turns_by_start[start_event_id]
         turn["event_count"] += 1
+        if row["role"] in {"user", "assistant"}:
+            active_turn_starts.add(start_event_id)
         if row["role"] == "assistant":
             turn["assistant_message_count"] += 1
         turn["tool_call_count"] += tool_call_count_by_event.get(event_id, 0)
@@ -271,6 +281,11 @@ def session_turn_cost_breakdown(conn: sqlite3.Connection, session_id: int, *, hi
         turn["cache_write_tokens"] += _cache_write_tokens_total(breakdown)
         turn["_models"].add(str(model))
 
+    # Keep every prompt as a boundary (a resume can continue an old prompt),
+    # but require a non-replayed user or assistant message to retain its turn.
+    # UUID-less metadata copies, such as file-history snapshots, cannot keep old
+    # turns as zero-cost observations. New messages still count without a price.
+    turns = [turn for turn in turns if turn["start_event_id"] in active_turn_starts]
     values = [turn["usd"] for turn in turns]
     stats = _turn_cost_stat(values)
     threshold = _outlier_threshold(values)
@@ -332,7 +347,7 @@ def _turn_cost_stats(
         FROM events e
         JOIN messages m ON m.event_id = e.id
         JOIN sessions s ON s.id = e.session_id
-        {where}
+        {where} {'AND' if where else 'WHERE'} e.is_replay = 0
         ORDER BY e.session_id, e.id
         """,
         params,
@@ -380,13 +395,16 @@ def cost_analytics(
         return model_key is None or normalize_model_key(raw or "") == model_key
 
     # Effective time span -> bucket granularity for the over_time series.
+    span_where, span_params = _where(None, None, project_id)
     span = conn.execute(
         f"SELECT MIN(e.timestamp) AS lo, MAX(e.timestamp) AS hi "
-        f"FROM events e JOIN sessions s ON s.id = e.session_id{where}",
-        params,
+        f"FROM events e JOIN sessions s ON s.id = e.session_id{span_where}",
+        span_params,
     ).fetchone()
     bucket = bucket_for_range(date_from or span["lo"], date_to or span["hi"])
-    bucket_expr = "strftime('%Y-%m-%d', e.timestamp)" if bucket == "day" else "strftime('%Y-%W', e.timestamp)"
+    # Use the Monday's year for every day in a week, including New Year.
+    monday_expr = "date(e.timestamp, '-' || ((CAST(strftime('%w', e.timestamp) AS INTEGER) + 6) % 7) || ' days')"
+    bucket_expr = "strftime('%Y-%m-%d', e.timestamp)" if bucket == "day" else f"strftime('%Y-%W', {monday_expr})"
 
     treemap: dict[int, dict[str, Any]] = {}
     by_model: dict[str, dict[str, Any]] = {}
@@ -534,21 +552,35 @@ def cost_analytics(
         s["usd"] += usd
         s["tokens"] += _tokens_total(row)
 
+    def trend_rows(trend_where: str, trend_params: list[Any]) -> list[sqlite3.Row]:
+        return conn.execute(
+            f"""
+            SELECT {bucket_expr} AS bucket, s.id AS id, s.session_id AS session_id, s.title AS title,
+                   p.export_name AS project_name, p.inferred_cwd AS project_cwd, m.model AS model,
+                   ({period_expr}) AS price_period, {cols}
+            FROM messages m
+            JOIN events e ON e.id = m.event_id
+            JOIN sessions s ON s.id = e.session_id
+            JOIN projects p ON p.id = s.project_id
+            {trend_where}
+            GROUP BY bucket, s.id, m.model, price_period
+            """,
+            trend_params,
+        ).fetchall()
+
     trend_buckets: dict[str, dict[str, Any]] = {}
-    for row in conn.execute(
-        f"""
-        SELECT {bucket_expr} AS bucket, s.id AS id, s.session_id AS session_id, s.title AS title,
-               p.export_name AS project_name, p.inferred_cwd AS project_cwd, m.model AS model,
-               ({period_expr}) AS price_period, {cols}
-        FROM messages m
-        JOIN events e ON e.id = m.event_id
-        JOIN sessions s ON s.id = e.session_id
-        JOIN projects p ON p.id = s.project_id
-        {where}
-        GROUP BY bucket, s.id, m.model, price_period
-        """,
-        params,
-    ).fetchall():
+    history_buckets: dict[str, dict[str, Any]] = {}
+    history_bounds = lookback_bounds(date_from, bucket, data_start=span["lo"])
+    history_rows: list[sqlite3.Row] = []
+    if history_bounds:
+        history_where, history_params = _where(history_bounds[0], None, project_id)
+        history_where += " AND e.timestamp < ?"
+        history_params.append(history_bounds[1])
+        history_rows = trend_rows(history_where, history_params)
+    for row, buckets in (
+        [(row, trend_buckets) for row in trend_rows(where, params)]
+        + [(row, history_buckets) for row in history_rows]
+    ):
         if row["bucket"] is None or not matches(row["model"]):
             continue
         breakdown = _breakdown(row)
@@ -557,7 +589,7 @@ def cost_analytics(
         price = _price(row["price_period"], row["model"])
         usd = cost_usd(price, breakdown) if price else 0.0
         bucket_key = row["bucket"]
-        trend = trend_buckets.setdefault(
+        trend = buckets.setdefault(
             bucket_key,
             {
                 "per_model": {},
@@ -654,9 +686,12 @@ def cost_analytics(
     over_time_out, spikes_out = build_cost_trend(
         trend_input,
         bucket_size=bucket,
-        range_start=date_from or span["lo"],
-        range_end=date_to or span["hi"],
+        range_start=date_from,
+        range_end=date_to,
         suppress_spikes=not price_available or bool(unpriced),
+        history=history_buckets,
+        history_start=history_bounds[0] if history_bounds else None,
+        coverage_start=span["lo"],
     )
     sessions_out = sorted(
         ({**s, "usd": round(s["usd"], 6)} for s in sessions.values()),

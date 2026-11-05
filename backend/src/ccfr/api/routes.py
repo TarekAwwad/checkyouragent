@@ -141,6 +141,7 @@ def _progress_callback(
 @router.get("/config", response_model=RuntimeConfigResponse)
 def get_config() -> RuntimeConfigResponse:
     return RuntimeConfigResponse(
+        app_version=config.app_version(),
         import_root=str(import_root()),
         team_bundle_root=str(team_bundle_root()),
         database_path=str(database_path()),

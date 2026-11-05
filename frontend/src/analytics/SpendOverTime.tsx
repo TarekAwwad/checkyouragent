@@ -4,22 +4,26 @@ import {
   ACCENT_COLOR,
   buildSpendArea,
   displayModelName,
+  formatSignedUsd,
   formatUsd,
   orderedModels,
   FALLBACK_COLOR,
 } from "./chartGeometry";
+import { formatCostPeriod } from "./costPeriods";
+import SpikeInsight from "./SpikeInsight";
+import type { SpendViewState } from "../shell/investigationState";
 
 interface Props {
   payload: CostAnalyticsResponse;
   colors: Record<string, string>;
   selectedBucket?: string | null;
   onSelectBucket?: (bucket: string) => void;
+  viewState?: SpendViewState;
+  onViewStateChange?: React.Dispatch<React.SetStateAction<SpendViewState>>;
 }
 
 const W = 600;
 const H = 150;
-
-type DisplayMode = "total" | "model";
 
 function coverageLabel(bucket: OverTimeBucket): string {
   if (bucket.session_count === 0) return "no sessions";
@@ -43,11 +47,25 @@ export default function SpendOverTime({
   colors,
   selectedBucket,
   onSelectBucket,
+  viewState,
+  onViewStateChange,
 }: Props) {
-  const [mode, setMode] = React.useState<DisplayMode>("total");
-  const [isolatedModel, setIsolatedModel] = React.useState<string | null>(null);
+  const [localView, setLocalView] = React.useState<SpendViewState>({ mode: "total", isolatedModel: null });
+  const { mode, isolatedModel } = viewState ?? localView;
+  const setView = onViewStateChange ?? setLocalView;
+  const setMode = (next: SpendViewState["mode"]) => setView((current) => ({ ...current, mode: next }));
+  const setIsolatedModel = React.useCallback((next: React.SetStateAction<string | null>) => {
+    setView((current) => ({ ...current, isolatedModel: typeof next === "function" ? next(current.isolatedModel) : next }));
+  }, [setView]);
   const [hoveredBucket, setHoveredBucket] = React.useState<string | null>(null);
   const [localSelectedBucket, setLocalSelectedBucket] = React.useState<string | null>(null);
+  const gradientId = `spend-fill-${React.useId().replace(/:/g, "")}`;
+  const fullOrder = orderedModels(payload.by_model);
+  const effectiveIsolation = isolatedModel && fullOrder.includes(isolatedModel) ? isolatedModel : null;
+
+  React.useEffect(() => {
+    if (isolatedModel && !effectiveIsolation) setIsolatedModel(null);
+  }, [isolatedModel, effectiveIsolation, setIsolatedModel]);
 
   const heading = (
     <div className="session-visual-heading sot-heading">
@@ -80,21 +98,29 @@ export default function SpendOverTime({
         {heading}
         <div className="empty-state">No spend in range.</div>
         <div className="sot-legend-slot" aria-hidden="true" />
+        <div className="sot-spike-slot"><SpikeInsight payload={payload} /></div>
       </div>
     );
   }
-  const fullOrder = orderedModels(payload.by_model);
-  const order = isolatedModel ? fullOrder.filter((model) => model === isolatedModel) : fullOrder;
+  const order = effectiveIsolation ? [effectiveIsolation] : fullOrder;
   const chartBuckets = mode === "total"
     ? payload.over_time.map((bucket) => ({ ...bucket, per_model: { total: bucket.total_usd } }))
     : payload.over_time;
   const chartOrder = mode === "total" ? ["total"] : order;
   const area = buildSpendArea(chartBuckets, chartOrder, W, H);
+  const qualifiedSpikes = new Set(
+    mode === "total" && payload.meta.available && !payload.meta.costs_partial
+      ? payload.over_time
+        .filter((bucket) => bucket.is_spike && bucket.is_complete !== false && !bucket.costs_are_lower_bound)
+        .map((bucket) => bucket.bucket)
+      : [],
+  );
   const controlled = selectedBucket !== undefined;
   const effectiveSelected = controlled ? selectedBucket : localSelectedBucket;
   const activeBucketKey = hoveredBucket ?? effectiveSelected;
   const activeBucket = payload.over_time.find((bucket) => bucket.bucket === activeBucketKey) ?? null;
   const activePoint = area.points.find((point) => point.bucket === activeBucketKey) ?? null;
+  const periods = new Map(payload.over_time.map((bucket) => [bucket.bucket, bucket]));
   const selectBucket = (bucket: string) => {
     const next = effectiveSelected === bucket ? null : bucket;
     if (!controlled) setLocalSelectedBucket(next);
@@ -107,6 +133,12 @@ export default function SpendOverTime({
       <div className="sot-plot">
         <span className="sot-axis-title sot-axis-title-y">Estimated cost (USD)</span>
         <svg className="sot-svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" aria-label="Spend over time">
+          <defs>
+            <linearGradient id={gradientId} x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor={ACCENT_COLOR} stopOpacity={0.3} />
+              <stop offset="100%" stopColor={ACCENT_COLOR} stopOpacity={0.02} />
+            </linearGradient>
+          </defs>
           {area.yTicks.map((t) => (
             <line key={t.y} className="sot-grid" x1={0} y1={t.y} x2={W} y2={t.y} />
           ))}
@@ -114,8 +146,8 @@ export default function SpendOverTime({
             <g key={p.model}>
               <path
                 d={p.areaPath}
-                fill={p.model === "total" ? ACCENT_COLOR : colors[p.model] ?? FALLBACK_COLOR}
-                fillOpacity={p.model === "total" ? 0.16 : 0.2}
+                fill={p.model === "total" ? `url(#${gradientId})` : colors[p.model] ?? FALLBACK_COLOR}
+                fillOpacity={p.model === "total" ? 1 : 0.2}
               />
               <path
                 data-series={p.model}
@@ -141,7 +173,7 @@ export default function SpendOverTime({
               key={bucket.bucket}
               className={`sot-hit${effectiveSelected === bucket.bucket ? " is-selected" : ""}`}
               style={{ left: `${(before / W) * 100}%`, width: `${((after - before) / W) * 100}%` }}
-              aria-label={`${bucket.bucket}: ${costLabel(bucket)}, ${coverageLabel(bucket)}`}
+              aria-label={`${formatCostPeriod(bucket, payload.meta.bucket)}: ${costLabel(bucket)}, ${coverageLabel(bucket)}${bucket.is_complete === false ? ", partial period" : ""}${qualifiedSpikes.has(bucket.bucket) ? ", unusual increase" : ""}`}
               onMouseEnter={() => setHoveredBucket(bucket.bucket)}
               onMouseLeave={() => setHoveredBucket(null)}
               onFocus={() => setHoveredBucket(bucket.bucket)}
@@ -156,11 +188,19 @@ export default function SpendOverTime({
             />
           );
         })}
+        {area.points.filter((point) => qualifiedSpikes.has(point.bucket)).map((point) => (
+          <i
+            key={point.bucket}
+            className="sot-spike-marker"
+            style={{ left: `${(point.x / W) * 100}%`, top: plotTop(point.y) }}
+            aria-hidden="true"
+          />
+        ))}
         {activePoint && (
           <>
             <i className="sot-crosshair" style={{ left: `${(activePoint.x / W) * 100}%` }} />
             <i
-              className="sot-point"
+              className={`sot-point${qualifiedSpikes.has(activePoint.bucket) ? " is-spike" : ""}`}
               style={{ left: `${(activePoint.x / W) * 100}%`, top: plotTop(activePoint.y) }}
             />
           </>
@@ -170,9 +210,15 @@ export default function SpendOverTime({
             className={`sot-tooltip${activePoint.x > W * 0.58 ? " is-left" : ""}`}
             role="status"
           >
-            <strong>{activeBucket.bucket}</strong>
+            <strong>{formatCostPeriod(activeBucket, payload.meta.bucket)}</strong>
             <b>{costLabel(activeBucket)}</b>
             <span>{coverageLabel(activeBucket)}</span>
+            {qualifiedSpikes.has(activeBucket.bucket) && (
+              <span className="sot-tooltip-spike">
+                Unusual increase{activeBucket.delta_usd !== null ? ` · ${formatSignedUsd(activeBucket.delta_usd)} above baseline` : ""}
+              </span>
+            )}
+            {activeBucket.is_complete === false && <span>Partial period · excluded from spike comparisons</span>}
             {Object.entries(activeBucket.per_model)
               .filter(([, usd]) => usd > 0)
               .sort(([, a], [, b]) => b - a)
@@ -191,11 +237,12 @@ export default function SpendOverTime({
             key={x.label}
             className={index === 0 ? "is-first" : index === area.xLabels.length - 1 ? "is-last" : ""}
             style={{ left: `${(x.x / W) * 100}%` }}
+            title={formatCostPeriod(periods.get(x.label) ?? { bucket: x.label }, payload.meta.bucket)}
           >
-            {x.label}
+            {formatCostPeriod(periods.get(x.label) ?? { bucket: x.label }, payload.meta.bucket, true)}
           </span>
         ))}
-        <b>Date</b>
+        <b>{payload.meta.bucket === "week" ? "Week starting (UTC)" : "Date (UTC)"}</b>
       </div>
       <div className="chip-legend card-bottom-legend sot-legend sot-legend-slot" aria-label="Spend legend">
         {mode === "model" ? (
@@ -204,9 +251,9 @@ export default function SpendOverTime({
             <button
               type="button"
               key={model}
-              className={isolatedModel && isolatedModel !== model ? "is-muted" : ""}
-              aria-pressed={isolatedModel === model}
-              aria-label={isolatedModel === model ? `Show all models` : `Show only ${displayModelName(model)}`}
+              className={effectiveIsolation && effectiveIsolation !== model ? "is-muted" : ""}
+              aria-pressed={effectiveIsolation === model}
+              aria-label={effectiveIsolation === model ? `Show all models` : `Show only ${displayModelName(model)}`}
               onClick={() => setIsolatedModel((current) => current === model ? null : model)}
             >
               <i style={{ background: colors[model] ?? FALLBACK_COLOR }} />
@@ -217,6 +264,14 @@ export default function SpendOverTime({
         ) : (
           <span className="sot-total-key"><i style={{ background: ACCENT_COLOR }} />Total spend</span>
         )}
+        {qualifiedSpikes.size > 0 && <span className="sot-spike-key"><i />Unusual increase</span>}
+      </div>
+      <div className="sot-spike-slot">
+        <SpikeInsight
+          payload={payload}
+          selectedBucket={effectiveSelected}
+          onSelectBucket={onSelectBucket ? selectBucket : undefined}
+        />
       </div>
     </div>
   );

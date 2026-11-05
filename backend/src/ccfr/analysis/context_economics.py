@@ -25,6 +25,11 @@ from typing import Any
 from ccfr.analysis.pricing import PriceTimeline, load_price_timeline, match_price
 from ccfr.config import pricing_dir, pricing_path
 from ccfr.naming import project_display_name
+from ccfr.storage.replay import (
+    PROVIDER_MESSAGE_ID_SQL,
+    RECORDED_USAGE_SQL,
+    recorded_tokens,
+)
 
 # --- Estimation and detection constants -------------------------------------
 # Thresholds marked "corpus-relative" are computed from the loaded data with
@@ -49,6 +54,7 @@ class CallRec:
     model: str
     context_tokens: int
     output_tokens: int
+    counted: bool = True    # False: a copy, whose usage is billed to another record
 
 
 @dataclass(frozen=True)
@@ -88,6 +94,7 @@ class ContributorRec:
     tool_input: dict[str, Any] | None = None
     result_signature: str | None = None
     source_size: int = 0
+    billed: bool = True     # False: carried only through copies, reported where counted
 
 
 @dataclass
@@ -170,6 +177,7 @@ def calibrate_contributors(
             epoch_of[i] = index
             end_of[i] = epoch.end
     epoch_starts = {epoch.start for epoch in epochs}
+    last_counted = {epoch_of[i]: i for i, call in enumerate(calls) if call.counted}
 
     contributors: list[ContributorRec] = []
     for i, call in enumerate(calls):
@@ -236,6 +244,7 @@ def calibrate_contributors(
                 tool_input=item.tool_input,
                 result_signature=item.result_signature,
                 source_size=item.raw_chars,
+                billed=i <= last_counted.get(epoch_of[i], -1),
             ))
     return contributors
 
@@ -253,6 +262,7 @@ def accrue_tax(thread: ThreadRec, timeline: PriceTimeline, *, historical: bool =
         price = timeline.price_for(call.model, call.ts, historical=historical)
         if price is None:
             fully_priced = False
+        if price is None or not call.counted:
             thread.read_prices.append(0.0)
             thread.write_prices.append(0.0)
         else:
@@ -294,6 +304,52 @@ def _order_key(row: sqlite3.Row) -> tuple[str, int]:
     return (row["timestamp"] or "", row["event_id"])
 
 
+def _session_calls(call_rows: list[sqlite3.Row]) -> list[tuple[sqlite3.Row, CallRec]]:
+    """One call per API message in each thread, with the context it actually had.
+
+    Counted columns are zero on copies billed elsewhere, but a resumed thread
+    still re-sent that history. Recorded usage restores its context size, so
+    later growth is measured from the right place; accrue_tax prices it at $0.
+    Deduplicated per agent: a subagent's inherited calls belong to its own curve.
+    """
+    calls: list[tuple[sqlite3.Row, CallRec]] = []
+    best_by_message: dict[tuple[str | None, str], CallRec] = {}
+    for row in call_rows:
+        model = row["model"] or ""
+        if not model or model in _SYNTHETIC_MODELS:
+            continue
+        counted = row["context_tokens"] > 0
+        recorded = None if counted else recorded_tokens(row["raw_usage"])
+        if not counted and recorded is None:
+            continue
+        call = CallRec(
+            event_id=row["event_id"],
+            ts=row["timestamp"],
+            model=model,
+            context_tokens=row["context_tokens"] if counted else recorded[0],
+            output_tokens=(row["output_tokens"] or 0) if counted else recorded[1],
+            counted=counted,
+        )
+        if call.context_tokens <= 0:
+            continue
+        calls.append((row, call))
+        message_id = row["provider_message_id"]
+        if message_id:
+            key = (row["agent_id"], message_id)
+            best = best_by_message.get(key)
+            if best is None or _call_rank(call) > _call_rank(best):
+                best_by_message[key] = call
+    return [
+        (row, call) for row, call in calls
+        if not row["provider_message_id"]
+        or best_by_message[(row["agent_id"], row["provider_message_id"])] is call
+    ]
+
+
+def _call_rank(call: CallRec) -> tuple[bool, int]:
+    return call.counted, call.context_tokens + call.output_tokens
+
+
 def load_threads(
     conn: sqlite3.Connection,
     *,
@@ -327,10 +383,13 @@ def load_threads(
     for session in sessions:
         calls_by_agent: dict[str | None, list[CallRec]] = defaultdict(list)
         call_rows = conn.execute(
-            """
+            f"""
             SELECT e.id AS event_id, e.agent_id, e.timestamp, m.model, m.output_tokens,
                    m.base_input_tokens + m.cache_5m_tokens + m.cache_1h_tokens
-                     + m.cache_read_tokens AS context_tokens
+                     + m.cache_read_tokens AS context_tokens,
+                   {PROVIDER_MESSAGE_ID_SQL} AS provider_message_id,
+                   CASE WHEN m.input_tokens = 0 AND m.output_tokens = 0
+                        THEN {RECORDED_USAGE_SQL} END AS raw_usage
             FROM events e JOIN messages m ON m.event_id = e.id
             WHERE e.session_id = ? AND m.role = 'assistant'
             ORDER BY e.timestamp, e.id
@@ -338,17 +397,8 @@ def load_threads(
             (session["id"],),
         ).fetchall()
         call_keys_by_agent: dict[str | None, list[tuple[str, int]]] = defaultdict(list)
-        for row in call_rows:
-            model = row["model"] or ""
-            if row["context_tokens"] <= 0 or not model or model in _SYNTHETIC_MODELS:
-                continue
-            calls_by_agent[row["agent_id"]].append(CallRec(
-                event_id=row["event_id"],
-                ts=row["timestamp"],
-                model=model,
-                context_tokens=row["context_tokens"],
-                output_tokens=row["output_tokens"] or 0,
-            ))
+        for row, call in _session_calls(call_rows):
+            calls_by_agent[row["agent_id"]].append(call)
             call_keys_by_agent[row["agent_id"]].append(_order_key(row))
         if not calls_by_agent:
             skipped += 1
@@ -617,7 +667,7 @@ def detect_rereads(threads: list[ThreadRec], claims: Claims) -> list[FindingRec]
                     fallback_path=contributor.detail,
                     result_signature=contributor.result_signature,
                 )
-                if signature is not None:
+                if signature is not None and contributor.billed:
                     reads[(contributor.epoch, signature)].append(contributor_index)
             elif contributor.tool_name in ("Write", "Edit"):
                 tool_input = contributor.tool_input or {}
@@ -736,7 +786,7 @@ def detect_oversized(
     sizes_by_tool: dict[str, list[float]] = defaultdict(list)
     for thread in threads:
         for contributor in thread.contributors:
-            if contributor.kind == "tool_result":
+            if contributor.kind == "tool_result" and contributor.billed:
                 sizes_by_tool[contributor.tool_name or "Unknown tool"].append(
                     float(contributor.est_tokens)
                 )
@@ -748,7 +798,7 @@ def detect_oversized(
     findings: list[FindingRec] = []
     for thread_index, thread in enumerate(threads):
         for contributor_index, contributor in enumerate(thread.contributors):
-            if contributor.kind != "tool_result":
+            if contributor.kind != "tool_result" or not contributor.billed:
                 continue
             tool_name = contributor.tool_name or "Unknown tool"
             baseline = baselines[tool_name]

@@ -58,12 +58,13 @@ def test_explicit_serve_flags_parse(monkeypatch):
     assert captured["data_dir"] == "/tmp/d"
 
 
-def test_cya_banner_plain_is_ascii_with_no_escapes():
+def test_cya_banner_plain_is_ascii_with_no_escapes(monkeypatch):
     from ccfr import cli
 
+    monkeypatch.setattr(cli, "app_version", lambda: "9.8.7")
     banner = cli._cya_banner(color=False)
     assert banner == (
-        "CYA - Check Your Agent  //  Cover Your Assets\n"
+        "CYA - Check Your Agent v9.8.7  //  Cover Your Assets\n"
         "Source-available forensics for AI coding-agent spend. Runs local; "
         "nothing leaves this machine.\n"
         "https://checkyouragent.dev"
@@ -72,24 +73,28 @@ def test_cya_banner_plain_is_ascii_with_no_escapes():
     assert "\x1b" not in banner
 
 
-def test_cya_banner_color_wraps_only_cya_and_cover_your_assets():
+def test_cya_banner_color_wraps_only_cya_and_cover_your_assets(monkeypatch):
     from ccfr import cli
 
+    monkeypatch.setattr(cli, "app_version", lambda: "9.8.7")
     banner = cli._cya_banner(color=True)
     assert "\x1b[92mCYA\x1b[0m" in banner
     assert "\x1b[92mCover Your Assets\x1b[0m" in banner
     # the connective text between the two colored spans stays plain
-    assert " - Check Your Agent  //  " in banner
+    assert " - Check Your Agent v9.8.7  //  " in banner
 
 
 def test_serve_prints_the_cya_banner(monkeypatch, tmp_path, capsys):
     from ccfr import cli
 
+    monkeypatch.setattr(cli, "app_version", lambda: "9.8.7")
     monkeypatch.setenv("CCFR_IMPORT_ROOT", str(tmp_path / "imports"))
     monkeypatch.setenv("CCFR_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setattr("uvicorn.run", lambda *a, **k: None)
     assert cli.main(["serve", "--no-browser"]) == 0
-    assert "Cover Your Assets" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "Check Your Agent v9.8.7" in output
+    assert "Cover Your Assets" in output
 
 
 def test_serve_relaxes_host_guard_when_binding_non_loopback(monkeypatch, tmp_path, capsys):

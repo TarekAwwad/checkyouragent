@@ -54,7 +54,9 @@ CREATE TABLE IF NOT EXISTS events (
     timestamp TEXT,
     is_sidechain INTEGER NOT NULL DEFAULT 0,
     agent_id TEXT,
-    raw_json TEXT NOT NULL
+    raw_json TEXT NOT NULL,
+    origin_session_id TEXT,
+    is_replay INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_session_time ON events(session_id, timestamp, id);
@@ -74,8 +76,9 @@ CREATE TABLE IF NOT EXISTS messages (
     stop_reason TEXT,
     input_tokens INTEGER DEFAULT 0,
     output_tokens INTEGER DEFAULT 0,
-    -- Cost breakdown of input_tokens (which is base + 5m + 1h + read). These are priced
-    -- separately (see pricing.csv): cache hits are ~10x cheaper than fresh input.
+    -- Counted usage after project-wide replay/stream reconciliation. Copies have
+    -- zero usage here; events.raw_json retains their recorded values. Input is
+    -- base + 5m + 1h + read, priced separately (see pricing.csv).
     base_input_tokens INTEGER DEFAULT 0,
     cache_5m_tokens INTEGER DEFAULT 0,
     cache_1h_tokens INTEGER DEFAULT 0,
@@ -330,6 +333,8 @@ def migrate_db(conn: sqlite3.Connection) -> None:
         """
     )
 
+    _migrate_replay_accounting(conn)
+
     # Per-model token attribution for team bundles (sub-project B). Added to
     # older databases whose team_bundle_sessions predates the column.
     team_session_columns = _column_names(conn, "team_bundle_sessions")
@@ -370,6 +375,37 @@ def migrate_db(conn: sqlite3.Connection) -> None:
     if tool_call_columns and "file_ext" not in tool_call_columns:
         conn.execute("ALTER TABLE tool_calls ADD COLUMN file_ext TEXT")
         _backfill_tool_call_file_ext(conn)
+
+
+def _migrate_replay_accounting(conn: sqlite3.Connection) -> None:
+    from ccfr.storage.replay import reconcile_replays, refresh_session_tokens
+
+    columns = _column_names(conn, "events")
+    if not columns:
+        return
+    changed = False
+    if "origin_session_id" not in columns:
+        conn.execute("ALTER TABLE events ADD COLUMN origin_session_id TEXT")
+        conn.execute(
+            "UPDATE events SET origin_session_id = json_extract(raw_json, '$.sessionId')"
+            " WHERE json_valid(raw_json)"
+        )
+        changed = True
+    if "is_replay" not in columns:
+        conn.execute("ALTER TABLE events ADD COLUMN is_replay INTEGER NOT NULL DEFAULT 0")
+        changed = True
+    # The schema script runs before migration, so this index must be made here.
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_events_replay ON events(is_replay)")
+    row = conn.execute(
+        "SELECT version FROM analysis_metadata WHERE name = 'replay_accounting'"
+    ).fetchone()
+    if changed or row is None or row[0] < 1:
+        reconcile_replays(conn)
+        refresh_session_tokens(conn)
+        conn.execute(
+            "INSERT INTO analysis_metadata(name, version) VALUES ('replay_accounting', 1)"
+            " ON CONFLICT(name) DO UPDATE SET version = excluded.version"
+        )
 
 
 def _drop_legacy_risk_tables(conn: sqlite3.Connection) -> None:

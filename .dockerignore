@@ -27,5 +27,6 @@ pricing/*
 **/*.sqlite3
 **/*.tsbuildinfo
 .git/
+artifacts/
 .env
 *.log

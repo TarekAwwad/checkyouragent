@@ -6,6 +6,7 @@ import Sidebar from "./Sidebar";
 
 function setup(overrides: Partial<React.ComponentProps<typeof Sidebar>> = {}) {
   const props = {
+    appVersion: "9.8.7",
     view: "discover" as const,
     scope: "local" as const,
     discoverTechnique: "subgroup",
@@ -27,11 +28,21 @@ function setup(overrides: Partial<React.ComponentProps<typeof Sidebar>> = {}) {
 }
 
 describe("Sidebar", () => {
+  it("puts analysis first and keeps data management in a separate group", () => {
+    setup({ view: "cost" });
+    const analysis = screen.getByRole("navigation", { name: "Analysis" });
+    expect(within(analysis).getAllByRole("button").map((button) => button.textContent)).toEqual(["Cost", "Sessions", "Explore"]);
+    const data = screen.getByRole("navigation", { name: "Data management" });
+    expect(within(data).getAllByRole("button").map((button) => button.textContent)).toEqual(["Sources & sync", "Share team bundle"]);
+    expect(within(analysis).getByRole("button", { name: "Cost" })).toHaveAttribute("aria-current", "page");
+  });
+
   it("renders the brand and the local-scope nav", () => {
     setup();
     expect(screen.getByText("Check Your Agent")).toBeInTheDocument();
+    expect(screen.getByLabelText("Check Your Agent version 9.8.7")).toHaveTextContent("v9.8.7");
     expect(screen.getByText("local, read-only session data")).toBeInTheDocument();
-    for (const name of ["Import", "Export", "Sessions", "Cost", "Explore"]) {
+    for (const name of ["Sources & sync", "Share team bundle", "Sessions", "Cost", "Explore"]) {
       expect(screen.getByRole("button", { name })).toBeInTheDocument();
     }
     expect(screen.queryByRole("button", { name: "Overview" })).not.toBeInTheDocument();
@@ -41,13 +52,13 @@ describe("Sidebar", () => {
 
   it("shows only the aggregate views in team scope", () => {
     setup({ scope: "team", view: "map" });
-    for (const name of ["Import", "Overview", "Cost"]) {
+    for (const name of ["Manage bundles", "Overview", "Cost"]) {
       expect(screen.getByRole("button", { name })).toBeInTheDocument();
     }
     expect(screen.queryByRole("button", { name: "Sessions" })).not.toBeInTheDocument();
     // Export (share a local bundle) and Explore (subgroup drilldown) have no
     // team-bundle equivalent.
-    expect(screen.queryByRole("button", { name: "Export" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Share team bundle" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Explore" })).not.toBeInTheDocument();
   });
 
@@ -127,6 +138,7 @@ describe("Sidebar", () => {
   it("applies the collapsed class to the sidebar when collapsed", () => {
     setup({ collapsed: true });
     expect(screen.getByRole("complementary")).toHaveClass("is-collapsed");
+    expect(screen.getByLabelText("Check Your Agent version 9.8.7")).toHaveTextContent("v9.8.7");
   });
 
   it("does not show the glossary hint by default", () => {

@@ -6,7 +6,11 @@ import type { DiscoveredProject } from "../api/types";
 import { useImportRoot } from "./useImportRoot";
 import LoadingBar from "../components/LoadingBar";
 
-function ImportPage() {
+interface Props {
+  onViewCosts?: () => void;
+}
+
+function ImportPage({ onViewCosts }: Props) {
   const queryClient = useQueryClient();
   const config = useQuery({ queryKey: ["config"], queryFn: getRuntimeConfig });
   const isDocker = config.data?.is_docker ?? false;
@@ -24,6 +28,7 @@ function ImportPage() {
       queryClient.invalidateQueries({ queryKey: ["projects"] }),
       queryClient.invalidateQueries({ queryKey: ["sessions"] }),
       queryClient.invalidateQueries({ queryKey: ["stats"] }),
+      queryClient.invalidateQueries({ queryKey: ["cost-analytics", "local"] }),
     ]);
   };
 
@@ -131,6 +136,11 @@ function ImportPage() {
             </p>
           )}
           <div className="console-actions">
+            {onViewCosts && (stats.data?.session_count ?? 0) > 0 && (
+              <button type="button" className="ghost-action" onClick={onViewCosts} disabled={mutationPending}>
+                View costs
+              </button>
+            )}
             <button
               className="primary-action"
               onClick={() => importAll.mutate()}

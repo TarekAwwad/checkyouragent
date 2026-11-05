@@ -19,11 +19,11 @@ import {
   listTeamImports,
 } from "../api/client";
 
-function renderImport() {
+function renderImport(onViewCosts?: () => void) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={qc}>
-      <TeamBundleImport />
+      <TeamBundleImport onViewCosts={onViewCosts} />
     </QueryClientProvider>,
   );
 }
@@ -70,6 +70,17 @@ describe("TeamBundleImport", () => {
 
     // Export lives on its own local-scope view now.
     expect(screen.queryByRole("button", { name: /Export bundle/i })).not.toBeInTheDocument();
+  });
+
+  it("keeps bundle import results visible with an explicit View costs action", async () => {
+    const onViewCosts = vi.fn();
+    renderImport(onViewCosts);
+    fireEvent.change(await screen.findByLabelText("Optional server-visible team bundle path"), { target: { value: "/srv/team-bundles/example.json" } });
+    fireEvent.click(screen.getByRole("button", { name: "Import bundle" }));
+    expect(await screen.findByText("Imported 2 sessions.")).toBeInTheDocument();
+    expect(onViewCosts).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: "View costs" }));
+    expect(onViewCosts).toHaveBeenCalledOnce();
   });
 
   it("explains that browser-selected bundles are sent to the app's local backend", async () => {

@@ -144,12 +144,6 @@ export function largestSpike(payload: CostAnalyticsResponse): SpendSpike | null 
   return [...payload.spikes].sort((a, b) => b.delta_usd - a.delta_usd)[0];
 }
 
-export function topModelSpendSharePct(payload: CostAnalyticsResponse): number {
-  const top = [...chartModels(payload.by_model)].sort((a, b) => b.usd - a.usd)[0];
-  if (!top || payload.meta.total_usd <= 0) return 0;
-  return Math.round((top.usd / payload.meta.total_usd) * 100);
-}
-
 export function modelSpendSharePct(model: ModelCost, payload: CostAnalyticsResponse): number {
   return payload.meta.total_usd > 0 ? Math.round((model.usd / payload.meta.total_usd) * 100) : 0;
 }

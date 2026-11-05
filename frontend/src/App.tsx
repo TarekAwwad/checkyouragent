@@ -1,6 +1,6 @@
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { listImports, listProjects, listSessions } from "./api/client";
+import { getRuntimeConfig, listProjects, listSessions, listTeamImports } from "./api/client";
 import type { SessionCard } from "./api/types";
 import ImportPage from "./pages/ImportPage";
 import TriageBoard from "./triage/TriageBoard";
@@ -14,12 +14,15 @@ import GlossaryDialog from "./glossary/GlossaryDialog";
 import Sidebar from "./shell/Sidebar";
 import type { View } from "./shell/navConfig";
 import { useDataScope } from "./shell/useDataScope";
+import { initialHashView, isAnalyticalView, useLandingPage } from "./shell/useLandingPage";
 import { DEFAULT_TECHNIQUE } from "./discover/techniques";
 import { useCollapsed } from "./shell/useCollapsed";
 import { useGlossaryHint } from "./shell/useGlossaryHint";
 import { useSettings } from "./shell/useSettings";
 import { PrivacyModeProvider } from "./shell/PrivacyModeContext";
 import { useTheme } from "./theme/useTheme";
+import LoadingBar from "./components/LoadingBar";
+import { initialCostViewState, initialSessionsViewState } from "./shell/investigationState";
 
 type SessionOrigin = Extract<View, "map" | "cost" | "discover">;
 
@@ -39,7 +42,7 @@ type SessionHistoryRoute =
     };
 
 interface AppHistoryState {
-  cya?: SessionHistoryRoute;
+  cya?: SessionHistoryRoute | { view: "import" | "export" };
 }
 
 function historyUrl(route: SessionHistoryRoute): string {
@@ -65,11 +68,17 @@ function pushSessionHistory(
 }
 
 function App() {
-  const imports = useQuery({ queryKey: ["imports"], queryFn: listImports });
+  const config = useQuery({ queryKey: ["config"], queryFn: getRuntimeConfig });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const sessions = useQuery({ queryKey: ["sessions", {}], queryFn: () => listSessions() });
-  const [view, setView] = React.useState<View>("import");
   const { scope, setScope } = useDataScope();
+  const teamImports = useQuery({ queryKey: ["team-import-list"], queryFn: listTeamImports, enabled: scope === "team" });
+  const activeDataset = scope === "team" ? teamImports : sessions;
+  // A failed availability check is not evidence of an empty dataset. Open the
+  // remembered analytical page; its own request can display the actual error.
+  const hasData = activeDataset.isPending ? undefined
+    : activeDataset.isError || (activeDataset.data?.length ?? 0) > 0;
+  const { view, setView } = useLandingPage(scope, hasData);
   const [discoverTechnique, setDiscoverTechnique] = React.useState<string>(DEFAULT_TECHNIQUE);
   const [selectedSession, setSelectedSession] = React.useState<SessionCard | null>(null);
   const [sessionOrigin, setSessionOrigin] = React.useState<SessionOrigin | null>(null);
@@ -80,30 +89,84 @@ function App() {
   const { historicalPricing, setHistoricalPricing, privacyMode, setPrivacyMode } = useSettings();
   const { seen: glossaryHintSeen, dismiss: dismissGlossaryHint } = useGlossaryHint();
   const [glossaryOpen, setGlossaryOpen] = React.useState(false);
-  const autoRouted = React.useRef(false);
+  // Investigation state stays in this app visit, separate from the persisted
+  // landing-page preference and from the other data scope's identifiers.
+  const costMemory = React.useRef({
+    local: { current: initialCostViewState() },
+    team: { current: initialCostViewState() },
+  });
+  const sessionsMemory = React.useRef(initialSessionsViewState());
+  const [contextEpoch, setContextEpoch] = React.useState({ local: 0, team: 0 });
+  const hadLocalData = React.useRef(false);
+  const teamDataset = React.useRef<string | null>(null);
 
-  // On first load only, if imports already exist, jump past the empty import
-  // screen to Sessions. After that the user is free to navigate back to Import.
   React.useEffect(() => {
-    if (!autoRouted.current && (imports.data?.length ?? 0) > 0) {
-      autoRouted.current = true;
-      setView((current) => (current === "import" ? "map" : current));
+    if (!sessions.isSuccess) return;
+    const populated = sessions.data.length > 0;
+    if (hadLocalData.current && !populated) {
+      costMemory.current.local.current = initialCostViewState();
+      sessionsMemory.current = initialSessionsViewState();
+      setContextEpoch((current) => ({ ...current, local: current.local + 1 }));
     }
-  }, [imports.data?.length]);
+    hadLocalData.current = populated;
+  }, [sessions.isSuccess, sessions.data]);
 
-  // Team scope only exposes the aggregate views (Import, Overview, Cost). If the
-  // user flips to team while on a local-only view (Export, Explore, a session),
-  // fall back to Overview rather than showing a view with no team equivalent.
   React.useEffect(() => {
-    if (scope === "team" && view !== "import" && view !== "map" && view !== "cost") {
-      setView("map");
+    if (!teamImports.isSuccess) return;
+    const dataset = teamImports.data.map((record) => `${record.id}:${record.bundle_id}:${record.imported_at}`).sort().join("|");
+    if (teamDataset.current !== null && teamDataset.current !== dataset) {
+      // Team project ids are synthetic and can be reassigned after bundles
+      // change. Discard their old context instead of selecting another project.
+      costMemory.current.team.current = initialCostViewState();
+      setContextEpoch((current) => ({ ...current, team: current.team + 1 }));
     }
+    teamDataset.current = dataset;
+  }, [teamImports.isSuccess, teamImports.data]);
+
+  // Keep analytical and data-management pages addressable. Session navigation
+  // retains its origin entry so browser Back returns to the investigation.
+  React.useEffect(() => {
+    if (view === null || view === "session") return;
+    const hash = view === "map" ? (scope === "team" ? "#overview" : "#sessions")
+      : view === "discover" ? "#explore"
+      : view === "import" ? (scope === "team" ? "#bundles" : "#sources")
+      : view === "export" ? "#share" : "#cost";
+    window.history.replaceState({ cya: { view } }, "", hash);
   }, [scope, view]);
 
+  // A directly opened session URL waits for the local index before resolving.
   React.useEffect(() => {
+    if (view !== "session" || selectedSession || sessions.isPending) return;
+    const id = Number(window.location.hash.match(/^#session\/(\d+)$/)?.[1]);
+    const card = sessions.data?.find((session) => session.id === id);
+    if (!card) {
+      setView("cost");
+      return;
+    }
+    const saved = (window.history.state as AppHistoryState | null)?.cya;
+    const savedSession = saved?.view === "session" && saved.sessionId === id ? saved : null;
+    const origin = savedSession && isAnalyticalView(savedSession.origin, scope) ? savedSession.origin : "cost";
+    setFocusEventId(savedSession?.eventId ?? null);
+    setSessionOrigin(origin);
+    setSelectedSession(card);
+  }, [view, selectedSession, sessions.isPending, sessions.data, scope, setView]);
+
+  React.useEffect(() => {
+    const restoreHashRoute = () => {
+      const target = initialHashView(scope);
+      if (target === null) return;
+      setFocusEventId(null);
+      setSessionOrigin(null);
+      setSelectedSession(null);
+      setView(target);
+    };
     const restoreHistoryRoute = (event: PopStateEvent) => {
       const route = (event.state as AppHistoryState | null)?.cya;
-      if (!route) return;
+      if (!route) {
+        restoreHashRoute();
+        return;
+      }
+      if (scope === "team" && (route.view === "session" || route.view === "discover" || route.view === "export")) return;
       if (route.view === "session") {
         const card = sessions.data?.find((session) => session.id === route.sessionId);
         if (!card) return;
@@ -119,8 +182,12 @@ function App() {
       setView(route.view);
     };
     window.addEventListener("popstate", restoreHistoryRoute);
-    return () => window.removeEventListener("popstate", restoreHistoryRoute);
-  }, [sessions.data]);
+    window.addEventListener("hashchange", restoreHashRoute);
+    return () => {
+      window.removeEventListener("popstate", restoreHistoryRoute);
+      window.removeEventListener("hashchange", restoreHashRoute);
+    };
+  }, [sessions.data, scope, setView]);
 
   React.useEffect(() => {
     if (view !== "session") return;
@@ -185,6 +252,7 @@ function App() {
     <PrivacyModeProvider value={privacyMode}>
     <div className="app-shell">
       <Sidebar
+        appVersion={config.data?.app_version}
         view={view}
         scope={scope}
         discoverTechnique={discoverTechnique}
@@ -205,12 +273,15 @@ function App() {
       <main className="app-main">
         <GlossaryDialog open={glossaryOpen} onClose={() => setGlossaryOpen(false)} />
 
-        {view === "import" && scope === "local" && <ImportPage />}
-        {view === "import" && scope === "team" && <TeamBundleImport />}
+        {view === null && <div className="empty-state"><LoadingBar caption="Opening your workspace…" /></div>}
+        {view === "import" && scope === "local" && <ImportPage onViewCosts={() => setView("cost")} />}
+        {view === "import" && scope === "team" && <TeamBundleImport onViewCosts={() => setView("cost")} />}
         {view === "export" && <TeamBundleExport />}
         {view === "map" && scope === "team" && <TeamOverview onGoToImport={() => setView("import")} />}
         {view === "map" && scope === "local" && (
           <TriageBoard
+            key={contextEpoch.local}
+            memory={sessionsMemory}
             projects={projects.data ?? []}
             sessions={sessions.data ?? []}
             loading={projects.isLoading || sessions.isLoading}
@@ -219,6 +290,8 @@ function App() {
         )}
         {view === "cost" && (
           <CostAnalyticsPage
+            key={`${scope}:${contextEpoch[scope]}`}
+            memory={costMemory.current[scope]}
             scope={scope}
             onOpenSession={scope === "team" ? () => {} : (sessionId) => openSessionById(sessionId, null, "cost")}
             historical={historicalPricing}

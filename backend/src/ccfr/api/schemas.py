@@ -11,6 +11,7 @@ class ImportRequest(BaseModel):
 
 
 class RuntimeConfigResponse(BaseModel):
+    app_version: str
     import_root: str
     team_bundle_root: str
     database_path: str
@@ -292,6 +293,10 @@ class TreemapProject(BaseModel):
 
 class OverTimeBucket(BaseModel):
     bucket: str
+    bucket_start: str | None = None
+    bucket_end: str | None = None
+    baseline_period_count: int = 0
+    is_complete: bool = True
     per_model: dict[str, float] = Field(default_factory=dict)
     total_usd: float = 0
     session_count: int = 0
@@ -414,6 +419,10 @@ class SpendSpikeSession(BaseModel):
 
 class SpendSpike(BaseModel):
     bucket: str
+    bucket_start: str | None = None
+    bucket_end: str | None = None
+    baseline_period_count: int = 0
+    is_complete: bool = True
     total_usd: float = 0
     baseline_usd: float = 0
     delta_usd: float = 0

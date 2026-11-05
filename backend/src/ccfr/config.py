@@ -184,7 +184,7 @@ def _source_checkout_version() -> str | None:
 
 
 def app_version() -> str:
-    """App release version recorded in team bundles.
+    """App release version displayed at startup and in the UI and team bundles.
 
     The version has a single source: ``pyproject.toml``. In a source checkout
     (including the Docker image, which runs from source and does not install
@@ -199,4 +199,4 @@ def app_version() -> str:
     try:
         return _pkg_version("checkyouragent")
     except PackageNotFoundError:
-        return "0.3.0"
+        return "0.4.0"

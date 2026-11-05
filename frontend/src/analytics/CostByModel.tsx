@@ -24,7 +24,7 @@ export default function CostByModel({ payload, colors, available }: Props) {
   const max = Math.max(...rows.map((m) => m.usd), 0);
 
   return (
-    <div className="cbm">
+    <div className="cbm" role="region" aria-label="Model costs" tabIndex={0}>
       {rows.map((m) => {
         const spendPct = payload.meta.costs_partial ? null : modelSpendSharePct(m, payload);
         const tokenPct = modelTokenSharePct(m, payload);
@@ -41,6 +41,7 @@ export default function CostByModel({ payload, colors, available }: Props) {
             </div>
             <div className="cbm-val">
               <b>{formatUsd(m.usd)}</b>
+              {spendPct !== null && <span>{spendPct}% of spend</span>}
               <span>{formatTokens(m.tokens)} tok</span>
               <span>{formatUsdPerMillion(effectiveUsdPerMillion(m))}</span>
             </div>
