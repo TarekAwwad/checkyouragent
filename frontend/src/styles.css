@@ -1596,7 +1596,7 @@ button.spike-insight:focus-visible { outline: 1px solid var(--accent); outline-o
 }
 .session-page-inner {
   max-width: var(--page-max-width); margin: 0 auto;
-  padding: 18px var(--page-gutter);
+  padding: 0 var(--page-gutter) 18px;
   display: flex; flex-direction: column; gap: 14px;
 }
 
@@ -1824,7 +1824,7 @@ button.spike-insight:focus-visible { outline: 1px solid var(--accent); outline-o
   }
 }
 @media (max-width: 620px) {
-  .session-page-inner { padding: 16px var(--page-gutter); }
+  .session-page-inner { padding: 0 var(--page-gutter) 16px; }
   .session-search-wrap { width: 100%; min-width: 0; }
   .session-insight-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .session-summary-grid { grid-template-columns: 1fr; }
