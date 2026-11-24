@@ -25,6 +25,11 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   A window that hits its limit after a plan switch counts for the new plan.
   Hit-level rows show each period's dates and rate, and list periods without
   recorded hits. Timeline labels too narrow for their band move to its tooltip.
+- Count Claude Code's newer "You've hit your 5-hour limit" message as a session
+  limit hit instead of an unknown one, so it lands in its 5-hour window. When a
+  hit logs its structured quota fields, the limit type and exact reset time are
+  read from them, and the message text is the fallback for older logs. The same
+  hit logged by a session and its subagent still counts once.
 
 ## [0.4.0] - 2026-11-05
 
