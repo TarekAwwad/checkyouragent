@@ -1,3 +1,4 @@
+import PageHeader from "../shell/PageHeader";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, FolderInput, RotateCcw, Search, Trash2 } from "lucide-react";
@@ -78,6 +79,7 @@ function ImportPage({ onViewCosts }: Props) {
 
   return (
     <main className="page import-page">
+      <PageHeader title="Sources & sync" subtitle="Claude Code exports on this machine." />
       <section className="source-console">
         <div className="console-label">
           <p className="eyebrow">

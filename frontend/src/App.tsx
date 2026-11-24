@@ -347,6 +347,7 @@ function App() {
           <SessionWorkspace
             session={selectedSession}
             initialEventId={focusEventId}
+            section={sessionOrigin ? SESSION_ORIGIN_LABELS[sessionOrigin] : undefined}
             backLabel={sessionOrigin ? `Back to ${SESSION_ORIGIN_LABELS[sessionOrigin]}` : undefined}
             onBack={sessionOrigin ? backToSessionOrigin : undefined}
             historical={historicalPricing}

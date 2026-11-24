@@ -1,3 +1,4 @@
+import PageHeader from "../shell/PageHeader";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FileJson, FolderInput } from "lucide-react";
@@ -133,9 +134,9 @@ export default function TeamBundleImport({ onViewCosts }: { onViewCosts?: () => 
 
   return (
     <main className="page team-flow-page team-import-page">
-      <section className="team-flow-header" aria-labelledby="team-import-title">
+      <PageHeader title="Manage bundles" subtitle="Import team bundles into this app." />
+      <section className="team-flow-header" aria-label="Bundle import details">
         <div className="team-titleblock">
-          <h1 id="team-import-title">Import a team bundle</h1>
           <p>
             Browser-selected bundle JSON is sent to this app&apos;s local backend for validation and
             storage. Server-path imports are read there directly. This workflow does not send

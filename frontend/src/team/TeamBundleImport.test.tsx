@@ -61,7 +61,7 @@ describe("TeamBundleImport", () => {
   it("renders import controls, the root, and the imported list — but no export control", async () => {
     renderImport();
 
-    expect(await screen.findByRole("heading", { name: /Import a team bundle/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Manage bundles" })).toBeInTheDocument();
     expect(await screen.findByText("D:\\TeamBundles")).toBeInTheDocument();
     expect(screen.getByLabelText("Choose local team bundle files")).toBeInTheDocument();
     expect(screen.getByLabelText("Optional server-visible team bundle path")).toBeInTheDocument();

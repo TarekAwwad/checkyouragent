@@ -1,3 +1,4 @@
+import PageHeader from "../shell/PageHeader";
 import { useMemo, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Download, FileJson, Pencil } from "lucide-react";
@@ -106,9 +107,9 @@ export default function TeamBundleExport() {
 
   return (
     <main className="page team-flow-page team-export-page">
-      <section className="team-flow-header" aria-labelledby="team-export-title">
+      <PageHeader title="Share team bundle" subtitle="Export a content-free bundle of this machine's usage." />
+      <section className="team-flow-header" aria-label="Bundle export details">
         <div className="team-titleblock">
-          <h1 id="team-export-title">Export a team bundle</h1>
           <p>
             The browser sends selected projects and privacy settings to this app&apos;s local backend,
             which writes a content-free JSON bundle under team_bundle_root. The bundle is not sent

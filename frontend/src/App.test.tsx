@@ -258,7 +258,7 @@ describe("App", () => {
     mockImportedSession();
     localStorage.setItem("ccfr.dataScope", "team");
     renderApp();
-    expect(await screen.findByRole("heading", { name: "Import a team bundle" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Manage bundles" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Open cost session" })).not.toBeInTheDocument();
   });
 
@@ -388,7 +388,7 @@ describe("App", () => {
 
     // Local scope: Export shares this machine's bundle.
     fireEvent.click(await screen.findByRole("button", { name: "Share team bundle" }));
-    expect(await screen.findByRole("heading", { name: /Export a team bundle/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Share team bundle" })).toBeInTheDocument();
 
     // Team scope drops Export (nothing local to share) and the Import view
     // becomes the team-bundle importer, not the projects importer.
@@ -396,7 +396,7 @@ describe("App", () => {
     await waitFor(() => expect(screen.queryByRole("button", { name: "Share team bundle" })).not.toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: "Manage bundles" }));
-    expect(await screen.findByRole("heading", { name: /Import a team bundle/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Manage bundles" })).toBeInTheDocument();
     expect(screen.queryByText("Projects in source")).not.toBeInTheDocument();
   });
 
