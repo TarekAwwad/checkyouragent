@@ -25,6 +25,7 @@ from statistics import median
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from ccfr.analysis.date_bounds import sql_terms
 from ccfr.analysis.pricing import load_price_timeline
 from ccfr.analysis.usage_map import load_events
 from ccfr.config import pricing_dir, pricing_path
@@ -203,12 +204,9 @@ def detect_limit_hits(
     """
     where = ["m.model = ?", "e.is_replay = 0"]
     params: list[Any] = [SYNTHETIC_MODEL]
-    if date_from:
-        where.append("date(e.timestamp) >= date(?)")
-        params.append(date_from)
-    if date_to:
-        where.append("date(e.timestamp) <= date(?)")
-        params.append(date_to)
+    date_terms, date_params = sql_terms("e.timestamp", date_from, date_to)
+    where.extend(date_terms)
+    params.extend(date_params)
     rows = conn.execute(
         f"""
         SELECT e.timestamp AS ts, e.raw_json AS raw_json,

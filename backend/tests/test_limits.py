@@ -148,6 +148,19 @@ def test_detect_merges_same_reset_stamp_and_keeps_earliest_ts() -> None:
     assert hits[0].session_titles == ["Session One"]
 
 
+def test_detect_limit_hits_instant_window() -> None:
+    conn = _make_conn()
+    _add_limit_hit(conn, 1, "2026-11-23T22:30:00Z",
+                   "You've hit your session limit · resets 1am (Europe/Paris)")
+    _add_limit_hit(conn, 1, "2026-11-23T23:30:00Z",
+                   "You've hit your session limit · resets 4am (Europe/Paris)")
+    _add_limit_hit(conn, 1, "2026-11-24T23:30:00Z",
+                   "You've hit your session limit · resets 5am (Europe/Paris)")
+    hits = detect_limit_hits(conn, date_from="2026-11-23T23:00:00.000Z",
+                             date_to="2026-11-24T22:59:59.999Z")
+    assert [hit.ts for hit in hits] == [_utc("2026-11-23T23:30:00Z")]
+
+
 # Claude Code's newer limit message, logged with structured quota fields.
 FIVE_HOUR_TEXT = "You've hit your 5-hour limit · resets 2:50pm (Europe/Paris)"
 FIVE_HOUR_HIT_TS = "2026-11-24T13:30:20.855Z"  # 14:30 in Paris (November, UTC+1)

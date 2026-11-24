@@ -331,6 +331,20 @@ def test_load_events_date_window_filter() -> None:
     assert [e.event_id for e in events] == [2]
 
 
+def test_load_events_instant_window_selects_local_day_events_and_calls() -> None:
+    conn = _conn()
+    _seed_base(conn)
+    _add_assistant_event(conn, 1, 1, "2026-11-23T22:30:00Z", [])
+    _add_assistant_event(conn, 2, 1, "2026-11-23T23:30:00Z",
+                         [("Read", {"file_path": "a.py"}, False)])
+    _add_assistant_event(conn, 3, 1, "2026-11-24T23:30:00Z", [])
+    events = load_events(conn, PRICE_TABLE,
+                         date_from="2026-11-23T23:00:00.000Z",
+                         date_to="2026-11-24T22:59:59.999Z")
+    assert [e.event_id for e in events] == [2]
+    assert len(events[0].tool_calls) == 1
+
+
 def test_load_events_unpriced_model_costs_zero_and_flags() -> None:
     conn = _conn()
     _seed_base(conn)

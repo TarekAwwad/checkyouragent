@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from ccfr.analysis.context_economics import accrue_tax, load_threads, run_detectors
+from ccfr.analysis.date_bounds import in_window, sql_terms
 from ccfr.analysis.pricing import (
     PriceTimeline,
     TokenBreakdown,
@@ -185,12 +186,9 @@ def load_events(
     if project_id is not None:
         where.append("s.project_id = ?")
         params.append(project_id)
-    if date_from:
-        where.append("date(e.timestamp) >= date(?)")
-        params.append(date_from)
-    if date_to:
-        where.append("date(e.timestamp) <= date(?)")
-        params.append(date_to)
+    date_terms, date_params = sql_terms("e.timestamp", date_from, date_to)
+    where.extend(date_terms)
+    params.extend(date_params)
     clause = " AND ".join(where)
 
     rows = conn.execute(
@@ -223,12 +221,8 @@ def load_events(
     if project_id is not None:
         call_where.append("s.project_id = ?")
         call_params.append(project_id)
-    if date_from:
-        call_where.append("date(e.timestamp) >= date(?)")
-        call_params.append(date_from)
-    if date_to:
-        call_where.append("date(e.timestamp) <= date(?)")
-        call_params.append(date_to)
+    call_where.extend(date_terms)
+    call_params.extend(date_params)
     call_clause = " AND ".join(call_where)
 
     call_rows = conn.execute(
@@ -481,16 +475,8 @@ _CONTEXT_HABIT_MAP: dict[str, tuple[str, str]] = {
 
 
 def _in_window(ts: str | None, date_from: str | None, date_to: str | None) -> bool:
-    """Day-granular window test on an ISO timestamp. Undated items only pass
-    when no window is set (a window must never smuggle in undatable findings)."""
-    if not ts:
-        return not date_from and not date_to
-    day = ts[:10]
-    if date_from and day < date_from[:10]:
-        return False
-    if date_to and day > date_to[:10]:
-        return False
-    return True
+    """Window test on an ISO timestamp; see ``date_bounds.in_window``."""
+    return in_window(ts, date_from, date_to)
 
 
 def detect_context_habits(
