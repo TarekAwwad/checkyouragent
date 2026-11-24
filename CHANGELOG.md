@@ -25,6 +25,11 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   A window that hits its limit after a plan switch counts for the new plan.
   Hit-level rows show each period's dates and rate, and list periods without
   recorded hits. Timeline labels too narrow for their band move to its tooltip.
+- Load Context economics and the Usage Mindmap about four times faster on
+  large caches (25 s to 5 s, and 29 s to 6.5 s, on a 1 GB cache). The database
+  had no query-planner statistics, so SQLite read every assistant message once
+  per session. Each import that changes data now runs `ANALYZE` after it
+  commits, and startup runs it once for an existing cache that has none.
 
 ## [0.4.0] - 2026-11-05
 
