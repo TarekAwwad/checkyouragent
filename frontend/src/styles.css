@@ -4467,3 +4467,68 @@ html:has(.specimen-dialog[open]) {
 .plan-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
 .plan-actions .ghost-action { height: 35px; box-sizing: border-box; padding: 0 14px; }
 .plan-actions .primary-action { height: 35px; box-sizing: border-box; padding: 0 18px; font-size: 12.5px; border-radius: 9px; }
+
+/* ---- Shared controls (page header) ---- */
+.chip-select,
+.date-range-control input[type="date"],
+.toggle-chip,
+.fixed-chip,
+.search-field {
+  height: 33px; box-sizing: border-box;
+  border: 1px solid var(--border-2); border-radius: 9px;
+  background: var(--surface); color: var(--text); font-size: 12px; font-family: inherit;
+}
+.chip-select { padding: 0 10px; }
+.chip-select:focus-visible,
+.date-range-control input[type="date"]:focus-visible { outline: none; border-color: var(--accent); }
+.date-range-control { display: inline-flex; align-items: center; gap: 8px; }
+.date-range-select { width: 150px; }
+.date-range-control input[type="date"] { padding: 0 10px; }
+.date-range-control input[type="date"]::-webkit-calendar-picker-indicator { opacity: .55; cursor: pointer; }
+.date-range-control input[type="date"]:hover::-webkit-calendar-picker-indicator { opacity: .9; }
+.project-select { width: 200px; text-overflow: ellipsis; }
+.toggle-chip { display: inline-flex; align-items: center; gap: 7px; padding: 0 10px; white-space: nowrap; cursor: pointer; }
+.toggle-chip input { margin: 0; accent-color: var(--accent); }
+.toggle-chip:focus-within { border-color: var(--accent); }
+.toggle-chip.is-disabled { color: var(--faint); cursor: default; }
+.fixed-chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 0 10px;
+  border-style: dashed; background: transparent; color: var(--muted); white-space: nowrap;
+}
+.fixed-chip-date { width: 150px; }
+.fixed-chip-project { width: 200px; }
+.search-field { display: inline-flex; align-items: center; gap: 7px; min-width: 240px; padding: 0 12px; color: var(--muted); }
+.search-field input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font-size: 12px; }
+.search-field:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent); }
+
+.seg {
+  display: inline-flex; align-items: center; gap: 2px; box-sizing: border-box;
+  padding: 3px; border: 1px solid var(--border-2); border-radius: 9px; background: var(--surface);
+}
+.seg-md { height: 33px; }
+.seg button {
+  height: 100%; padding: 0 10px; border: 0; border-radius: 6px;
+  background: transparent; color: var(--muted); font-size: 12px; white-space: nowrap; cursor: pointer;
+}
+.seg button:hover:not(:disabled) { color: var(--text); }
+.seg button.active {
+  background: color-mix(in srgb, var(--accent) 12%, var(--raised)); color: var(--accent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.seg button:disabled { color: var(--faint); cursor: default; }
+.seg-sm { padding: 2px; border-radius: 8px; background: var(--bg); }
+.seg-sm button { height: auto; padding: 3px 8px; font-size: 10.5px; }
+.seg-caption { padding: 0 6px 0 4px; color: var(--faint); font-size: 9.5px; text-transform: uppercase; letter-spacing: .05em; }
+
+.export-menu { position: relative; }
+.export-menu-list {
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 20;
+  display: flex; flex-direction: column; min-width: 160px; padding: 4px;
+  border: 1px solid var(--border-2); border-radius: 9px; background: var(--raised);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .25);
+}
+.export-menu-list button {
+  display: flex; align-items: center; gap: 8px; padding: 7px 10px; border: 0; border-radius: 6px;
+  background: transparent; color: var(--text); font-size: 12px; text-align: left; cursor: pointer;
+}
+.export-menu-list button:hover { background: var(--surface); }
