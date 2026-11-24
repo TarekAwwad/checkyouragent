@@ -35,6 +35,11 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Usage Mindmap now waits 400 ms after the last date edit before it refetches,
   so editing a date no longer sends a request for each change, or two with
   "vs previous period" on.
+- Load the project list faster: its event, session and subagent counts take
+  0.1 s instead of 4 s on a 1 GB cache, which halves `GET /api/projects`
+  (8 s to 3.7 s). The counts joined each event to every subagent of its
+  session and read every event row for its replay flag. They are now counted
+  per session from indexes, and only replayed events are read.
 
 ## [0.4.0] - 2026-11-05
 

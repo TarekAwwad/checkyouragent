@@ -200,6 +200,62 @@ def test_list_sessions_and_projects_carry_cost_estimates(tmp_path: Path) -> None
         assert project["cost_usd"] == session_sum
 
 
+def test_list_projects_counts_do_not_multiply_events_by_subagents() -> None:
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    init_db(conn)
+    import_id = conn.execute(
+        """
+        INSERT INTO imports(source_path, imported_at, file_count, status, error_count)
+        VALUES('source', '2026-06-01T12:00:00Z', 1, 'completed', 0)
+        """
+    ).lastrowid
+
+    def project(name: str) -> int:
+        return conn.execute(
+            "INSERT INTO projects(import_id, export_name) VALUES(?, ?)", (import_id, name)
+        ).lastrowid
+
+    def session(project_id: int, sid: str, *, events: int, replays: int, subagents: int) -> None:
+        pk = conn.execute(
+            "INSERT INTO sessions(project_id, session_id) VALUES(?, ?)", (project_id, sid)
+        ).lastrowid
+        conn.executemany(
+            """
+            INSERT INTO events(session_id, source_path, line_no, type, raw_json, is_replay)
+            VALUES(?, 'x.jsonl', ?, 'user', '{}', ?)
+            """,
+            [(pk, n, int(n < replays)) for n in range(events)],
+        )
+        conn.executemany(
+            "INSERT INTO subagents(parent_session_id, agent_id) VALUES(?, ?)",
+            [(pk, f"agent-{n}") for n in range(subagents)],
+        )
+
+    busy = project("d--Busy")
+    session(busy, "fan-out", events=5, replays=2, subagents=3)
+    session(busy, "plain", events=4, replays=0, subagents=0)
+    session(busy, "empty", events=0, replays=0, subagents=0)
+    replayed = project("d--Replayed")
+    session(replayed, "all-replay", events=2, replays=2, subagents=1)
+    project("d--Idle")
+
+    counts = {
+        p["export_name"]: (p["session_count"], p["event_count"], p["subagent_count"])
+        for p in repository.list_projects(conn)
+    }
+
+    # 5 + 4 events less the 2 replays; the join must not repeat events per subagent.
+    assert counts == {
+        "d--Busy": (3, 7, 3),
+        "d--Idle": (0, 0, 0),
+        "d--Replayed": (1, 0, 1),
+    }
+    assert [p["export_name"] for p in repository.list_projects(conn)] == [
+        "d--Busy", "d--Idle", "d--Replayed",
+    ]
+
+
 def test_list_sessions_session_id_filter_returns_single_row(tmp_path: Path) -> None:
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
