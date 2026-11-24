@@ -47,6 +47,13 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Usage Mindmap now waits 400 ms after the last date edit before it refetches,
   so editing a date no longer sends a request for each change, or two with
   "vs previous period" on.
+- Count Claude Code's newer "You've hit your 5-hour limit" message as a session
+  limit hit instead of an unknown one, so it lands in its 5-hour window. When a
+  hit logs its structured quota fields, the limit type and exact reset time are
+  read from them, and the message text is the fallback for older logs. The same
+  hit logged by a session and its subagent still counts once.
+- Show "Updating…" on Limit hits while it reloads after a sync, instead of
+  keeping the old results on screen with no sign that new ones are coming.
 
 ## [0.4.0] - 2026-11-05
 

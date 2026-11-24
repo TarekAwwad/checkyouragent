@@ -106,17 +106,19 @@ HIT_TEXT = "You've hit your session limit · resets 12:30pm (Europe/Paris)"
 
 
 def _add_limit_hit(conn: sqlite3.Connection, session_id: int, ts: str,
-                   text: str = HIT_TEXT, *, error: str | None = "rate_limit") -> int:
+                   text: str = HIT_TEXT, *, error: str | None = "rate_limit",
+                   extra: dict | None = None, source_path: str = "f.jsonl") -> int:
     raw: dict = {"isApiErrorMessage": True,
                  "message": {"model": "<synthetic>",
                              "content": [{"type": "text", "text": text}]}}
     if error is not None:
         raw["error"] = error
         raw["apiErrorStatus"] = 429
+    raw.update(extra or {})
     ev = conn.execute(
         "INSERT INTO events (session_id, source_path, line_no, type, timestamp, raw_json)"
-        " VALUES (?, 'f.jsonl', 1, 'assistant', ?, ?)",
-        (session_id, ts, json.dumps(raw)),
+        " VALUES (?, ?, 1, 'assistant', ?, ?)",
+        (session_id, source_path, ts, json.dumps(raw)),
     ).lastrowid
     conn.execute(
         "INSERT INTO messages (event_id, role, model, text_preview)"
@@ -144,6 +146,117 @@ def test_detect_merges_same_reset_stamp_and_keeps_earliest_ts() -> None:
     assert round(hits[0].minutes_until_reset, 1) == 49.3
     assert hits[0].session_ids == [1]
     assert hits[0].session_titles == ["Session One"]
+
+
+# Claude Code's newer limit message, logged with structured quota fields.
+FIVE_HOUR_TEXT = "You've hit your 5-hour limit · resets 2:50pm (Europe/Paris)"
+FIVE_HOUR_HIT_TS = "2026-11-24T13:30:20.855Z"  # 14:30 in Paris (November, UTC+1)
+FIVE_HOUR_RESETS_AT = 1795528200  # 2026-11-24T13:50:00Z = 2:50pm Paris
+
+
+def _quota_fields(resets_at: object = FIVE_HOUR_RESETS_AT,
+                  limit_type: object = "five_hour") -> dict:
+    """The structured fields as Claude Code logs them on a usage-limit 429."""
+    return {
+        "apiError": "usage_limit_reached",
+        "apiErrorParams": {"rate_limit_info": {
+            "status": "rejected", "resetsAt": resets_at, "rateLimitType": limit_type,
+            "overageStatus": "rejected", "isUsingOverage": False,
+        }},
+        "quotaLimits": {
+            "status": "rejected", "resetsAt": resets_at, "rateLimitType": limit_type,
+            "isUsingOverage": False,
+        },
+    }
+
+
+def test_classify_five_hour_text_as_session() -> None:
+    assert classify_hit_text(FIVE_HOUR_TEXT) == "session"
+    assert classify_hit_text("You've hit your five-hour limit") == "session"
+    assert classify_hit_text("You've hit your 5 hour limit") == "session"
+    assert classify_hit_text("You've hit your 5-hour usage limit") == "session"
+
+
+def test_detect_five_hour_hit_from_structured_fields() -> None:
+    conn = _make_conn()
+    _add_limit_hit(conn, 1, FIVE_HOUR_HIT_TS, FIVE_HOUR_TEXT, extra=_quota_fields())
+    hits = detect_limit_hits(conn)
+    assert len(hits) == 1
+    assert hits[0].kind == "session"
+    assert hits[0].reset_at == _utc("2026-11-24T13:50:00Z")
+    assert round(hits[0].minutes_until_reset, 1) == 19.7
+
+
+def test_detect_five_hour_text_without_structured_fields() -> None:
+    conn = _make_conn()
+    _add_limit_hit(conn, 1, FIVE_HOUR_HIT_TS, FIVE_HOUR_TEXT)
+    hits = detect_limit_hits(conn)
+    assert len(hits) == 1
+    assert hits[0].kind == "session"
+    assert hits[0].reset_at == _utc("2026-11-24T13:50:00Z")
+
+
+def test_structured_limit_type_wins_and_unknown_types_fall_back_to_text() -> None:
+    conn = _make_conn()
+    vague = "You've hit your limit"  # no cap named in the text
+    _add_limit_hit(conn, 1, "2026-11-20T08:00:00Z", vague, extra=_quota_fields(
+        resets_at=1795600000, limit_type="seven_day"))
+    _add_limit_hit(conn, 1, "2026-11-21T08:00:00Z", vague, extra=_quota_fields(
+        resets_at=1795700000, limit_type="seven_day_opus"))
+    _add_limit_hit(conn, 1, "2026-11-22T08:00:00Z", vague, extra=_quota_fields(
+        resets_at=1795800000, limit_type="weekly"))
+    # A type this code does not know defers to the text, then to "unknown".
+    _add_limit_hit(conn, 1, "2026-11-23T08:00:00Z", "You've hit your session limit",
+                   extra=_quota_fields(resets_at=1795900000, limit_type="new_cap"))
+    _add_limit_hit(conn, 1, "2026-11-23T20:00:00Z", vague,
+                   extra=_quota_fields(resets_at=1796000000, limit_type="new_cap"))
+    kinds = [hit.kind for hit in detect_limit_hits(conn)]
+    assert kinds == ["weekly", "weekly", "weekly", "session", "unknown"]
+
+
+def test_structured_reset_takes_precedence_over_the_text_stamp() -> None:
+    conn = _make_conn()
+    # The text rounds to "2:50pm"; resetsAt carries the exact instant.
+    _add_limit_hit(conn, 1, FIVE_HOUR_HIT_TS, FIVE_HOUR_TEXT,
+                   extra=_quota_fields(resets_at=FIVE_HOUR_RESETS_AT + 25))
+    # Without a zone the text stamp is unparseable; resetsAt still gives one.
+    _add_limit_hit(conn, 1, "2026-11-25T09:00:00Z", "You've hit your 5-hour limit · resets 1pm",
+                   extra=_quota_fields(resets_at=1795611600))  # 2026-11-25T13:00:00Z
+    # A garbled resetsAt is ignored, and the text stamp is used instead.
+    _add_limit_hit(conn, 1, "2026-11-26T13:30:00Z", FIVE_HOUR_TEXT,
+                   extra=_quota_fields(resets_at="soon"))
+    hits = detect_limit_hits(conn)
+    assert [hit.reset_at for hit in hits] == [
+        _utc("2026-11-24T13:50:25Z"),
+        _utc("2026-11-25T13:00:00Z"),
+        _utc("2026-11-26T13:50:00Z"),
+    ]
+
+
+def test_main_and_subagent_records_of_one_hit_dedupe() -> None:
+    conn = _make_conn()
+    # The same 429 logged by the main session and by its subagent, 0.6s apart.
+    _add_limit_hit(conn, 1, "2026-11-24T13:30:20.855Z", FIVE_HOUR_TEXT,
+                   extra=_quota_fields(), source_path="s1.jsonl")
+    _add_limit_hit(conn, 1, "2026-11-24T13:30:20.215Z", FIVE_HOUR_TEXT,
+                   extra=_quota_fields(), source_path="s1/subagents/agent-a.jsonl")
+    hits = detect_limit_hits(conn)
+    assert len(hits) == 1
+    assert hits[0].occurrence_count == 2
+    assert hits[0].ts == _utc("2026-11-24T13:30:20.215Z")
+    assert hits[0].session_ids == [1]
+
+
+def test_structured_and_text_only_records_of_one_hit_dedupe() -> None:
+    conn = _make_conn()
+    # An older text-only record and a structured one for the same cap share a
+    # key, even when resetsAt carries seconds the minute-rounded text drops.
+    _add_limit_hit(conn, 1, "2026-11-24T13:30:00Z", FIVE_HOUR_TEXT)
+    _add_limit_hit(conn, 1, "2026-11-24T13:31:00Z", FIVE_HOUR_TEXT,
+                   extra=_quota_fields(resets_at=FIVE_HOUR_RESETS_AT + 25))
+    hits = detect_limit_hits(conn)
+    assert len(hits) == 1
+    assert hits[0].occurrence_count == 2
 
 
 def test_detect_ignores_synthetic_rows_without_rate_limit_marker() -> None:
@@ -373,6 +486,32 @@ def test_limits_analytics_full_payload(priced: None) -> None:
     assert payload["hits"][0]["usage_at_hit"] == 10.0
     assert payload["hits"][0]["usage_at_hit_tokens"] == 1_000_000
     assert payload["hits"][0]["session_ids"] == [1]
+
+
+def test_five_hour_hit_folds_into_a_window_with_usage(priced: None) -> None:
+    conn = _make_conn()
+    _add_usage(conn, 1, "2026-11-24T09:00:00Z", 2_000_000)  # $20, opens the window
+    _add_usage(conn, 1, "2026-11-24T12:00:00Z", 1_000_000)  # $10
+    _add_limit_hit(conn, 1, "2026-11-24T13:30:20.855Z", FIVE_HOUR_TEXT,
+                   extra=_quota_fields(), source_path="s1.jsonl")
+    _add_limit_hit(conn, 1, "2026-11-24T13:30:20.215Z", FIVE_HOUR_TEXT,
+                   extra=_quota_fields(), source_path="s1/subagents/agent-a.jsonl")
+    _add_usage(conn, 1, "2026-11-24T14:00:00Z", 500_000)  # after the reset: next window
+
+    payload = limits_analytics(conn)
+
+    assert payload["meta"]["hit_counts"] == {"session": 1}
+    assert payload["meta"]["total_windows"] == 2
+    hit = payload["hits"][0]
+    assert hit["kind"] == "session"
+    assert hit["window_index"] == 0
+    assert hit["usage_at_hit"] == 30.0
+    assert hit["usage_at_hit_tokens"] == 3_000_000
+    assert hit["reset_at"] == "2026-11-24T13:50:00+00:00"
+    window = payload["windows"][0]
+    assert window["hit_kinds"] == ["session"]
+    assert window["end"] == "2026-11-24T13:50:00+00:00"  # snapped to resetsAt
+    assert payload["eras"][0]["session_hit_count"] == 1
 
 
 def test_cost_and_token_percentiles_are_computed_independently(priced: None) -> None:

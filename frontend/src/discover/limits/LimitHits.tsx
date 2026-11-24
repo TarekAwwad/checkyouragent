@@ -42,14 +42,20 @@ export default function LimitHits({ onOpenSession }: TechniqueProps) {
   const defaultBasis: LimitBasis =
     data != null && (!data.meta.cost_available || data.meta.costs_partial) ? "tokens" : "cost";
   const basis: LimitBasis = costUnusable ? "tokens" : chosenBasis ?? defaultBasis;
+  // A refetch (after a resync) keeps the old results on screen for the several
+  // seconds the endpoint takes, so mark it as the Cost page does.
+  const updating = query.isFetching && !query.isLoading && data != null;
 
   return (
-    <main className="discover-page">
+    <main className="discover-page" aria-busy={query.isFetching}>
       <div className="discover-page-inner">
         <div className="discover-toolbar" aria-label="Limit hits controls">
           <div className="discover-toolbar-lead">
             <h1>Limit hits</h1>
-            <p className="discover-subtitle">Limit hits and 5-hour windows, all projects.</p>
+            <p className="discover-subtitle">
+              Limit hits and 5-hour windows, all projects.
+              <span className="cost-query-status" role="status">{updating ? "Updating…" : ""}</span>
+            </p>
           </div>
           <div className="limit-toolbar-actions">
             <div className="segmented-control" role="group" aria-label="Usage measurement">

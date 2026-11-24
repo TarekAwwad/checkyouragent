@@ -38,10 +38,14 @@ RECENT_DAYS = 28
 _DEDUP_BUCKET_S = 300  # fallback dedup bucket for hits without a reset stamp
 
 
+# "You've hit your 5-hour limit" is the newer wording of the session limit.
+_FIVE_HOUR_RE = re.compile(r"\b(?:5|five)[- ]?hour\b.*\blimit")
+
+
 def classify_hit_text(text: str) -> str:
     """Bucket a rate-limit message by which cap it reports."""
     lowered = (text or "").lower()
-    if "session limit" in lowered:
+    if "session limit" in lowered or _FIVE_HOUR_RE.search(lowered):
         return "session"
     if "weekly" in lowered:
         return "weekly"
@@ -85,6 +89,54 @@ def parse_reset_at(text: str, hit_at: datetime) -> datetime | None:
     if candidate <= local_hit:
         candidate += timedelta(days=1)
     return candidate.astimezone(timezone.utc)
+
+
+def _kind_from_limit_type(limit_type: Any) -> str | None:
+    """Map a structured rateLimitType to a hit kind; None when unrecognised.
+
+    Only "five_hour" has been observed. Weekly names are matched loosely
+    ("seven_day", "seven_day_opus", ...); anything else defers to the text.
+    """
+    if not isinstance(limit_type, str):
+        return None
+    lowered = limit_type.lower()
+    if lowered == "five_hour":
+        return "session"
+    if "seven_day" in lowered or "week" in lowered:
+        return "weekly"
+    return None
+
+
+def _epoch_to_utc(value: Any) -> datetime | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+        return None
+    try:
+        return datetime.fromtimestamp(value, tz=timezone.utc)
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
+def _structured_limit(raw: dict) -> tuple[str | None, datetime | None]:
+    """Hit kind and exact reset time from a 429's structured quota fields.
+
+    Newer Claude Code logs carry apiErrorParams.rate_limit_info and
+    quotaLimits, each with rateLimitType ("five_hour") and resetsAt (epoch
+    seconds). Either part is None when absent or unrecognised, so older logs
+    fall back to the message text.
+    """
+    params = raw.get("apiErrorParams")
+    sources = [
+        params.get("rate_limit_info") if isinstance(params, dict) else None,
+        raw.get("quotaLimits"),
+    ]
+    kind: str | None = None
+    reset_at: datetime | None = None
+    for info in sources:
+        if not isinstance(info, dict):
+            continue
+        kind = kind or _kind_from_limit_type(info.get("rateLimitType"))
+        reset_at = reset_at or _epoch_to_utc(info.get("resetsAt"))
+    return kind, reset_at
 
 
 def _parse_ts(ts: str | None) -> datetime | None:
@@ -143,8 +195,11 @@ def detect_limit_hits(
 
     Detection is structured-first: '<synthetic>' messages whose event raw_json
     carries error == "rate_limit" (or apiErrorStatus == 429 on older logs).
-    Events sharing (kind, reset stamp) are one hit; without a parsed stamp the
-    fallback key buckets timestamps into 5-minute slots.
+    Kind and reset time come from the structured quota fields when logged,
+    else from the message text. Events sharing (kind, reset minute) are one
+    hit, so a main session and its subagent logging the same 429 count once;
+    without a reset stamp the fallback key buckets timestamps into 5-minute
+    slots.
     """
     where = ["m.model = ?", "e.is_replay = 0"]
     params: list[Any] = [SYNTHETIC_MODEL]
@@ -182,11 +237,14 @@ def detect_limit_hits(
         if ts is None:
             continue
         text = _hit_text(row["text"], raw)
-        kind = classify_hit_text(text)
-        reset_at = parse_reset_at(text, ts)
+        structured_kind, structured_reset = _structured_limit(raw)
+        kind = structured_kind or classify_hit_text(text)
+        reset_at = structured_reset or parse_reset_at(text, ts)
         key: tuple[str, Any]
         if reset_at is not None:
-            key = (kind, reset_at.isoformat())
+            # Minute precision: the text stamp is minute-rounded, so a text-only
+            # record and an exact resetsAt for the same cap share one key.
+            key = (kind, reset_at.replace(second=0, microsecond=0).isoformat())
         else:
             key = (kind, int(ts.timestamp()) // _DEDUP_BUCKET_S)
         hit = merged.get(key)
