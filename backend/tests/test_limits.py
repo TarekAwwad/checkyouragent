@@ -324,6 +324,10 @@ LIMIT_ERA_KEYS = {
     "hit_level_percentile_tokens",
     "usage_at_hit_usd",
     "usage_at_hit_tokens",
+    "start_date",
+    "end_date",
+    "weeks",
+    "hits_per_week",
 }
 
 
@@ -444,8 +448,11 @@ def test_limits_analytics_without_plan_history_or_hits(priced: None) -> None:
             "hit_level_min_tokens": None, "hit_level_max_tokens": None,
             "hit_level_percentile": None, "hit_level_percentile_tokens": None,
             "usage_at_hit_usd": [], "usage_at_hit_tokens": [],
+            "start_date": None, "end_date": None,
+            "weeks": 1.0, "hits_per_week": 0.0,
         }
     ]
+    assert payload["windows"][0]["era_index"] == 0
 
 
 def test_limits_analytics_zero_usage_hit_level_stays_defined(priced: None) -> None:
@@ -464,3 +471,129 @@ def test_limits_analytics_zero_usage_hit_level_stays_defined(priced: None) -> No
     assert era["hit_level_percentile"] is None
     assert era["hit_level_percentile_tokens"] is None
     assert payload["meta"]["hits_per_week_recent"] == 0.25
+
+
+def _hit_window(conn: sqlite3.Connection, day: str, base: int = 1_000_000) -> None:
+    """One window on `day`: usage at 08:00, then a session hit at 09:00."""
+    _add_usage(conn, 1, f"{day}T08:00:00Z", base)
+    _add_limit_hit(conn, 1, f"{day}T09:00:00Z",
+                   "You've hit your session limit · resets 1pm (UTC)")
+
+
+def test_repeated_plan_splits_into_separate_periods(priced: None) -> None:
+    # Pro -> Max -> Pro: the two Pro stints are different periods, each with
+    # its own hits and hit levels, not one pooled "Pro" era.
+    conn = _make_conn()
+    _add_usage(conn, 1, "2026-04-20T08:00:00Z", 500_000)  # before any plan entry
+    _hit_window(conn, "2026-05-05", 1_000_000)  # first Pro: $10
+    _hit_window(conn, "2026-06-05", 4_000_000)  # Max: $40
+    _hit_window(conn, "2026-07-05", 2_000_000)  # second Pro: $20
+    _hit_window(conn, "2026-07-06", 3_000_000)  # second Pro: $30
+
+    payload = limits_analytics(conn, plan_history=[
+        {"plan": "Pro", "start_date": "2026-05-01"},
+        {"plan": "Max 5x", "start_date": "2026-06-01"},
+        {"plan": "Pro", "start_date": "2026-07-01"},
+    ])
+
+    eras = payload["eras"]
+    assert [e["era"] for e in eras] == ["", "Pro", "Max 5x", "Pro"]
+    assert [(e["start_date"], e["end_date"]) for e in eras] == [
+        (None, "2026-05-01"),
+        ("2026-05-01", "2026-06-01"),
+        ("2026-06-01", "2026-07-01"),
+        ("2026-07-01", None),
+    ]
+    assert [e["session_hit_count"] for e in eras] == [0, 1, 1, 2]
+    assert eras[1]["usage_at_hit_usd"] == [10.0]
+    assert eras[3]["usage_at_hit_usd"] == [20.0, 30.0]
+    assert eras[3]["hit_level_median_usd"] == 25.0
+    assert [w["era_index"] for w in payload["windows"]] == [0, 1, 2, 3, 3]
+    assert [w["era"] for w in payload["windows"]] == ["", "Pro", "Max 5x", "Pro", "Pro"]
+
+
+def test_period_hit_rate_uses_its_own_tenure(priced: None) -> None:
+    # Hits per week divide by the period's own calendar span: from its plan
+    # start (or the first logged window, if later) to the next plan's start
+    # (or the end of the logs). The Max stint in between never counts toward
+    # either Pro period.
+    conn = _make_conn()
+    _add_usage(conn, 1, "2026-05-01T00:00:00Z", 1_000)  # logs start, after Pro began
+    _hit_window(conn, "2026-05-01")
+    _hit_window(conn, "2026-05-10")
+    _add_usage(conn, 1, "2026-06-15T08:00:00Z", 1_000_000)  # quiet Max window
+    _hit_window(conn, "2026-07-30")
+    _hit_window(conn, "2026-08-10")
+    _add_usage(conn, 1, "2026-08-20T19:00:00Z", 1_000)  # logs end 08-21 00:00
+
+    payload = limits_analytics(conn, plan_history=[
+        {"plan": "Pro", "start_date": "2026-03-01"},
+        {"plan": "Max 5x", "start_date": "2026-05-29"},
+        {"plan": "Pro", "start_date": "2026-07-24"},
+    ])
+
+    rates = [(e["era"], e["weeks"], e["hits_per_week"]) for e in payload["eras"]]
+    assert rates == [
+        ("Pro", 4.0, 0.5),     # 05-01 (first log) to 05-29
+        ("Max 5x", 8.0, 0.0),  # 05-29 to 07-24
+        ("Pro", 4.0, 0.5),     # 07-24 to 08-21 (end of logs)
+    ]
+
+
+def test_short_period_rate_floors_tenure_at_one_week(priced: None) -> None:
+    conn = _make_conn()
+    _hit_window(conn, "2026-07-01")
+    _hit_window(conn, "2026-07-02")
+    payload = limits_analytics(conn, plan_history=[
+        {"plan": "Pro", "start_date": "2026-07-01"},
+    ])
+    era = payload["eras"][0]
+    assert era["weeks"] == 1.0
+    assert era["hits_per_week"] == 2.0
+
+
+def test_window_hit_after_plan_switch_belongs_to_the_plan_in_force(priced: None) -> None:
+    # The window opens on Pro (May 31, 23:30 UTC) but its session hit lands
+    # after Max began (June 1, 01:00 UTC): the cap that was hit is Max's. The
+    # whole window moves with its hit, so band, hit and percentile agree.
+    conn = _make_conn()
+    _add_usage(conn, 1, "2026-05-20T08:00:00Z", 1_000_000)  # an earlier Pro window
+    _add_usage(conn, 1, "2026-05-31T23:30:00Z", 2_000_000)
+    _add_limit_hit(conn, 1, "2026-06-01T01:00:00Z",
+                   "You've hit your session limit · resets 4am (UTC)")
+
+    payload = limits_analytics(conn, plan_history=[
+        {"plan": "Pro", "start_date": "2026-05-01"},
+        {"plan": "Max 5x", "start_date": "2026-06-01"},
+    ])
+
+    assert [w["era"] for w in payload["windows"]] == ["Pro", "Max 5x"]
+    assert [(e["era"], e["session_hit_count"]) for e in payload["eras"]] == [
+        ("Pro", 0), ("Max 5x", 1),
+    ]
+    assert payload["eras"][1]["usage_at_hit_usd"] == [20.0]
+
+
+def test_plan_lookup_reads_timestamps_in_utc(priced: None) -> None:
+    # 01:00 +02:00 on June 1 is 23:00 UTC on May 31: still Pro, the same day
+    # the tenure arithmetic uses.
+    conn = _make_conn()
+    _add_usage(conn, 1, "2026-06-01T01:00:00+02:00", 1_000_000)
+    payload = limits_analytics(conn, plan_history=[
+        {"plan": "Pro", "start_date": "2026-05-01"},
+        {"plan": "Max 5x", "start_date": "2026-06-01"},
+    ])
+    assert [w["era"] for w in payload["windows"]] == ["Pro"]
+
+
+def test_observed_span_includes_hits_outside_windows(priced: None) -> None:
+    # A weekly-limit hit with no usage after it still proves the logs cover
+    # that time: the session-hit rate divides by June 1 -> June 29, not by
+    # the single window.
+    conn = _make_conn()
+    _hit_window(conn, "2026-06-01")
+    _add_limit_hit(conn, 1, "2026-06-29T09:00:00Z",
+                   "You've hit your weekly limit · resets 9pm (UTC)")
+    era = limits_analytics(conn)["eras"][0]
+    assert era["weeks"] == 4.01  # June 1 08:00 -> June 29 09:00
+    assert era["hits_per_week"] == 0.25

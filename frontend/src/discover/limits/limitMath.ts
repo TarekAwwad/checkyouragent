@@ -1,4 +1,4 @@
-import type { LimitEraEntry, LimitHitEntry, LimitWindowEntry } from "../../api/types";
+import type { LimitEraEntry, LimitHitEntry } from "../../api/types";
 import { formatTokens as formatTokenCount, formatUsd } from "../formatting";
 
 export type LimitBasis = "cost" | "tokens";
@@ -28,48 +28,48 @@ export function formatLimitTick(value: number, basis: LimitBasis): string {
   return `$${value >= 10 ? Math.round(value) : value.toFixed(1)}`;
 }
 
-export interface EraRate {
-  hitCount: number;
-  weeks: number;
-  perWeek: number;
+/**
+ * How a plan period names itself. An era is one plan period, not one plan: a
+ * plan held twice is two eras, told apart by eraDateRange. The unplanned era
+ * is everything when there is no history, else what predates the first entry.
+ */
+export function eraName(era: LimitEraEntry, eraCount: number): string {
+  if (era.era) return era.era;
+  return eraCount > 1 ? "Before plan history" : "All usage";
 }
 
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+// Plan dates are calendar days ("2026-05-01"), so they format in UTC: read as
+// local midnight they would print the day before anywhere west of Greenwich.
+function planDay(day: string, now: Date, locale: string | undefined): string {
+  const date = new Date(`${day}T00:00:00Z`);
+  return date.toLocaleDateString(locale, {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+    ...(date.getUTCFullYear() !== now.getFullYear() ? { year: "numeric" } : {}),
+  });
+}
 
 /**
- * Hits per calendar week of each plan's tenure (the span of its windows in
- * the logs). Tenure is floored at one week so a young corpus reports what
- * actually happened instead of extrapolating a single day into a wild rate.
+ * The period's plan dates, end exclusive (the day the next plan began).
+ * `locale` defaults to the viewer's; tests pin it.
  */
-export function eraRates(
-  windows: LimitWindowEntry[],
-  hits: LimitHitEntry[],
-): Map<string, EraRate> {
-  const spans = new Map<string, { from: number; to: number }>();
-  windows.forEach((w) => {
-    const from = Date.parse(w.start);
-    const to = Date.parse(w.end);
-    const current = spans.get(w.era);
-    if (!current) spans.set(w.era, { from, to });
-    else {
-      current.from = Math.min(current.from, from);
-      current.to = Math.max(current.to, to);
-    }
-  });
-  const counts = new Map<string, number>();
-  hits.forEach((h) => {
-    if (h.window_index == null) return;
-    const window = windows[h.window_index];
-    if (!window) return;
-    counts.set(window.era, (counts.get(window.era) ?? 0) + 1);
-  });
-  const rates = new Map<string, EraRate>();
-  spans.forEach((span, era) => {
-    const weeks = Math.max((span.to - span.from) / WEEK_MS, 1);
-    const hitCount = counts.get(era) ?? 0;
-    rates.set(era, { hitCount, weeks, perWeek: hitCount / weeks });
-  });
-  return rates;
+export function eraDateRange(
+  era: LimitEraEntry,
+  now: Date = new Date(),
+  locale?: string,
+): string | null {
+  const { start_date: start, end_date: end } = era;
+  const day = (value: string) => planDay(value, now, locale);
+  if (start && end) return `${day(start)} – ${day(end)}`;
+  if (start) return `since ${day(start)}`;
+  if (end) return `until ${day(end)}`;
+  return null;
+}
+
+/** A period's session-hit rate, as the timeline and the hit-level rows show it. */
+export function formatHitRate(era: LimitEraEntry): string {
+  return `${era.hits_per_week.toFixed(1)} hits/wk`;
 }
 
 /** How the selected basis names itself in legends and aria-labels. */

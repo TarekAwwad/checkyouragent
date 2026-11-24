@@ -297,14 +297,62 @@ def fold_windows(events: list[UsageEvent], hits: list[LimitHit]) -> list[UsageWi
     return windows
 
 
-def _era_for(ts: datetime, history: list[dict[str, str]]) -> str:
-    """Label for the last plan whose start_date is on or before ts (else "")."""
-    day = ts.date().isoformat()
-    label = ""
-    for row in history:
-        if row["start_date"] <= day:
-            label = row["plan"]
-    return label
+@dataclass(frozen=True)
+class _PlanPeriod:
+    """One stint on a plan: a plan-history entry until the next one starts.
+
+    Keyed by entry, not plan name, so Pro -> Max -> Pro is three periods. The
+    leading period (plan "", no start) holds windows logged before the first
+    entry; with no history at all it is the only period and has no bounds.
+    """
+
+    plan: str
+    start_date: str | None  # YYYY-MM-DD, inclusive
+    end_date: str | None  # next entry's start_date, exclusive
+
+
+def _plan_periods(history: list[dict[str, str]]) -> list[_PlanPeriod]:
+    periods = [_PlanPeriod("", None, history[0]["start_date"] if history else None)]
+    for i, row in enumerate(history):
+        end = history[i + 1]["start_date"] if i + 1 < len(history) else None
+        periods.append(_PlanPeriod(row["plan"], row["start_date"], end))
+    return periods
+
+
+def _period_index_for(ts: datetime, periods: list[_PlanPeriod]) -> int:
+    """Index of the last period whose start_date is on or before ts's UTC day.
+
+    Plan dates are UTC calendar days, the same boundaries _period_weeks uses,
+    so the timestamp is read in UTC whatever offset it was logged with.
+    """
+    day = ts.astimezone(timezone.utc).date().isoformat()
+    index = 0
+    for i, period in enumerate(periods):
+        if period.start_date is not None and period.start_date <= day:
+            index = i
+    return index
+
+
+def _day_start(day: str) -> datetime:
+    return datetime.fromisoformat(day).replace(tzinfo=timezone.utc)
+
+
+def _period_weeks(
+    period: _PlanPeriod, logs_from: datetime, logs_to: datetime,
+) -> float:
+    """Calendar weeks the period overlaps the logs, floored at one week.
+
+    Clipped to the logged span: hits before the first export or after the last
+    one are invisible, so that time must not dilute the rate. The floor keeps
+    a young period from extrapolating a single day into a wild weekly rate.
+    """
+    start = logs_from
+    if period.start_date is not None:
+        start = max(start, _day_start(period.start_date))
+    end = logs_to
+    if period.end_date is not None:
+        end = min(end, _day_start(period.end_date))
+    return max((end - start) / timedelta(weeks=1), 1.0)
 
 
 def _hit_payload(hit: LimitHit) -> dict[str, Any]:
@@ -385,24 +433,49 @@ def limits_analytics(
     hits = detect_limit_hits(conn, date_from=date_from, date_to=date_to)
     session_hits = [hit for hit in hits if hit.kind == "session"]
     windows = fold_windows(usage, session_hits)
-    for window in windows:
-        window.era = _era_for(window.start, history)
+    periods = _plan_periods(history)
+    # A window belongs to the plan in force at its first session hit (the cap
+    # that was hit), else at its start. Moving the whole window keeps its
+    # band, its hits and its percentile pool in one period; hits never reach
+    # into the next window, so periods stay in time order.
+    first_hit_at: dict[int, datetime] = {}
+    for hit in session_hits:
+        if hit.window_index is not None:
+            first_hit_at.setdefault(hit.window_index, hit.ts)
+    window_periods = [
+        _period_index_for(first_hit_at.get(i, window.start), periods)
+        for i, window in enumerate(windows)
+    ]
+    for window, period_index in zip(windows, window_periods):
+        window.era = periods[period_index].plan
 
-    era_order: list[str] = []
-    for window in windows:
-        if window.era not in era_order:
-            era_order.append(window.era)
-    if not era_order:
-        era_order = [""]
+    # Only periods with logged windows become eras; era_index on a window
+    # points into the eras list, not into the plan history.
+    used_periods = sorted(set(window_periods)) or [0]
+    era_index_of = {period_index: i for i, period_index in enumerate(used_periods)}
+    window_era_indices = [era_index_of[p] for p in window_periods]
+    # The observed span is everything the logs prove was covered: windows,
+    # plus hits outside them (a weekly-limit hit after the last usage).
+    observed = [w.start for w in windows] + [w.end for w in windows] + [h.ts for h in hits]
+    logs_from = min(observed, default=None)
+    logs_to = max(observed, default=None)
 
     eras_payload: list[dict[str, Any]] = []
-    for era in era_order:
-        era_indices = [i for i, w in enumerate(windows) if w.era == era]
-        era_windows = [windows[i] for i in era_indices]
+    for era_index, period_index in enumerate(used_periods):
+        period = periods[period_index]
+        era = period.plan
+        era_windows = [
+            w for w, idx in zip(windows, window_era_indices) if idx == era_index
+        ]
         era_session_hits = [
             hit for hit in session_hits
-            if hit.window_index is not None and windows[hit.window_index].era == era
+            if hit.window_index is not None
+            and window_era_indices[hit.window_index] == era_index
         ]
+        weeks = (
+            _period_weeks(period, logs_from, logs_to)
+            if logs_from is not None and logs_to is not None else 1.0
+        )
         observed_hit_levels_usd = sorted(
             hit.usage_at_hit
             for hit in era_session_hits
@@ -447,6 +520,10 @@ def limits_analytics(
             "hit_level_percentile_tokens": tokens.percentile,
             "usage_at_hit_usd": [round(value, 4) for value in observed_hit_levels_usd],
             "usage_at_hit_tokens": observed_hit_levels_tokens,
+            "start_date": period.start_date,
+            "end_date": period.end_date,
+            "weeks": round(weeks, 2),
+            "hits_per_week": round(len(era_session_hits) / weeks, 2),
         })
 
     minutes_until_reset_total = sum(hit.minutes_until_reset or 0.0 for hit in hits)
@@ -477,9 +554,10 @@ def limits_analytics(
                 "value_usd": round(w.value_usd, 4),
                 "tokens": w.tokens,
                 "era": w.era,
+                "era_index": era_index,
                 "hit_kinds": list(w.hit_kinds),
             }
-            for w in windows
+            for w, era_index in zip(windows, window_era_indices)
         ],
         "eras": eras_payload,
     }

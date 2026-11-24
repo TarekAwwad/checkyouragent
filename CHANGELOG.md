@@ -6,6 +6,15 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- Compute Limit hits per plan period instead of per plan name, so Pro → Max →
+  Pro shows two Pro periods with their own hit levels and hits per week. Each
+  rate now divides by its own period's logged weeks instead of the span from
+  the plan's first window to its last, which counted the time on other plans.
+  A window that hits its limit after a plan switch counts for the new plan.
+  Hit-level rows show each period's dates and rate, and list periods without
+  recorded hits. Timeline labels too narrow for their band move to its tooltip.
+
 ## [0.4.0] - 2026-11-05
 
 This release corrects replayed usage accounting, makes Cost the default

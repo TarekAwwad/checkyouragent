@@ -2,7 +2,10 @@ import React from "react";
 import type { LimitEraEntry } from "../../api/types";
 import {
   basisLabel,
+  eraDateRange,
   eraHitLevel,
+  eraName,
+  formatHitRate,
   formatLimitTick,
   formatLimitValue,
   type LimitBasis,
@@ -19,12 +22,17 @@ function edgeShift(index: number, count: number): string {
   return "translateX(-50%)";
 }
 
-// The per-plan metrics live here (one row per era, not one card per era, so
-// any number of plans scales). Only the parts an era actually has are shown.
+// The per-period metrics live here (one row per era, not one card per era, so
+// any number of plan periods scales). Only the parts an era has are shown.
+// The hit rate sits here rather than only on the timeline, where a short
+// period's band is too narrow to carry it.
 function eraSummary(era: LimitEraEntry, basis: LimitBasis): string {
   const hits = era.session_hit_count;
   const hitLevel = eraHitLevel(era, basis);
-  const parts = [`sample: ${hits} recorded session hit${hits === 1 ? "" : "s"}`];
+  const parts = [
+    `sample: ${hits} recorded session hit${hits === 1 ? "" : "s"}`,
+    formatHitRate(era),
+  ];
   if (hitLevel.median != null) {
     parts.push(`median ${formatLimitValue(hitLevel.median, basis)}`);
   }
@@ -42,8 +50,8 @@ function eraSummary(era: LimitEraEntry, basis: LimitBasis): string {
   return parts.join(" · ");
 }
 
-// Per era: usage-at-hit dots, the min-max band, and a median marker, plus the
-// observed hit-level percentile among reconstructed windows.
+// Per plan period (an era): usage-at-hit dots, the min-max band, and a median
+// marker, plus the observed hit-level percentile among reconstructed windows.
 // Rendered in measured pixel space so markers keep their shape at any width;
 // all eras share one scale for the selected basis and the axis at the bottom.
 export default function CapZones({ eras, basis }: {
@@ -86,16 +94,37 @@ export default function CapZones({ eras, basis }: {
 
   return (
     <div className="limit-zones chart-tooltip-host" ref={ref}>
-      {zoned.map((era) => {
+      {eras.map((era) => {
         const hitLevel = eraHitLevel(era, basis);
+        const hasStrip = hitLevel.values.length > 0;
+        // A period without hits still gets a line once there are periods to
+        // compare: "none in 15 weeks" is the finding, not an absence of one.
+        const quiet = !hasStrip && eras.length > 1 && era.session_hit_count === 0;
+        if (!hasStrip && !quiet) return null;
+        const name = eraName(era, eras.length);
+        // Dates only matter once there is more than one period to tell apart.
+        const dates = eras.length > 1 ? eraDateRange(era) : null;
+        const label = dates ? `${name} (${dates})` : name;
         return (
-        <div key={era.era || "all"} className="limit-zone-row">
+        <div key={`${era.era}-${era.start_date ?? "start"}`} className="limit-zone-row">
           <div className="limit-zone-head">
-            <strong>{era.era || "All usage"}</strong>
-            <span>{eraSummary(era, basis)}</span>
+            <strong>
+              {name}
+              {dates && <span className="limit-zone-dates"> · {dates}</span>}
+            </strong>
+            <span>
+              {quiet
+                ? `no recorded session hits · ${era.window_count} reconstructed windows`
+                  + ` over ${era.weeks.toFixed(1)} weeks`
+                : eraSummary(era, basis)}
+            </span>
           </div>
+          {/* A quiet period keeps an empty lane on the shared scale, so the
+              axis below never reads as belonging to a row without a strip. */}
           <svg width={width} height={STRIP_H} className="limit-zone-strip" role="img"
-               aria-label={`${era.era || "All usage"} observed hit levels by ${basisLabel(basis)}`}>
+               aria-label={quiet
+                 ? `${label} no recorded session hits`
+                 : `${label} observed hit levels by ${basisLabel(basis)}`}>
             {ticks.map((t) => (
               <line key={t} className="limit-zone-grid"
                     x1={px(t)} y1={3} x2={px(t)} y2={STRIP_H - 3} />

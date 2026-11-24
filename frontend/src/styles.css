@@ -4421,6 +4421,7 @@ html:has(.specimen-dialog[open]) {
 .limit-zones { display: flex; flex-direction: column; gap: 14px; position: relative; }
 .limit-zone-head { display: flex; gap: 10px; align-items: baseline; font-size: 13px; }
 .limit-zone-head span { color: var(--muted); font-size: 12px; }
+.limit-zone-head .limit-zone-dates { font-weight: 400; }
 .limit-zone-strip { display: block; }
 .limit-zone-grid { stroke: var(--border); stroke-width: 1; }
 .limit-zone-band { fill: color-mix(in srgb, var(--danger) 20%, transparent); }

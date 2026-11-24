@@ -748,6 +748,8 @@ class LimitWindowOut(BaseModel):
     value_usd: float = 0
     tokens: int = 0
     era: str = ""
+    # Index into LimitsResponse.eras: the plan period this window falls in.
+    era_index: int = 0
     hit_kinds: list[str] = Field(default_factory=list)
 
 
@@ -766,6 +768,13 @@ class LimitEraOut(BaseModel):
     hit_level_percentile_tokens: float | None = None
     usage_at_hit_usd: list[float] = Field(default_factory=list)
     usage_at_hit_tokens: list[int] = Field(default_factory=list)
+    # One era is one plan period (a plan-history entry until the next), so a
+    # plan held twice is two eras. Dates are the entry's bounds, end exclusive;
+    # weeks is the logged span inside them, floored at one week.
+    start_date: str | None = None
+    end_date: str | None = None
+    weeks: float = 1.0
+    hits_per_week: float = 0
 
 
 class LimitsMeta(BaseModel):

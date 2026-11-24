@@ -107,7 +107,8 @@ export default function LimitHits({ onOpenSession }: TechniqueProps) {
                 <span className="card-count"><b>{data.meta.total_windows}</b> windows</span>
               </div>
               <div className="card-pad">
-                <WindowsTimeline windows={data.windows} hits={data.hits} basis={basis} selected={selected}
+                <WindowsTimeline windows={data.windows} eras={data.eras}
+                                 basis={basis} selected={selected}
                                  onSelectWindow={setSelected} />
               </div>
             </section>
