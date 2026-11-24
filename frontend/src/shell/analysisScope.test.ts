@@ -48,4 +48,23 @@ describe("scopeReducer", () => {
     const next = scopeReducer(slot, { type: "setProject", projectId: 4 });
     expect(next).toMatchObject({ projectId: 4, range: presetRange("30d"), rangeIsAutomatic: true });
   });
+
+  it("lets the first data decide an unresolved slot, even over an earlier pick", () => {
+    // An unresolved slot holds no context yet (startup, or right after a reset).
+    const picked = scopeReducer(UNRESOLVED_SLOT, { type: "setRange", range: presetRange("7d") });
+    expect(scopeReducer(picked, data(true, "2026-11-20")).range).toEqual(presetRange("30d"));
+  });
+
+  it("never switches an automatic range a page has shown", () => {
+    const empty = scopeReducer(UNRESOLVED_SLOT, data(false, null));
+    const shown = scopeReducer(empty, { type: "markShown" });
+    const after = scopeReducer(shown, data(true, "2026-11-23"));
+    expect(after.range.preset).toBe("all");
+    expect(after.rangeShown).toBe(true);
+  });
+
+  it("marks a range shown once", () => {
+    const shown = scopeReducer(UNRESOLVED_SLOT, { type: "markShown" });
+    expect(scopeReducer(shown, { type: "markShown" })).toBe(shown);
+  });
 });

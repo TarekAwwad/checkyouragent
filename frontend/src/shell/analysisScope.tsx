@@ -19,26 +19,34 @@ export interface ScopeSlot {
   projectId: number | null;
   /** True until the user picks a range; only an automatic range is re-evaluated. */
   rangeIsAutomatic: boolean;
+  /** True once a page has displayed the range; a shown range is never switched automatically. */
+  rangeShown: boolean;
+  /**
+   * False until the first data signal. An unresolved slot (startup, or right
+   * after a reset) holds no context yet: its first data decides the range,
+   * replacing any earlier choice.
+   */
   resolved: boolean;
   populated: boolean | null;
 }
 
 export const UNRESOLVED_SLOT: ScopeSlot = {
-  range: ALL_TIME, projectId: null, rangeIsAutomatic: true, resolved: false, populated: null,
+  range: ALL_TIME, projectId: null, rangeIsAutomatic: true, rangeShown: false, resolved: false, populated: null,
 };
 
 export type ScopeAction =
   | { type: "data"; signal: ScopeSignal; today: string }
   | { type: "reset" }
   | { type: "setRange"; range: DateRange }
-  | { type: "setProject"; projectId: number | null };
+  | { type: "setProject"; projectId: number | null }
+  | { type: "markShown" };
 
 export function scopeReducer(slot: ScopeSlot, action: ScopeAction): ScopeSlot {
   switch (action.type) {
     case "data": {
       const { populated, latestDay } = action.signal;
       const firstData = slot.populated === false && populated;
-      if (!slot.resolved || (slot.rangeIsAutomatic && firstData)) {
+      if (!slot.resolved || (slot.rangeIsAutomatic && !slot.rangeShown && firstData)) {
         return {
           ...slot,
           range: presetRange(defaultPreset(latestDay, action.today)),
@@ -55,6 +63,8 @@ export function scopeReducer(slot: ScopeSlot, action: ScopeAction): ScopeSlot {
       return { ...slot, range: action.range, rangeIsAutomatic: false };
     case "setProject":
       return slot.projectId === action.projectId ? slot : { ...slot, projectId: action.projectId };
+    case "markShown":
+      return slot.rangeShown ? slot : { ...slot, rangeShown: true };
   }
 }
 
@@ -65,6 +75,7 @@ export interface AnalysisScopeValue {
   projects: ProjectOption[];
   setRange: (range: DateRange) => void;
   setProjectId: (projectId: number | null) => void;
+  markRangeShown: () => void;
 }
 
 export const AnalysisScopeContext = React.createContext<AnalysisScopeValue | null>(null);

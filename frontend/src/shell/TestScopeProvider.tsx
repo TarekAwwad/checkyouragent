@@ -21,8 +21,10 @@ export function TestScopeProvider({
   const [range, setRange] = React.useState<DateRange>(initialRange);
   const [projectId, setProjectId] = React.useState<number | null>(initialProjectId);
   const day = today ?? localIsoDate(new Date());
+  const markRangeShown = React.useCallback(() => {}, []);
   const value = React.useMemo<AnalysisScopeValue>(() => ({
     range, resolvedRange: resolveRange(range, day), projectId, projects, setRange, setProjectId,
-  }), [range, day, projectId, projects]);
+    markRangeShown,
+  }), [range, day, projectId, projects, markRangeShown]);
   return <AnalysisScopeContext.Provider value={value}>{children}</AnalysisScopeContext.Provider>;
 }
