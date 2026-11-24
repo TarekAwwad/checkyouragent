@@ -192,7 +192,7 @@ This machine, primary navigation:
 - **Cost**: local cost and token analytics.
 - **Sessions**: filter and sort sessions by observed evidence, activity, and
   estimated API-equivalent cost.
-- **Explore**: **Limit hits**, **Usage drivers**, **Usage Mindmap**,
+- **Explore**: **Limit hits**, **Usage drivers**, **Activity map**,
   experimental **Context economics**, and experimental **Subgroups**.
 
 This machine, Data group:

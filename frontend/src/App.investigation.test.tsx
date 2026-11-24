@@ -186,4 +186,32 @@ describe("investigation context", () => {
     expect(screen.queryByLabelText("Start date")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Model")).toHaveValue("");
   });
+
+  it("carries the project and range from Cost to Sessions", async () => {
+    renderApp();
+    await screen.findByRole("heading", { name: "Spend over time" });
+    fireEvent.change(screen.getByLabelText("Date range"), { target: { value: "90d" } });
+    fireEvent.change(screen.getByLabelText("Project"), { target: { value: "1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Sessions" }));
+    await screen.findByPlaceholderText("Search sessions");
+    expect(screen.getByLabelText("Date range")).toHaveValue("90d");
+    expect(screen.getByLabelText("Project")).toHaveValue("1");
+  });
+
+  it("opens on the last 30 days when the index has recent sessions", async () => {
+    const now = new Date().toISOString();
+    vi.mocked(client.listSessions).mockResolvedValue([{ ...session(7, 12), first_ts: now, last_ts: now }]);
+    renderApp();
+    await screen.findByRole("heading", { name: "Spend over time" });
+    expect(screen.getByLabelText("Date range")).toHaveValue("30d");
+  });
+
+  it("opens on all time when every session is older than 30 days", async () => {
+    vi.mocked(client.listSessions).mockResolvedValue([
+      { ...session(7, 12), first_ts: "2020-01-01T00:00:00Z", last_ts: "2020-01-01T01:00:00Z" },
+    ]);
+    renderApp();
+    await screen.findByRole("heading", { name: "Spend over time" });
+    expect(screen.getByLabelText("Date range")).toHaveValue("all");
+  });
 });

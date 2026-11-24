@@ -9,7 +9,7 @@
 //
 // Wave-1 screen map (derived from `git diff --name-only main...ship/integration`):
 //   usage-drivers     Explore > Usage drivers            (P09 UsageDrivers.tsx + UsageCharacteristicsPanel.tsx)
-//   mindmap           Explore > Usage Mindmap            (P13 removed its redundant "Usage drivers" dialog)
+//   mindmap           Explore > Activity map            (P13 removed its redundant "Usage drivers" dialog)
 //   context           Explore > Context economics        (P08 TaxMeterHero.tsx; also a REFERENCE screen)
 //   context-drilldown Context economics with a finding open (P08 SessionDrilldown.tsx)
 //   cost              Cost                               (P08 InsightStrip.tsx; also a REFERENCE screen)
@@ -136,7 +136,7 @@ const SCREENS = [
     name: "mindmap",
     go: async (page) => {
       await nav(page, "Explore");
-      await page.getByRole("button", { name: "Usage Mindmap" }).click();
+      await page.getByRole("button", { name: "Activity map" }).click();
     },
     ready: ".mindmap-stage",
     pre: 1600,

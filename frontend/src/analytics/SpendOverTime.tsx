@@ -9,6 +9,7 @@ import {
   orderedModels,
   FALLBACK_COLOR,
 } from "./chartGeometry";
+import SegmentedControl from "../components/controls/SegmentedControl";
 import { formatCostPeriod } from "./costPeriods";
 import SpikeInsight from "./SpikeInsight";
 import type { SpendViewState } from "../shell/investigationState";
@@ -70,25 +71,18 @@ export default function SpendOverTime({
   const heading = (
     <div className="session-visual-heading sot-heading">
       <h2>Spend over time</h2>
-      <div className="heat-metric-control" role="radiogroup" aria-label="Spend display">
-        <span className="heat-metric-label">View</span>
-        <button
-          type="button"
-          role="radio"
-          aria-checked={mode === "total"}
-          onClick={() => setMode("total")}
-        >
-          Total spend
-        </button>
-        <button
-          type="button"
-          role="radio"
-          aria-checked={mode === "model"}
-          onClick={() => setMode("model")}
-        >
-          Spend by model
-        </button>
-      </div>
+      <SegmentedControl
+        variant="radio"
+        size="sm"
+        caption="View"
+        label="Spend display"
+        options={[
+          { value: "total", label: "Total spend" },
+          { value: "model", label: "Spend by model" },
+        ]}
+        value={mode}
+        onChange={setMode}
+      />
     </div>
   );
 

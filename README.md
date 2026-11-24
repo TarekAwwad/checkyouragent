@@ -72,7 +72,7 @@ visit.
   distribution, and session outliers. Historical pricing is optional and
   date-aware. Spend increases show their comparison baseline, and long model
   legends wrap while the model list scrolls within its panel.
-- **Explore** covers limit hits, usage drivers, and the Usage Mindmap, plus an
+- **Explore** covers limit hits, usage drivers, and the Activity map, plus an
   experimental section with context economics and subgroup discovery.
 - **Team bundles** export allowlisted aggregates (no raw conversation content)
   that teammates can import for team Overview and Cost views. A privacy mode

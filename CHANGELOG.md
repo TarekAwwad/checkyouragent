@@ -7,6 +7,20 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Changed
+- Every page now opens with the same header: title, then date range and
+  project, then the page's own filters and view options. The date range and
+  project carry across Cost, Sessions, Limit hits, Usage drivers and the
+  Activity map; pages that cannot filter by one show it as fixed. The app
+  opens on the last 30 days when there is recent activity, otherwise on all
+  time.
+- A date range now means the same local calendar days on every page. Cost
+  presets were rolling 24-hour periods in UTC and custom dates were UTC days;
+  Usage drivers, the Activity map and Limit hits matched UTC dates. Totals
+  near range edges can shift slightly.
+- Sessions can be narrowed by date (sessions with any activity in the range),
+  and Limit hits follows the selected range.
+- The Usage Mindmap is now called the Activity map everywhere. Its JSON and
+  PNG exports share one Export menu.
 - Shorten the Limit hits page copy to numbers and labels, and move the
   explanations to the glossary (Limit hit, 5-hour window, Usage at hit, Plan
   period, Hits per week, Hit-level percentile, Time to reset). Each plan

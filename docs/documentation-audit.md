@@ -116,7 +116,7 @@ This machine:
 - Export
 - Sessions
 - Cost
-- Explore: Limit hits, Usage drivers, Usage Mindmap, experimental Context
+- Explore: Limit hits, Usage drivers, Activity map, experimental Context
   economics, and experimental Subgroups
 - Session workspace, reached as a drilldown rather than a permanent nav item
 
@@ -143,7 +143,7 @@ Team data has no raw event/session drilldown because bundles contain aggregates.
   receipts.
 - Supported session findings detect specific recorded conditions and link back
   to evidence. They do not recreate the removed risk score/tier system.
-- Usage Mindmap classifies observed assistant activity; it does not allocate
+- Activity map classifies observed assistant activity; it does not allocate
   message cost to workflow phases.
 - Usage Drivers entries overlap and therefore need not sum to 100%.
 
@@ -172,7 +172,7 @@ These features or claims must not be presented as current:
 - a contribution page, contribution API, or public contribution workflow;
 - Team bundle risk categories, inferred patterns, or event sequences;
 - cap-zone, percentile, near-miss, or plan-fit verdicts in Limit hits;
-- causal subgroup conclusions, cost attribution by Usage Mindmap phase, or
+- causal subgroup conclusions, cost attribution by Activity map phase, or
   guaranteed Context Economics savings;
 - Team raw-session sharing or Team session drilldowns;
 - Codex/OpenAI/other-agent import, live hooks, OpenTelemetry ingestion, or a
@@ -196,7 +196,7 @@ Outputs:
 - Team bundle JSON under `CCFR_TEAM_BUNDLE_ROOT/exports`, or a path chosen by
   the headless `export-bundle` command.
 - Local browser dashboards and API JSON responses.
-- Usage Mindmap JSON/PNG exports.
+- Activity map JSON/PNG exports.
 
 The retired contribution output directory is not a current output.
 
