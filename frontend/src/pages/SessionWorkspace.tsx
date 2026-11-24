@@ -20,9 +20,9 @@ interface Props {
   session: SessionCard;
   /** Event to select on entry (deep-link from analytics views); null = default. */
   initialEventId?: number | null;
-  /** Label for the origin-aware navigation control, for example "Back to Cost". */
   /** Where the session was opened from, shown before its title. */
   section?: string;
+  /** Label for the origin-aware navigation control, for example "Back to Cost". */
   backLabel?: string;
   onBack?: () => void;
   historical?: boolean;

@@ -115,7 +115,7 @@ export default function UsageMindmap({ onOpenSession }: Props) {
                               setSelectedNode(null);
                             }} />
           <ToggleChip label="vs previous period" ariaLabel="Compare with previous period"
-                      checked={compare} disabled={previous === null} onChange={setCompare} />
+                      checked={compare && previous !== null} disabled={previous === null} onChange={setCompare} />
         </>
       )}
     />

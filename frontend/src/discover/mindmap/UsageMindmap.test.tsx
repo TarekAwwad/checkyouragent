@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { getUsageMap, getUsageMapEvidence } from "../../api/client";
@@ -158,7 +158,6 @@ describe("UsageMindmap", () => {
   beforeEach(() => {
     vi.mocked(getUsageMapEvidence).mockClear();
   });
-  afterEach(() => vi.useRealTimers());
 
   it("labels the view as an observed-activity map", async () => {
     renderPage();
@@ -224,6 +223,17 @@ describe("UsageMindmap", () => {
     renderPage();
     await screen.findByText("Observed");
     expect(screen.getByLabelText("Compare with previous period")).toBeDisabled();
+  });
+
+  it("unchecks compare when the range becomes all time", async () => {
+    renderPage(vi.fn(), { preset: "custom", from: "2026-06-01", to: "2026-06-10" });
+    await screen.findByText("Observed");
+    const compare = screen.getByLabelText("Compare with previous period");
+    fireEvent.click(compare);
+    expect(compare).toBeChecked();
+    fireEvent.change(screen.getByLabelText("Date range"), { target: { value: "all" } });
+    await waitFor(() => expect(compare).toBeDisabled());
+    expect(compare).not.toBeChecked();
   });
 
   it("offers JSON and PNG exports from one menu", async () => {

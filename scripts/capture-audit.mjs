@@ -117,17 +117,17 @@ const SCREENS = [
       await nav(page, "Explore");
       await page.getByRole("button", { name: "Usage drivers" }).click();
     },
-    ready: ".usage-drivers-body .uc-row",
+    ready: ".usage-drivers-rows",
     pre: 400,
   },
   {
     // Same page with the widest range selected — the demo corpus is weeks old,
-    // so Day/Week show 0% and only All exercises the rows with real numbers.
+    // so short ranges show 0% and only All time exercises the rows with real numbers.
     name: "usage-drivers-all",
     go: async (page) => {
-      await page.getByRole("button", { name: "All", exact: true }).click();
+      await page.getByLabel("Date range").selectOption("all");
     },
-    ready: ".usage-drivers-body .uc-row",
+    ready: ".usage-drivers-rows",
     pre: 400,
   },
   {

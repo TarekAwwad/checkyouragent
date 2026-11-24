@@ -126,6 +126,7 @@ async function main() {
 
   // 01 — Habit & anti-pattern mindmap.
   await nav(page, "Explore");
+  await selectAllTime(page);
   await page.getByRole("button", { name: "Activity map" }).click();
   await shot("mindmap.png", ".mindmap-stage", 1600); // let the d3-force layout settle
 
@@ -250,6 +251,7 @@ async function main() {
 
   // subgroup.png — Subgroups on its default, explicitly non-causal view.
   await nav(rp, "Explore");
+  await selectAllTime(rp);
   await rp.getByRole("button", { name: "Subgroups" }).click();
   await rshotEl("subgroup.png", ".driver-board", 500);
 
