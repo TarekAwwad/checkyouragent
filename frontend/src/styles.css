@@ -321,7 +321,7 @@ html:has(.glossary-dialog[open]) { overflow: hidden; }
   overflow-x: auto;
 }
 
-.page { flex: 1; width: 100%; max-width: var(--page-max-width); margin: 0 auto; padding: 22px var(--page-gutter); }
+.page { flex: 1; width: 100%; max-width: var(--page-max-width); margin: 0 auto; padding: 18px var(--page-gutter); }
 .team-export-page,
 .team-import-page { overflow: auto; width: 100%; }
 
@@ -609,7 +609,6 @@ h3 {
 .panel-header h2 { margin: 0; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
 .panel-header span { color: var(--faint); font-size: 10px; display: inline-flex; align-items: center; gap: 6px; }
 
-.workspace-search { position: relative; flex: 0 1 320px; width: min(100%, 320px); }
 .search-popover { position: absolute; z-index: 20; right: 0; top: 42px; width: 420px; max-height: 320px;
   overflow: auto; border: 1px solid var(--border); border-radius: 11px; background: var(--surface);
   box-shadow: 0 14px 40px var(--shadow); }
@@ -749,7 +748,7 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
   }
 }
 
-.triage-page { display: grid; grid-template-rows: auto auto 1fr; gap: 14px; min-height: 100%; padding: 20px 22px; }
+.triage-page { display: grid; grid-template-rows: auto auto 1fr; gap: 14px; min-height: 100%; padding: 18px var(--page-gutter); }
 .triage-card { display: flex; flex-direction: column; min-height: 0; }
 .triage-table-wrap { overflow: auto; min-height: 0; }
 .triage-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
@@ -1068,7 +1067,6 @@ button.spike-insight:focus-visible { outline: 1px solid var(--accent); outline-o
 /* spend over time — svg area */
 .sot { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; overflow: visible; }
 .sot-heading { align-items: center; }
-.sot-heading .heat-metric-control { flex-wrap: nowrap; }
 .sot-plot {
   position: relative; height: 170px; flex: 0 0 170px; border: 1px solid var(--border); border-radius: 9px;
   background: var(--bg); overflow: hidden;
@@ -4381,7 +4379,7 @@ html:has(.specimen-dialog[open]) {
 .page-header {
   position: sticky; top: 0; z-index: 6;
   display: flex; flex-direction: column; gap: 10px;
-  padding-bottom: 12px; background: var(--bg);
+  margin-top: -18px; padding-top: 18px; padding-bottom: 12px; background: var(--bg);
 }
 .page-header-row { display: flex; align-items: flex-start; gap: 12px 18px; }
 .page-header-identity { flex: 1 1 auto; min-width: 0; }
@@ -4402,11 +4400,18 @@ html:has(.specimen-dialog[open]) {
 }
 .page-header-aside { display: flex; flex: none; align-items: center; gap: 8px; }
 .page-header-status { min-width: 64px; color: var(--muted); font-size: 10.5px; text-align: right; }
-.page-header-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 0; }
-.page-header-zone { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; }
-.page-header-zone + .page-header-zone { margin-left: 12px; padding-left: 12px; border-left: 1px solid var(--border); }
+.page-header-controls {
+  display: flex; flex-wrap: wrap; align-items: center; row-gap: 8px;
+  overflow-x: clip; overflow-clip-margin: 4px;
+}
+/* Each zone draws its divider 12px left of its content. On the first zone of
+   every line that divider falls outside the row and is clipped, so a wrapped
+   line never starts with a stray rule. */
+.page-header-zone {
+  display: flex; flex-wrap: nowrap; align-items: center; gap: 8px;
+  margin: 0 25px 0 -13px; padding-left: 12px; border-left: 1px solid var(--border);
+}
 .page-header .ghost-action { height: 33px; box-sizing: border-box; padding: 0 12px; font-size: 12px; border-radius: 9px; gap: 6px; }
 @media (max-width: 900px) {
   .page-header-zone { flex-wrap: wrap; }
-  .page-header-zone + .page-header-zone { margin-left: 0; padding-left: 0; border-left: 0; }
 }
