@@ -294,7 +294,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     category: "Discovery",
     term: "Usage driver",
     definition:
-      "A trait of your usage, such as sessions with subagents or calls over 150k context, shown with its share of usage. Drivers overlap: one call can count toward several, so their shares can add up to more than 100%. They are not a breakdown.",
+      "A trait of your usage, such as sessions with subagents or calls over 150k context, shown with its share of usage. Drivers overlap: one call can count toward several, so their shares can add up to more than 100%. They are not a breakdown. Today and Last 7 days match the windows of Claude Code's /usage; Last 30 days and All time draw on your full imported history.",
   },
   {
     category: "Discovery",

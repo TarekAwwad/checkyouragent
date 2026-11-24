@@ -160,7 +160,8 @@ describe("UsageMindmap", () => {
     renderPage();
     expect(await screen.findByRole("heading", { name: "Activity map" }))
       .toBeInTheDocument();
-    expect(screen.getByText(/observed activity, not cost attribution/i)).toBeInTheDocument();
+    expect(screen.getByText("Tool calls and assistant steps by phase.")).toBeInTheDocument();
+    expect(screen.queryByText(/counts once in its classified phase/i)).not.toBeInTheDocument();
     expect(await screen.findByText(/classified as Explore/)).toBeInTheDocument();
     expect(screen.getByText("Share of observed activity")).toBeInTheDocument();
     expect(screen.queryByText(/share of spend/i)).not.toBeInTheDocument();
