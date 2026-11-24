@@ -42,6 +42,8 @@ export default function LimitHits({ onOpenSession }: TechniqueProps) {
   });
   const data = query.data;
   const [selected, setSelected] = React.useState<number | null>(null);
+  // The selection is an index into the window list; a new range has a new list.
+  React.useEffect(() => { setSelected(null); }, [bounds.dateFrom, bounds.dateTo]);
   const [planOpen, setPlanOpen] = React.useState(false);
   const [chosenBasis, setChosenBasis] = React.useState<LimitBasis | null>(null);
 
@@ -132,7 +134,7 @@ export default function LimitHits({ onOpenSession }: TechniqueProps) {
               </div>
             </section>
 
-            {selected != null && (
+            {selected != null && data.windows[selected] && (
               <section className="card" aria-label="Window detail">
                 <div className="card-head">
                   <h2>Window detail</h2>

@@ -143,10 +143,11 @@ function App() {
   }, [sessions.isError, sessions.isSuccess, sessions.data]);
   const teamSignal = React.useMemo<ScopeSignal | null>(() => {
     if (teamDashboard.isError) return { populated: false, latestDay: null };
-    if (!teamDashboard.isSuccess) return null;
+    // A refetch (after an import or member removal) still holds the old data.
+    if (!teamDashboard.isSuccess || teamDashboard.isFetching) return null;
     const meta = teamDashboard.data.meta;
     return { populated: (meta?.session_count ?? 0) > 0, latestDay: toLocalDay(meta?.date_to) };
-  }, [teamDashboard.isError, teamDashboard.isSuccess, teamDashboard.data]);
+  }, [teamDashboard.isError, teamDashboard.isSuccess, teamDashboard.isFetching, teamDashboard.data]);
   const scopeSignals = React.useMemo(() => ({ local: localSignal, team: teamSignal }), [localSignal, teamSignal]);
   const scopeProjects = React.useMemo<ProjectOption[]>(
     () => (scope === "local" ? (projects.data ?? []).map((p) => ({ id: p.id, name: p.display_name })) : []),

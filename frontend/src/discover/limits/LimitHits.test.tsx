@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { LimitsResponse } from "../../api/types";
 import CapZones from "./CapZones";
@@ -124,6 +124,20 @@ describe("LimitHits", () => {
     expect(screen.getByText("seen 2 times")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Ship the release/ }));
     expect(onOpenSession).toHaveBeenCalledWith(7);
+  });
+
+  it("survives a range change that leaves fewer windows than the selected one", async () => {
+    const { getLimits } = await import("../../api/client");
+    renderPage();
+    await screen.findByText("Time to reset");
+    fireEvent.click(screen.getByRole("button", { name: /window 2/i }));
+    expect(screen.getByRole("region", { name: "Window detail" })).toBeInTheDocument();
+    vi.mocked(getLimits).mockResolvedValueOnce({ ...payload, windows: [], hits: [] });
+    const before = vi.mocked(getLimits).mock.calls.length;
+    fireEvent.change(screen.getByLabelText("Date range"), { target: { value: "7d" } });
+    await waitFor(() => expect(getLimits).toHaveBeenCalledTimes(before + 1));
+    await waitFor(() =>
+      expect(screen.queryByRole("region", { name: "Window detail" })).not.toBeInTheDocument());
   });
 
   it("shows each period's hits and rate, and the rest on hover", async () => {
