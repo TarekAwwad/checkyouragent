@@ -1,61 +1,37 @@
 import React from "react";
-import type { TechniqueProps } from "../techniques";
 import type { UsageCharacteristicsResponse } from "../../api/types";
 import { formatTokens, formatUsd } from "../../analytics/chartGeometry";
 import InsightStat from "../../components/InsightStat";
 import LoadingBar from "../../components/LoadingBar";
 import { Blurred } from "../../shell/Blurred";
-import {
-  PRESETS,
-  PRESET_LABELS,
-  formatShare,
-  useUsageCharacteristics,
-  type Preset,
-} from "./driverData";
+import { formatShare, useUsageCharacteristics } from "./driverData";
+import PageHeader from "../../shell/PageHeader";
+import { useAnalysisScope } from "../../shell/analysisScope";
+import { instantBounds } from "../../shell/dateRange";
 
 // Explore technique: the overlapping traits behind your usage (/usage's
 // "what's contributing" panel), each with its share of the window's total.
-// Same grammar as the other Explore pages: stat strip, then label | bar |
-// value rows. What each driver means, and its advice, is in the glossary.
-// onOpenSession is part of the TechniqueProps contract but unused here.
-export default function UsageDrivers({ projects }: TechniqueProps) {
-  const [projectId, setProjectId] = React.useState<number | null>(null);
-  const [preset, setPreset] = React.useState<Preset>("7d");
-  const query = useUsageCharacteristics(projectId, preset);
+// What each driver means, and its advice, is in the glossary.
+export default function UsageDrivers() {
+  const { resolvedRange, projectId, projects } = useAnalysisScope();
+  const { from, to } = resolvedRange;
+  const bounds = React.useMemo(() => instantBounds({ from, to }), [from, to]);
+  const query = useUsageCharacteristics(projectId, bounds);
   const data = query.data;
   const project = projects.find((p) => p.id === projectId);
   const basis = data?.meta.share_basis === "tokens" ? "tokens" : "cost";
+  const updating = query.isFetching && !query.isPending;
 
   return (
     <main className="discover-page">
       <div className="discover-page-inner">
-        <div className="discover-toolbar" aria-label="Usage drivers controls">
-          <div className="discover-toolbar-lead">
-            <h1>Usage drivers</h1>
-            <p className="discover-subtitle">
-              Share of {basis},{" "}
-              {project ? <Blurred>{project.display_name}</Blurred> : "all projects"}.
-            </p>
-          </div>
-          <div className="cost-filterbar discover-filterbar usage-drivers-controls">
-            <div className="segmented-control" role="group" aria-label="Range">
-              {PRESETS.map((p) => (
-                <button key={p} type="button" aria-pressed={preset === p}
-                        className={preset === p ? "active" : ""}
-                        onClick={() => setPreset(p)}>
-                  {PRESET_LABELS[p]}
-                </button>
-              ))}
-            </div>
-            <select aria-label="Project" value={projectId ?? ""}
-                    onChange={(e) => setProjectId(e.target.value ? Number(e.target.value) : null)}>
-              <option value="">All projects</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>{p.display_name}</option>
-              ))}
-            </select>
-          </div>
-        </div>
+        <PageHeader
+          section="Explore"
+          title="Usage drivers"
+          subtitle={<>Share of {basis}, {project ? <Blurred>{project.name}</Blurred> : "all projects"}.</>}
+          status={updating ? "Updating…" : null}
+          scope={{ date: "filter", project: "filter" }}
+        />
 
         {query.isPending && (
           <div className="loading-view"><LoadingBar caption="Loading usage drivers…" /></div>

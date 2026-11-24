@@ -1,10 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { Project, UsageCharacteristicsResponse } from "../../api/types";
+import type { UsageCharacteristicsResponse } from "../../api/types";
 import { getUsageCharacteristics } from "../../api/client";
 import UsageDrivers from "./UsageDrivers";
-import { PRESET_LABELS, PRESETS, formatShare, localIsoDate, windowFor } from "./driverData";
+import { formatShare } from "./driverData";
+import { TestScopeProvider } from "../../shell/TestScopeProvider";
+import { instantBounds, presetRange, type DateRange } from "../../shell/dateRange";
+import { DATE_INPUT_DEBOUNCE_MS } from "../../components/controls/DateRangeControl";
 
 vi.mock("../../api/client", () => ({ getUsageCharacteristics: vi.fn() }));
 
@@ -32,16 +35,13 @@ function payload(
   };
 }
 
-const projects: Project[] = [{
-  id: 7, export_name: "d--alpha", display_name: "alpha", inferred_cwd: null,
-  session_count: 1, event_count: 1, subagent_count: 0, cost_usd: 0, cost_available: true,
-}];
-
-function renderPage() {
+function renderPage(range: DateRange = presetRange("7d")) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <UsageDrivers projects={projects} onOpenSession={vi.fn()} />
+      <TestScopeProvider projects={[{ id: 7, name: "alpha" }]} range={range} today="2026-11-24">
+        <UsageDrivers />
+      </TestScopeProvider>
     </QueryClientProvider>,
   );
 }
@@ -147,67 +147,27 @@ describe("UsageDrivers", () => {
       .toHaveClass("empty-state", "panel-error");
   });
 
-  it("offers the Cost page's range labels, Last 7 days first selected", async () => {
-    renderPage();
+  it("requests the shared range as local-day instants", async () => {
+    renderPage(presetRange("today"));
     await screen.findByText("Sessions with subagents");
-    const range = screen.getByRole("group", { name: "Range" });
-    expect(range).toHaveClass("segmented-control");
-    const labels = within(range).getAllByRole("button").map((b) => b.textContent);
-    expect(labels).toEqual(["Today", "Last 7 days", "Last 30 days", "All time"]);
-    expect(within(range).getByRole("button", { name: "Last 7 days" }))
-      .toHaveAttribute("aria-pressed", "true");
-  });
-
-  it("fetches today's local date for Today and no dates for All time", async () => {
-    renderPage();
-    await screen.findByText("Sessions with subagents");
-    const today = localIsoDate(new Date());
-
-    fireEvent.click(screen.getByRole("button", { name: "Today" }));
-    await waitFor(() => expect(fetchDrivers).toHaveBeenLastCalledWith(
-      { projectId: null, dateFrom: today, dateTo: today }));
-
-    fireEvent.click(screen.getByRole("button", { name: "All time" }));
+    expect(fetchDrivers).toHaveBeenLastCalledWith(
+      { projectId: null, ...instantBounds({ from: "2026-11-24", to: "2026-11-24" }) });
+    fireEvent.change(screen.getByLabelText("Date range"), { target: { value: "all" } });
     await waitFor(() => expect(fetchDrivers).toHaveBeenLastCalledWith(
       { projectId: null, dateFrom: null, dateTo: null }));
   });
-});
 
-describe("windowFor", () => {
-  const now = new Date(2026, 10, 24, 15, 0); // 24 Nov 2026, 15:00 local
-
-  it("labels every preset", () => {
-    expect(PRESETS.map((p) => PRESET_LABELS[p]))
-      .toEqual(["Today", "Last 7 days", "Last 30 days", "All time"]);
-  });
-
-  it("returns inclusive local-date windows that end today", () => {
-    expect(windowFor("today", now)).toEqual({ dateFrom: "2026-11-24", dateTo: "2026-11-24" });
-    expect(windowFor("7d", now)).toEqual({ dateFrom: "2026-11-18", dateTo: "2026-11-24" });
-    expect(windowFor("30d", now)).toEqual({ dateFrom: "2026-10-26", dateTo: "2026-11-24" });
-    expect(windowFor("all", now)).toEqual({ dateFrom: null, dateTo: null });
-  });
-
-  it("crosses month and year boundaries", () => {
-    expect(windowFor("7d", new Date(2026, 0, 3, 12))).toEqual(
-      { dateFrom: "2025-12-28", dateTo: "2026-01-03" });
-  });
-
-  it("uses the local calendar day near midnight, not the UTC one", () => {
-    // 00:30 at UTC+14 is still the day before in UTC, and 23:30 at UTC-8 is
-    // already the day after: toISOString() reported those UTC days.
-    const savedTz = process.env.TZ;
-    try {
-      for (const [tz, hour] of [["Pacific/Kiritimati", 0], ["America/Los_Angeles", 23]] as const) {
-        process.env.TZ = tz;
-        const t = new Date(2026, 10, 24, hour, 30);
-        expect(windowFor("today", t)).toEqual({ dateFrom: "2026-11-24", dateTo: "2026-11-24" });
-        expect(windowFor("7d", t)).toEqual({ dateFrom: "2026-11-18", dateTo: "2026-11-24" });
-      }
-    } finally {
-      if (savedTz === undefined) delete process.env.TZ;
-      else process.env.TZ = savedTz;
-    }
+  it("keeps two custom ranges apart in the cache", async () => {
+    renderPage({ preset: "custom", from: "2026-06-01", to: "2026-06-10" });
+    await screen.findByText("Sessions with subagents");
+    fireEvent.change(screen.getByLabelText("Start date"), { target: { value: "2026-06-05" } });
+    await waitFor(() => expect(fetchDrivers).toHaveBeenLastCalledWith(
+      { projectId: null, ...instantBounds({ from: "2026-06-05", to: "2026-06-10" }) }));
+    expect(fetchDrivers).toHaveBeenCalledTimes(2);
+    fireEvent.change(screen.getByLabelText("Start date"), { target: { value: "2026-06-01" } });
+    await new Promise((resolve) => setTimeout(resolve, DATE_INPUT_DEBOUNCE_MS + 50));
+    // The first range is still fresh in its own cache entry: no third request.
+    expect(fetchDrivers).toHaveBeenCalledTimes(2);
   });
 });
 
