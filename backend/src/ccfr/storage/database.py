@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from pathlib import Path
+
+
+logger = logging.getLogger(__name__)
 
 
 SCHEMA = """
@@ -580,6 +584,50 @@ def init_db(conn: sqlite3.Connection) -> None:
     except Exception:
         conn.rollback()
         raise
+    ensure_planner_stats(conn)
+
+
+def refresh_planner_stats(conn: sqlite3.Connection) -> None:
+    """Recompute SQLite's query-planner statistics (``sqlite_stat1``).
+
+    Without statistics SQLite guesses index selectivity, and for the per-session
+    analytics queries it guesses wrong: it walks every assistant message through
+    idx_messages_role_event instead of seeking the session's events through
+    idx_events_session_time. Plain ANALYZE works on every SQLite the app runs
+    on (``PRAGMA optimize=0x10002`` needs 3.46+) and takes under 2 s on a
+    1 GB cache.
+
+    Call it after the data commit, never inside an import transaction. A failure
+    only costs query speed, so it is logged rather than raised.
+    """
+    if conn.in_transaction:
+        raise RuntimeError("refresh_planner_stats() must run after the data commit")
+    try:
+        conn.execute("ANALYZE")
+        conn.commit()
+    except sqlite3.Error:
+        conn.rollback()
+        logger.warning("ANALYZE failed; analytics queries may be slow", exc_info=True)
+
+
+def ensure_planner_stats(conn: sqlite3.Connection) -> None:
+    """Analyze once when events are imported but have no planner statistics.
+
+    Heals databases built by releases that never ran ANALYZE. An empty database,
+    or one whose events are already analyzed, is left alone. The check looks at
+    the events rows specifically: a local reset drops the events table (and its
+    statistics) while the team tables, and theirs, survive.
+    """
+    has_stats_table = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'sqlite_stat1'"
+    ).fetchone()
+    if has_stats_table and conn.execute(
+        "SELECT 1 FROM sqlite_stat1 WHERE tbl = 'events' LIMIT 1"
+    ).fetchone():
+        return
+    if conn.execute("SELECT 1 FROM events LIMIT 1").fetchone() is None:
+        return
+    refresh_planner_stats(conn)
 
 
 _SESSION_FINDINGS_ANALYSIS_VERSION = 2

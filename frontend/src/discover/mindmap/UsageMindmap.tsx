@@ -8,6 +8,24 @@ import { exportJson, exportPng } from "./exportMap";
 import { phaseNode, deriveOriginPhases, type LeafMode, type MapNode, type OriginFilter } from "./forceModel";
 import MindmapCanvas from "./MindmapCanvas";
 import LoadingBar from "../../components/LoadingBar";
+import { useDebouncedValue } from "../../shell/useDebouncedValue";
+
+/** Wait after the last date edit before refetching (a map, and maybe its comparison window). */
+export const DATE_FILTER_DEBOUNCE_MS = 400;
+
+/** Previous window of equal length, ending the day before dateFrom. */
+function previousPeriod(dateFrom: string, dateTo: string) {
+  if (!dateFrom || !dateTo) return null;
+  const from = new Date(`${dateFrom}T00:00:00Z`);
+  const to = new Date(`${dateTo}T00:00:00Z`);
+  const spanMs = to.getTime() - from.getTime();
+  if (Number.isNaN(spanMs) || spanMs < 0) return null;
+  const dayMs = 24 * 60 * 60 * 1000;
+  const prevTo = new Date(from.getTime() - dayMs);
+  const prevFrom = new Date(prevTo.getTime() - spanMs);
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  return { dateFrom: iso(prevFrom), dateTo: iso(prevTo) };
+}
 
 interface Props {
   projects: Project[];
@@ -24,38 +42,36 @@ export default function UsageMindmap({ projects, onOpenSession }: Props) {
   const [origin, setOrigin] = React.useState<OriginFilter>("all");
   const boardRef = React.useRef<HTMLDivElement>(null);
 
+  // The date inputs stay live; the map follows once editing pauses, so typing
+  // a date does not fire a full map request (two with compare on) per keystroke.
+  const dateInputs = React.useMemo(() => ({ dateFrom, dateTo }), [dateFrom, dateTo]);
+  const dates = useDebouncedValue(dateInputs, DATE_FILTER_DEBOUNCE_MS);
+
   // A selection from the previous filter window may not exist in the new data;
   // fall back to the most active phase instead of highlighting a phantom node.
   React.useEffect(() => {
     setSelectedNode(null);
-  }, [projectId, dateFrom, dateTo]);
+  }, [projectId, dates]);
 
   const filters: UsageMapFilters = {
     projectId,
-    dateFrom: dateFrom || null,
-    dateTo: dateTo || null,
+    dateFrom: dates.dateFrom || null,
+    dateTo: dates.dateTo || null,
   };
   const query = useQuery({
-    queryKey: ["usage-map", projectId, dateFrom, dateTo],
+    queryKey: ["usage-map", projectId, dates.dateFrom, dates.dateTo],
     queryFn: () => getUsageMap(filters),
     placeholderData: (previous) => previous,
     refetchOnWindowFocus: false,
     staleTime: 60_000,
   });
 
-  // Previous window of equal length, ending the day before dateFrom.
-  const previousWindow = React.useMemo(() => {
-    if (!dateFrom || !dateTo) return null;
-    const from = new Date(`${dateFrom}T00:00:00Z`);
-    const to = new Date(`${dateTo}T00:00:00Z`);
-    const spanMs = to.getTime() - from.getTime();
-    if (Number.isNaN(spanMs) || spanMs < 0) return null;
-    const dayMs = 24 * 60 * 60 * 1000;
-    const prevTo = new Date(from.getTime() - dayMs);
-    const prevFrom = new Date(prevTo.getTime() - spanMs);
-    const iso = (d: Date) => d.toISOString().slice(0, 10);
-    return { dateFrom: iso(prevFrom), dateTo: iso(prevTo) };
-  }, [dateFrom, dateTo]);
+  const previousWindow = React.useMemo(
+    () => previousPeriod(dates.dateFrom, dates.dateTo),
+    [dates],
+  );
+  // The toggle follows the inputs, not the debounced window.
+  const canCompare = previousPeriod(dateFrom, dateTo) !== null;
 
   const compareEnabled = compare && previousWindow !== null;
   const previousQuery = useQuery({
@@ -134,7 +150,7 @@ export default function UsageMindmap({ projects, onOpenSession }: Props) {
                    onChange={(e) => setDateTo(e.target.value)} />
             <label className="mindmap-compare-toggle">
               <input type="checkbox" aria-label="Compare with previous period"
-                     checked={compare} disabled={!previousWindow}
+                     checked={compare} disabled={!canCompare}
                      onChange={(e) => setCompare(e.target.checked)} />
               vs previous period
             </label>
