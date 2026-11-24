@@ -56,14 +56,15 @@ the current workspace visit.
   scrolls within its panel.
 - **Limit hits** — recorded limit notices and reconstructed five-hour windows,
   viewed by recorded token volume or estimated API-equivalent cost.
-- **Context Economics** — explicitly defined opportunity signals with receipts
-  and session drilldown; estimated and unattributed values remain distinct.
 - **Usage drivers** — overlapping, cost- or token-weighted characteristics such
   as subagent activity, large input contexts, and long-running sessions. These
   shares are independent characteristics, not a breakdown.
-- **Experimental analysis** — an observed-activity Usage Mindmap and subgroup
-  associations with declared samples, uncertainty, and receipts. Neither view
-  claims causal attribution.
+- **Usage Mindmap** — observed activity grouped into workflow phases, tools,
+  and recurring habits. It describes recorded activity, not cost attribution.
+- **Experimental analysis** — Context Economics (explicitly defined opportunity
+  signals with receipts and session drilldown; estimated and unattributed
+  values remain distinct) and subgroup associations with declared samples,
+  uncertainty, and receipts. Neither view claims causal attribution.
 - **Team bundles** — export allowlisted aggregates designed to omit raw
   conversation content at structural or team privacy levels for team Overview
   and Cost views. New exports use schema v3; sanitized v1 and v2 imports remain

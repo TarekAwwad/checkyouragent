@@ -14,7 +14,7 @@ export function exportJson(payload: UsageMapResponse): void {
     { type: "application/json" },
   );
   const url = URL.createObjectURL(blob);
-  download(url, "experimental-activity-map.json");
+  download(url, "activity-map.json");
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
@@ -94,7 +94,7 @@ export function exportPng(svg: SVGSVGElement, width: number, height: number): vo
     ctx.fillStyle = theme || "#0b0f17";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-    download(canvas.toDataURL("image/png"), "experimental-activity-map.png");
+    download(canvas.toDataURL("image/png"), "activity-map.png");
   };
   image.src = svgUrl;
 }

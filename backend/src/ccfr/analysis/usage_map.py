@@ -1,4 +1,4 @@
-"""Experimental activity map: corpus-wide workflow-phase observations.
+"""Activity map: corpus-wide workflow-phase observations.
 
 Classifies every assistant event into workflow phases via deterministic tool
 rules. Every tool call counts as one observed activity in its classified phase;

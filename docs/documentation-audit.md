@@ -116,8 +116,8 @@ This machine:
 - Export
 - Sessions
 - Cost
-- Explore: Limit hits, Context economics, Usage drivers, experimental Usage
-  Mindmap, and experimental Subgroups
+- Explore: Limit hits, Usage drivers, Usage Mindmap, experimental Context
+  economics, and experimental Subgroups
 - Session workspace, reached as a drilldown rather than a permanent nav item
 
 Team:

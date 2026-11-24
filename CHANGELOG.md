@@ -13,6 +13,9 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   period's row shows its hits and rate; hovering those figures shows the
   median, range, window count and percentile. The page footnote is gone, and
   `GET /api/analytics/limits` no longer returns `meta.method_note`.
+- Move Context economics to the Experimental section of Explore, and promote
+  the Usage Mindmap out of it. The map's heading and exports drop the
+  "experimental" label.
 
 ### Fixed
 - Compute Limit hits per plan period instead of per plan name, so Pro → Max →

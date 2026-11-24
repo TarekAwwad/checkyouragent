@@ -97,7 +97,7 @@ describe("MindmapCanvas", () => {
     expect(screen.getByText("Explore")).toBeInTheDocument();
     expect(screen.getByText("50%")).toBeInTheDocument();
     expect(screen.getByText("Repeated file…")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "Experimental activity map" }))
+    expect(screen.getByRole("img", { name: "Activity map" }))
       .toHaveTextContent(/not cost attribution/i);
     expect(container.querySelector(".is-good")).toBeNull();
     expect(container.querySelector(".is-anti")).toBeNull();
@@ -155,9 +155,9 @@ describe("UsageMindmap", () => {
     vi.mocked(getUsageMapEvidence).mockClear();
   });
 
-  it("labels the view as an experimental observed-activity map", async () => {
+  it("labels the view as an observed-activity map", async () => {
     renderPage();
-    expect(await screen.findByRole("heading", { name: "Experimental activity map" }))
+    expect(await screen.findByRole("heading", { name: "Activity map" }))
       .toBeInTheDocument();
     expect(screen.getByText(/observed activity, not cost attribution/i)).toBeInTheDocument();
     expect(await screen.findByText(/classified as Explore/)).toBeInTheDocument();

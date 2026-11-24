@@ -117,7 +117,7 @@ export default function UsageMindmap({ projects, onOpenSession }: Props) {
       <div className="discover-page-inner">
         <div className="discover-toolbar" aria-label="Usage map controls">
           <div className="discover-toolbar-lead">
-            <h1>Experimental activity map</h1>
+            <h1>Activity map</h1>
             <p className="discover-subtitle">{meta.methodology}</p>
           </div>
           <div className="cost-filterbar discover-filterbar">

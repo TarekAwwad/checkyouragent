@@ -27,9 +27,9 @@ export interface Technique {
 // first entry is what Explore opens to.
 export const TECHNIQUES: Technique[] = [
   { key: "limits", label: "Limit hits", status: "ready", section: "main", component: LimitHits },
-  { key: "context", label: "Context economics", status: "ready", section: "main", component: ContextEconomics },
   { key: "drivers", label: "Usage drivers", status: "ready", section: "main", component: UsageDrivers },
-  { key: "mindmap", label: "Usage Mindmap", status: "ready", section: "experimental", component: UsageMindmap },
+  { key: "mindmap", label: "Usage Mindmap", status: "ready", section: "main", component: UsageMindmap },
+  { key: "context", label: "Context economics", status: "ready", section: "experimental", component: ContextEconomics },
   { key: "subgroup", label: "Subgroups", status: "ready", section: "experimental", component: SubgroupDiscovery },
 ];
 

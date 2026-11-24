@@ -123,7 +123,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     category: "Workflow",
     term: "Usage Mindmap",
     definition:
-      "The experimental activity map on Explore. It groups observed tool calls and text-only assistant steps into workflow phases, tools, and recurring habits. It describes recorded activity, not cost attribution. Click a node to inspect its rule and supporting sessions.",
+      "The activity map on Explore. It groups observed tool calls and text-only assistant steps into workflow phases, tools, and recurring habits. It describes recorded activity, not cost attribution. Click a node to inspect its rule and supporting sessions.",
   },
   {
     category: "Workflow",
