@@ -91,7 +91,8 @@ describe("toLocalDay and defaultPreset", () => {
 });
 
 describe("overlapsWindow", () => {
-  const today = instantBounds({ from: "2026-11-24", to: "2026-11-24" });
+  // A literal, not instantBounds(): describe bodies run before beforeAll stubs TZ.
+  const today = { dateFrom: "2026-11-23T23:00:00.000Z", dateTo: "2026-11-24T22:59:59.999Z" };
 
   it("keeps sessions that straddle either edge", () => {
     expect(overlapsWindow("2026-11-23T20:00:00Z", "2026-11-23T23:10:00Z", today)).toBe(true);
