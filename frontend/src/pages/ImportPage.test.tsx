@@ -39,6 +39,7 @@ beforeEach(() => {
     totals: null,
     summary: null,
     updated_at: null,
+    data_version: 0,
   });
 });
 afterEach(() => vi.restoreAllMocks());
@@ -152,6 +153,7 @@ describe("ImportPage", () => {
         error_count: 0,
       },
       updated_at: "2026-06-03T00:00:00Z",
+      data_version: 0,
     });
 
     renderPage();

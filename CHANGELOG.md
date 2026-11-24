@@ -43,10 +43,13 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   per session. Each import that changes data now runs `ANALYZE` after it
   commits, and startup runs it once for an existing cache that has none.
 - Refresh Explore, session and team export views after a sync, an import, a
-  demo load or a local reset, instead of showing results from before it. The
-  Usage Mindmap now waits 400 ms after the last date edit before it refetches,
-  so editing a date no longer sends a request for each change, or two with
-  "vs previous period" on.
+  demo load or a local reset, instead of showing results from before it. This
+  includes changes started from another tab or before a page reload: the app
+  checks `GET /api/imports/progress` every 10 s while the tab is visible (every
+  second while an import runs), and its new `data_version` changes each time
+  one finishes. The Usage Mindmap now waits 400 ms after the last date edit
+  before it refetches, so editing a date no longer sends a request for each
+  change, or two with "vs previous period" on.
 - Count Claude Code's newer "You've hit your 5-hour limit" message as a session
   limit hit instead of an unknown one, so it lands in its 5-hour window. When a
   hit logs its structured quota fields, the limit type and exact reset time are

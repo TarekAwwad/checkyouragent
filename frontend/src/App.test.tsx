@@ -54,8 +54,8 @@ vi.mock("./api/client", () => ({
     last_successful_sync_at: null, latest_import_error_count: 0,
   })),
   getImportProgress: vi.fn(async () => ({
-    active: false, import_id: null, project_count: 0, session_count: 0,
-    event_count: 0, subagent_count: 0, persisted_output_count: 0,
+    active: false, import_id: null, status: "idle", source_path: null, project: null,
+    totals: null, summary: null, updated_at: null, data_version: 0,
   })),
   getCostAnalytics: vi.fn(async () => ({
     meta: { available: false, unpriced_models: [], costs_partial: false, costs_are_lower_bound: false, total_usd: 0, total_tokens: 0,
