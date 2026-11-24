@@ -1,13 +1,11 @@
-import type { CostAnalyticsFilters } from "../api/types";
-
 export interface SpendViewState {
   mode: "total" | "model";
   isolatedModel: string | null;
 }
 
 export interface CostViewState {
-  filters: CostAnalyticsFilters;
-  rangeKey: string;
+  /** Model filter; date range and project are shared (analysisScope). */
+  model: string | null;
   selectedBucket: string | null;
   spend: SpendViewState;
   scrollTop: number;
@@ -15,8 +13,7 @@ export interface CostViewState {
 
 export function initialCostViewState(): CostViewState {
   return {
-    filters: { dateFrom: null, dateTo: null },
-    rangeKey: "all",
+    model: null,
     selectedBucket: null,
     spend: { mode: "total", isolatedModel: null },
     scrollTop: 0,

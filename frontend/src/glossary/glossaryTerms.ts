@@ -381,6 +381,12 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
   },
   {
     category: "Cost",
+    term: "Historical pricing",
+    definition:
+      "On: each session is priced at the rates in effect on its date. Off: every session is priced at the current rates. The Historical pricing chip on Cost switches between them.",
+  },
+  {
+    category: "Cost",
     term: "Cache write",
     definition:
       "Tokens billed to store a prompt prefix in the model's cache so later turns can reuse it. Costs more than normal input, paid once.",

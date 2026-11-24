@@ -91,6 +91,7 @@ describe("investigation context", () => {
   it("restores Cost filters, preset, selected period, chart view, and scroll after app Back", async () => {
     const view = renderApp();
     await screen.findByRole("heading", { name: "Spend over time" });
+    fireEvent.change(screen.getByLabelText("Date range"), { target: { value: "custom" } });
     fireEvent.change(screen.getByLabelText("Start date"), { target: { value: "2026-05-01" } });
     fireEvent.change(screen.getByLabelText("Project"), { target: { value: "1" } });
     fireEvent.change(screen.getByLabelText("Model"), { target: { value: opus } });
@@ -139,11 +140,14 @@ describe("investigation context", () => {
   it("keeps local and team investigation filters separate across scope changes", async () => {
     renderApp();
     await screen.findByRole("heading", { name: "Spend over time" });
+    fireEvent.change(screen.getByLabelText("Date range"), { target: { value: "custom" } });
     fireEvent.change(screen.getByLabelText("Start date"), { target: { value: "2026-05-01" } });
     fireEvent.change(screen.getByLabelText("Model"), { target: { value: opus } });
     fireEvent.click(screen.getByRole("button", { name: "Team" }));
-    await waitFor(() => expect(screen.getByLabelText("Start date")).toHaveValue(""));
+    await waitFor(() => expect(screen.getByLabelText("Date range")).toHaveValue("all"));
+    expect(screen.queryByLabelText("Start date")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Model")).toHaveValue("");
+    fireEvent.change(screen.getByLabelText("Date range"), { target: { value: "custom" } });
     fireEvent.change(screen.getByLabelText("Start date"), { target: { value: "2026-05-02" } });
     fireEvent.change(screen.getByLabelText("Model"), { target: { value: sonnet } });
     fireEvent.click(screen.getByRole("button", { name: "This machine" }));
@@ -174,11 +178,12 @@ describe("investigation context", () => {
   it("clears stale context when the local index is reset", async () => {
     const view = renderApp();
     await screen.findByRole("heading", { name: "Spend over time" });
+    fireEvent.change(screen.getByLabelText("Date range"), { target: { value: "custom" } });
     fireEvent.change(screen.getByLabelText("Start date"), { target: { value: "2026-05-01" } });
     fireEvent.change(screen.getByLabelText("Model"), { target: { value: opus } });
     await act(async () => { view.queryClient.setQueryData(["sessions", {}], []); });
-    await waitFor(() => expect(screen.getByLabelText("Start date")).toHaveValue(""));
+    await waitFor(() => expect(screen.getByLabelText("Date range")).toHaveValue("all"));
+    expect(screen.queryByLabelText("Start date")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Model")).toHaveValue("");
-    expect(screen.getByLabelText("Date range")).toHaveValue("all");
   });
 });

@@ -6,16 +6,21 @@ import type { CostAnalyticsFilters, CostAnalyticsMeta, OverTimeBucket } from "..
 import type { DataScope } from "../shell/useDataScope";
 import type { CostViewState } from "../shell/investigationState";
 import { initialCostViewState } from "../shell/investigationState";
-import { buildModelColorMap, formatSignedUsd, formatTokens, formatUsd } from "./chartGeometry";
-import FilterBar from "./FilterBar";
+import { buildModelColorMap, displayModelName, formatSignedUsd, formatTokens, formatUsd } from "./chartGeometry";
 import CostByProject from "./CostByProject";
 import SpendOverTime from "./SpendOverTime";
 import TokenCategories from "./TokenCategories";
 import CostByModel from "./CostByModel";
 import LoadingBar from "../components/LoadingBar";
+import InsightStat from "../components/InsightStat";
 import SessionInsights, { TurnDistributionSection } from "./SessionInsights";
 import { Blurred } from "../shell/Blurred";
 import { formatCostPeriod, spikeBaselineDescription } from "./costPeriods";
+import PageHeader from "../shell/PageHeader";
+import FilterSelect from "../components/controls/FilterSelect";
+import ToggleChip from "../components/controls/ToggleChip";
+import { useAnalysisScope } from "../shell/analysisScope";
+import { dayBounds, instantBounds } from "../shell/dateRange";
 
 interface Props {
   onOpenSession: (sessionId: number) => void;
@@ -105,26 +110,21 @@ export default function CostAnalyticsPage({
   memory,
 }: Props) {
   const isTeam = scope === "team";
-  const [filters, setFilters] = React.useState<CostAnalyticsFilters>(() => memory?.current.filters ?? initialCostViewState().filters);
-  const [rangeKey, setRangeKey] = React.useState(() => memory?.current.rangeKey ?? "all");
+  const { resolvedRange, projectId } = useAnalysisScope();
+  const [model, setModel] = React.useState<string | null>(() => memory?.current.model ?? null);
   const [selectedBucket, setSelectedBucket] = React.useState<string | null>(() => memory?.current.selectedBucket ?? null);
   const [spendView, setSpendView] = React.useState(() => memory?.current.spend ?? initialCostViewState().spend);
   const pageRef = React.useRef<HTMLElement>(null);
   const restoredScroll = React.useRef(false);
-  const previousScope = React.useRef(scope);
 
   React.useLayoutEffect(() => {
-    if (memory) memory.current = { ...memory.current, filters, rangeKey, selectedBucket, spend: spendView };
-  }, [memory, filters, rangeKey, selectedBucket, spendView]);
+    if (memory) memory.current = { ...memory.current, model, selectedBucket, spend: spendView };
+  }, [memory, model, selectedBucket, spendView]);
 
-  // projectId/model are scope-namespaced (local ids vs team synthetic ids /
-  // bucketed families); carrying them across a scope switch mis-filters the
-  // other scope's data. Dates are scope-agnostic and survive the switch.
-  React.useEffect(() => {
-    if (previousScope.current === scope) return;
-    previousScope.current = scope;
-    setFilters((f) => (f.projectId || f.model ? { ...f, projectId: null, model: null } : f));
-  }, [scope]);
+  // Team bundles store each session's first date, and the team endpoint cuts
+  // bounds to ten characters, so team requests send plain local dates.
+  const bounds = isTeam ? dayBounds(resolvedRange) : instantBounds(resolvedRange);
+  const filters: CostAnalyticsFilters = { dateFrom: bounds.dateFrom, dateTo: bounds.dateTo, projectId, model };
   const query = useQuery({
     // `historical` and `scope` are part of the key so flipping the price mode or
     // the data scope is a distinct query (and request URL), not a same-URL
@@ -160,6 +160,31 @@ export default function CostAnalyticsPage({
     }
   }, [payload, selectedBucket]);
 
+  const meta = payload?.meta;
+  const availableModels = meta?.available_models ?? [];
+  const activeProjects = meta?.available_projects;
+  const modelFilter = (
+    <FilterSelect label="Model" value={model ?? ""} onChange={(value) => setModel(value || null)}>
+      <option value="">All models</option>
+      {model && !availableModels.includes(model) && (
+        <option value={model}>{displayModelName(model)}{meta ? " (no activity in range)" : ""}</option>
+      )}
+      {availableModels.map((name) => (
+        <option key={name} value={name}>{displayModelName(name)}</option>
+      ))}
+    </FilterSelect>
+  );
+  const pricingToggle = (
+    <ToggleChip
+      label="Historical pricing"
+      checked={historical}
+      onChange={onHistoricalChange}
+      title={historical
+        ? "Use price rates effective on each session's date"
+        : "Use the current price table for every session"}
+    />
+  );
+
   return (
     <main
       ref={pageRef}
@@ -170,24 +195,16 @@ export default function CostAnalyticsPage({
       }}
     >
       <div className="cost-page-inner">
-        <FilterBar
-          filters={filters}
-          meta={payload?.meta}
-          historical={historical}
-          onChange={setFilters}
-          onHistoricalChange={onHistoricalChange}
-          scope={scope}
-          rangeKey={rangeKey}
-          onRangeKeyChange={setRangeKey}
+        <PageHeader
+          title="Cost"
+          subtitle="Spend by project, model and period."
+          status={query.isFetching && payload ? "Updating…" : null}
+          scope={{ date: "filter", project: "filter" }}
+          projectOptions={isTeam ? activeProjects ?? [] : undefined}
+          activeProjectIds={activeProjects?.map((project) => project.id)}
+          filters={modelFilter}
+          view={pricingToggle}
         />
-        <p className="cost-pricing-note">
-          {historical
-            ? "Estimated API-equivalent cost is priced at the rates in effect on each session's date."
-            : "Estimated API-equivalent cost is priced at current rates for every session."}
-          <span className="cost-query-status" role="status">
-            {query.isFetching && payload ? "Updating…" : ""}
-          </span>
-        </p>
         {query.isError ? (
           <div className="empty-state panel-error">
             <strong>Cost analytics failed.</strong>
@@ -197,6 +214,20 @@ export default function CostAnalyticsPage({
           <div className="empty-state"><LoadingBar caption="Loading cost analytics…" /></div>
         ) : (
           <>
+            <div className="cost-insight-strip" aria-label="Cost totals">
+              <InsightStat
+                label="Estimated API-equivalent cost"
+                value={payload.meta.available
+                  ? `${payload.meta.costs_are_lower_bound ? "≥" : ""}${formatUsd(payload.meta.total_usd)}`
+                  : "—"}
+                hint={payload.meta.costs_partial ? (
+                  <span className="cost-partial" title={payload.meta.unpriced_models.join(", ")}>
+                    {`lower bound · excludes ${payload.meta.unpriced_models.length} unpriced model${payload.meta.unpriced_models.length === 1 ? "" : "s"}`}
+                  </span>
+                ) : undefined}
+              />
+              <InsightStat label="Tokens" value={formatTokens(payload.meta.total_tokens)} />
+            </div>
             <div className="cost-bento">
               <section className="tile">
                 <h2>Cost by project</h2>
