@@ -1441,12 +1441,10 @@ button.spike-insight:focus-visible { outline: 1px solid var(--accent); outline-o
   overflow: hidden; display: flex; flex-direction: column;
 }
 .discover-subtitle { margin: 4px 0 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
-/* Toolbar lead block: page title + subtitle on the left. When present, the
-   range tabs shrink to content so the lead owns the remaining width. */
+/* Toolbar lead block: page title + subtitle on the left. */
 .discover-toolbar-lead { flex: 1 1 300px; min-width: 240px; }
 .discover-toolbar-lead h1 { margin: 0; font-size: 16px; font-weight: 700; line-height: 1.2; }
 .discover-toolbar-lead .discover-subtitle { max-width: 62ch; }
-.discover-toolbar-lead ~ .discover-tabs { flex: 0 1 auto; }
 
 /* Outcome segmented control (was the in-panel tab row) */
 .discover-tabs {
@@ -4357,21 +4355,14 @@ html:has(.specimen-dialog[open]) {
   color: color-mix(in srgb, var(--success) 55%, var(--text));
 }
 
-/* ship-kit:P09/P13 — Usage drivers Explore page. The characteristic rows are
-   shared with the mindmap dialog (.uc-* classes, styled per context); on the
-   page they live inside a .card body, so only row typography is scoped here —
-   the shell chrome comes from the .discover-* / .card grammar. */
-.usage-drivers-body .uc-body { display: flex; flex-direction: column; gap: 14px; }
-.usage-drivers-body .uc-row { border-left: 2px solid var(--border-2); padding-left: 10px; }
-.usage-drivers-body .uc-headline { margin: 0; font-size: 14px; color: var(--text); }
-.usage-drivers-body .uc-headline strong { font-variant-numeric: tabular-nums; }
-.usage-drivers-body .uc-guidance { margin: 3px 0 0; color: var(--muted); font-size: 12px; line-height: 1.4; }
-.usage-drivers-body .uc-note { color: var(--muted); font-size: 13px; }
-/* Basis footnote as the card's muted footer (replaces the stranded divider). */
-.usage-drivers-footnote {
-  margin: 0; padding: 10px 16px; border-top: 1px solid var(--border);
-  color: var(--faint); font-size: 11px;
-}
+/* Usage drivers Explore page. Rows reuse the Cost page's .cbm-row grammar
+   (label | bar | bold value over a muted one); only the list spacing, a
+   label column capped so bars start beside short labels in a full-width
+   card, the single accent fill and the toolbar alignment are its own. */
+.usage-drivers-rows { display: flex; flex-direction: column; gap: 10px; }
+.usage-drivers-rows .cbm-row { grid-template-columns: minmax(0, min(210px, 34%)) minmax(36px, 1fr) 82px; }
+.usage-drivers-rows .cbm-track i { background: var(--accent); }
+.usage-drivers-controls .segmented-control { align-self: center; }
 
 /* Limit hits explore page. Chart chrome follows the app's chart grammar:
    muted HTML tick labels around the plot (.sot idiom), .chip-legend chips,

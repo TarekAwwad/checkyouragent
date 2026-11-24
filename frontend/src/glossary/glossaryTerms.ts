@@ -198,7 +198,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     ],
   },
 
-  // Discovery — Explore's subgroup, limit-hit and context analyses.
+  // Discovery — Explore's subgroup, limit-hit, usage-driver and context analyses.
   {
     category: "Discovery",
     term: "Subgroup",
@@ -288,6 +288,49 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     term: "Time to reset",
     definition:
       "The reset time a limit message states, minus the time of the hit. The stat adds it up over all hits. It is not measured downtime.",
+  },
+
+  {
+    category: "Discovery",
+    term: "Usage driver",
+    definition:
+      "A trait of your usage, such as sessions with subagents or calls over 150k context, shown with its share of usage. Drivers overlap: one call can count toward several, so their shares can add up to more than 100%. They are not a breakdown.",
+  },
+  {
+    category: "Discovery",
+    term: "Share of usage",
+    definition:
+      "A driver's cost as a percentage of the window's total cost. With no price table, or nothing priced in the window, it uses tokens instead. Claude Code's /usage weights by rate-limit consumption, so the two agree in direction, not exactly.",
+  },
+  {
+    category: "Discovery",
+    term: "Sessions with subagents",
+    definition:
+      "Every session that started at least one subagent, counted in full, main thread included. It shows how widely you use subagents, not what they cost directly (that is Subagent turns). Start subagents deliberately, and consider a cheaper model for simple ones.",
+  },
+  {
+    category: "Discovery",
+    term: "Subagent turns",
+    definition:
+      "The requests made inside subagents, each of which runs its own requests. This is the direct subagent share of usage; the rest is the main thread.",
+  },
+  {
+    category: "Discovery",
+    term: "Calls over 150k context",
+    definition:
+      "Requests that sent more than 150,000 tokens of context. Long contexts cost more even when cached: /compact mid-task, and /clear when you switch tasks.",
+  },
+  {
+    category: "Discovery",
+    term: "Sessions active 8h+",
+    definition:
+      "Every session whose first and last message are 8 or more hours apart, counted in full. These are often background or loop sessions. Continuous usage adds up, so make sure it is intentional.",
+  },
+  {
+    category: "Discovery",
+    term: "Subagent: type",
+    definition:
+      "The requests made inside subagents of one type, such as general-purpose. A type is listed once it reaches 5% of usage. If it runs often, consider a cheaper model or tighter prompts for it.",
   },
 
   {

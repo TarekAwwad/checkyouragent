@@ -16,8 +16,20 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Move Context economics to the Experimental section of Explore, and promote
   the Usage Mindmap out of it. The map's heading and exports drop the
   "experimental" label.
+- Redesign Usage drivers to match the other Explore pages: a Cost, Sessions
+  and Tokens stat strip, then one row per driver with a bar, its share and its
+  cost (tokens without a price table). Each bar's track is all of the window's
+  usage, since drivers overlap. Shares under 1% read "<1%" instead of "0%". The
+  range picker uses the Cost page's labels (Today, Last 7 days, Last 30 days,
+  All time). The advice paragraphs, the basis footnote and the long subtitle
+  move to the glossary (Usage driver, Share of usage, and one entry per
+  driver). `GET /api/analytics/usage-characteristics` returns a short `label`
+  and `tokens` per driver, and no longer returns `headline`, `guidance` or
+  `meta.basis_note`.
 
 ### Fixed
+- Usage drivers' Today and Last N days ranges use your local date. They used
+  the UTC date, which is a day off for part of every day outside UTC.
 - Compute Limit hits per plan period instead of per plan name, so Pro → Max →
   Pro shows two Pro periods with their own hit levels and hits per week. Each
   rate now divides by its own period's logged weeks instead of the span from

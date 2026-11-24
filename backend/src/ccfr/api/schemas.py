@@ -705,11 +705,11 @@ class UsageMapEvidenceResponse(BaseModel):
 
 class UsageCharacteristic(BaseModel):
     key: str
-    headline: str = ""
+    label: str = ""
     share: float = 0
     cost_usd: float = 0
+    tokens: int = 0
     kind: str = ""
-    guidance: str = ""
 
 
 class UsageCharacteristicsMeta(BaseModel):
@@ -721,7 +721,6 @@ class UsageCharacteristicsMeta(BaseModel):
     costs_partial: bool = False
     sessions_analyzed: int = 0
     share_basis: str = "cost"
-    basis_note: str = ""
 
 
 class UsageCharacteristicsResponse(BaseModel):

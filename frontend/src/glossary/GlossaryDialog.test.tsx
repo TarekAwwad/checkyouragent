@@ -63,6 +63,28 @@ describe("GlossaryDialog", () => {
     expect(screen.getByText(/Pro → Max → Pro is three periods/)).toBeInTheDocument();
   });
 
+  it("explains the Usage drivers rows on the Discovery tab, with their advice", () => {
+    render(<GlossaryDialog open onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Discovery" }));
+
+    for (const term of [
+      "Usage driver",
+      "Share of usage",
+      "Sessions with subagents",
+      "Subagent turns",
+      "Calls over 150k context",
+      "Sessions active 8h+",
+      "Subagent: type",
+    ]) {
+      expect(screen.getByText(term)).toBeInTheDocument();
+    }
+    // Drivers overlap; the basis note and per-driver advice moved off the page.
+    expect(screen.getByText(/They are not a breakdown/)).toBeInTheDocument();
+    expect(screen.getByText(/it uses tokens instead/)).toBeInTheDocument();
+    expect(screen.getByText(/\/compact mid-task/)).toBeInTheDocument();
+  });
+
   it("does not document removed scores, loop metrics, or cap claims", () => {
     const terms = GLOSSARY_TERMS.map((entry) => entry.term);
     const glossaryCopy = GLOSSARY_TERMS

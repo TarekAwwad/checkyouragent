@@ -680,13 +680,16 @@ export interface UsageMapEvidenceResponse {
   sessions: UsageEvidenceSession[];
 }
 
+// One usage driver. Drivers overlap (not a breakdown), so shares need not sum
+// to 1. `share` is cost-weighted, or token-weighted when meta.share_basis is
+// "tokens"; `cost_usd` and `tokens` are always the driver's own sums.
 export interface UsageCharacteristic {
   key: string;
-  headline: string;
+  label: string;
   share: number;
   cost_usd: number;
+  tokens: number;
   kind: string;
-  guidance: string;
 }
 
 export interface UsageCharacteristicsMeta {
@@ -698,7 +701,6 @@ export interface UsageCharacteristicsMeta {
   costs_partial: boolean;
   sessions_analyzed: number;
   share_basis: "cost" | "tokens";
-  basis_note: string;
 }
 
 export interface UsageCharacteristicsResponse {
