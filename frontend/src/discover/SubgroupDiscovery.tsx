@@ -4,11 +4,14 @@ import { ExternalLink, Target, TrendingUp } from "lucide-react";
 import { getDiscoveryAnalytics } from "../api/client";
 import InsightStat from "../components/InsightStat";
 import LoadingBar from "../components/LoadingBar";
-import type { DiscoveryDriver, DiscoveryExample, DiscoverySection, Project } from "../api/types";
+import type { DiscoveryDriver, DiscoveryExample, DiscoverySection } from "../api/types";
 import { Blurred } from "../shell/Blurred";
+import PageHeader from "../shell/PageHeader";
+import FilterSelect from "../components/controls/FilterSelect";
+import SegmentedControl from "../components/controls/SegmentedControl";
+import { useAnalysisScope } from "../shell/analysisScope";
 
 interface Props {
-  projects: Project[];
   onOpenSession: (sessionId: number, eventId?: number | null) => void;
 }
 
@@ -317,8 +320,8 @@ function SectionResults({
   );
 }
 
-export default function SubgroupDiscovery({ projects, onOpenSession }: Props) {
-  const [projectId, setProjectId] = React.useState<number | null>(null);
+export default function SubgroupDiscovery({ onOpenSession }: Props) {
+  const { projectId } = useAnalysisScope();
   const [minSupport, setMinSupport] = React.useState(5);
   const [activeSection, setActiveSection] = React.useState("cost_associations");
   const query = useQuery({
@@ -352,13 +355,41 @@ export default function SubgroupDiscovery({ projects, onOpenSession }: Props) {
     : null;
   const scopeHint = activeSection === "cost_associations" ? "sessions" : "tool calls";
 
-  // Match the other discovery views: on the initial load, show only a centred
-  // loader — the toolbar and summary appear once results are ready. `placeholderData`
-  // keeps `isPending` false on later filter changes, so this never flashes back.
+  const header = (
+    <PageHeader
+      section="Explore"
+      title="Subgroups"
+      experimental
+      subtitle="Observed associations, not causes."
+      status={isRefetching ? "Updating…" : null}
+      scope={{ date: "fixed", project: "filter" }}
+      filters={(
+        <FilterSelect label="Minimum support" value={String(minSupport)}
+                      onChange={(value) => setMinSupport(Number(value))}>
+          {SUPPORT_OPTIONS.map((value) => (
+            <option value={value} key={value}>Min support: {value}</option>
+          ))}
+        </FilterSelect>
+      )}
+      view={(
+        <SegmentedControl
+          variant="tabs"
+          label="Association category"
+          idPrefix="discover-tab"
+          controls="discover-tabpanel"
+          options={SECTION_TABS.map((tab) => ({ value: tab.key, label: tab.label }))}
+          value={activeSection}
+          onChange={setActiveSection}
+        />
+      )}
+    />
+  );
+
   if (query.isPending) {
     return (
       <main className="discover-page">
         <div className="discover-page-inner">
+          {header}
           <div className="loading-view"><LoadingBar caption="Loading discovery results…" /></div>
         </div>
       </main>
@@ -368,53 +399,7 @@ export default function SubgroupDiscovery({ projects, onOpenSession }: Props) {
   return (
     <main className={`discover-page discover-section-${activeSection}`}>
       <div className="discover-page-inner">
-        <header className="subgroup-page-head">
-          <h1>Experimental subgroup associations</h1>
-          <p role="note">
-            Observed associations, not causal conclusions. Each section declares
-            its observation unit and compares matching observations with their complement.
-          </p>
-        </header>
-        <section className="discover-toolbar" aria-label="Discovery controls">
-          <div className="discover-tabs" role="tablist" aria-label="Association category">
-            {SECTION_TABS.map((tab) => (
-              <button
-                type="button"
-                role="tab"
-                key={tab.key}
-                id={`discover-tab-${tab.key}`}
-                aria-controls="discover-tabpanel"
-                className={activeSection === tab.key ? "active" : ""}
-                aria-selected={activeSection === tab.key}
-                onClick={() => setActiveSection(tab.key)}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-          <div className="cost-filterbar discover-filterbar">
-            <select
-              aria-label="Project"
-              value={projectId ?? ""}
-              onChange={(event) => setProjectId(event.target.value ? Number(event.target.value) : null)}
-            >
-              <option value="">All projects</option>
-              {projects.map((project) => (
-                <option value={project.id} key={project.id}>{project.display_name}</option>
-              ))}
-            </select>
-            <select
-              aria-label="Minimum support"
-              value={minSupport}
-              onChange={(event) => setMinSupport(Number(event.target.value))}
-            >
-              {SUPPORT_OPTIONS.map((value) => (
-                <option value={value} key={value}>Min support: {value}</option>
-              ))}
-            </select>
-          </div>
-        </section>
-
+        {header}
         <section className="discover-overview" aria-label="Discovery summary">
           <InsightStat
             label="Scope"

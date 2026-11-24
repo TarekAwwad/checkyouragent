@@ -1,5 +1,4 @@
 import type { ComponentType } from "react";
-import type { Project } from "../api/types";
 import SubgroupDiscovery from "./SubgroupDiscovery";
 import ContextEconomics from "./context/ContextEconomics";
 import UsageMindmap from "./mindmap/UsageMindmap";
@@ -7,7 +6,6 @@ import UsageDrivers from "./drivers/UsageDrivers";
 import LimitHits from "./limits/LimitHits";
 
 export interface TechniqueProps {
-  projects: Project[];
   /** Open the session workspace, optionally landing on a specific event. */
   onOpenSession: (sessionId: number, eventId?: number | null) => void;
 }

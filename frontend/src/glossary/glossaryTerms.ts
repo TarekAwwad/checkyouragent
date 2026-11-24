@@ -203,7 +203,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     category: "Discovery",
     term: "Subgroup",
     definition:
-      "Sessions or tool calls that match the same set of conditions. Experimental subgroup analysis reports groups whose observed outcome rate differs from the comparison sample; it does not claim those conditions caused the outcome.",
+      "Sessions or tool calls that match the same set of conditions. Experimental subgroup analysis reports groups whose observed outcome rate differs from the comparison sample; it does not claim those conditions caused the outcome. Each section declares its observation unit (session or tool call) and compares matching observations with the rest.",
   },
   {
     category: "Discovery",

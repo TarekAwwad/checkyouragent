@@ -2,7 +2,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { Project } from "../api/types";
 import { TestScopeProvider } from "../shell/TestScopeProvider";
 
 const { getDiscoveryAnalytics, getLimits } = vi.hoisted(() => ({
@@ -13,14 +12,12 @@ vi.mock("../api/client", () => ({ getDiscoveryAnalytics, getLimits }));
 
 import DiscoverPage from "./DiscoverPage";
 
-const projects: Project[] = [];
-
 function renderPage(technique: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
       <TestScopeProvider>
-        <DiscoverPage projects={projects} onOpenSession={vi.fn()} technique={technique} />
+        <DiscoverPage onOpenSession={vi.fn()} technique={technique} />
       </TestScopeProvider>
     </QueryClientProvider>,
   );
@@ -91,7 +88,7 @@ describe("DiscoverPage", () => {
   it("renders the active ready technique", async () => {
     renderPage("subgroup");
     expect(
-      await screen.findByRole("heading", { name: "Experimental subgroup associations" }),
+      await screen.findByRole("heading", { name: "Subgroups" }),
     ).toBeInTheDocument();
   });
 

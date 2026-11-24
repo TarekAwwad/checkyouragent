@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { LimitsResponse, Project } from "../../api/types";
+import type { LimitsResponse } from "../../api/types";
 import CapZones from "./CapZones";
 import LimitHits from "./LimitHits";
 import WindowsTimeline from "./WindowsTimeline";
@@ -80,14 +80,12 @@ vi.mock("../../api/client", () => ({
   updateSettings: (s: unknown) => updateSettingsMock(s),
 }));
 
-const projects: Project[] = [];
-
 function renderPage(onOpenSession = vi.fn(), range?: DateRange) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
       <TestScopeProvider range={range}>
-        <LimitHits projects={projects} onOpenSession={onOpenSession} />
+        <LimitHits onOpenSession={onOpenSession} />
       </TestScopeProvider>
     </QueryClientProvider>,
   );
@@ -336,7 +334,7 @@ describe("LimitHits", () => {
     render(
       <QueryClientProvider client={client}>
         <TestScopeProvider>
-          <LimitHits projects={projects} onOpenSession={vi.fn()} />
+          <LimitHits onOpenSession={vi.fn()} />
         </TestScopeProvider>
       </QueryClientProvider>,
     );

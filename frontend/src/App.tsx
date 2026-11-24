@@ -339,7 +339,6 @@ function App() {
         )}
         {!waitingForScope && view === "discover" && scope === "local" && (
           <DiscoverPage
-            projects={projects.data ?? []}
             onOpenSession={(sessionId, eventId = null) => openSessionById(sessionId, eventId, "discover")}
             technique={discoverTechnique}
           />
