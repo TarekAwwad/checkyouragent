@@ -54,6 +54,11 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   hit logged by a session and its subagent still counts once.
 - Show "Updating…" on Limit hits while it reloads after a sync, instead of
   keeping the old results on screen with no sign that new ones are coming.
+- Load the project list faster: its event, session and subagent counts take
+  0.1 s instead of 4 s on a 1 GB cache, which halves `GET /api/projects`
+  (8 s to 3.7 s). The counts joined each event to every subagent of its
+  session and read every event row for its replay flag. They are now counted
+  per session from indexes, and only replayed events are read.
 
 ## [0.4.0] - 2026-11-05
 

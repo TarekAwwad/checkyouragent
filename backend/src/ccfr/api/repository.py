@@ -237,19 +237,37 @@ def import_summary_stats(conn: sqlite3.Connection, import_id: int) -> dict[str, 
 
 
 def list_projects(conn: sqlite3.Connection, *, historical: bool = True) -> list[dict[str, Any]]:
+    # Each count is pre-aggregated per session, so joining them to sessions does not
+    # multiply events by subagents. Non-replay events are all events minus replayed
+    # ones (is_replay is a NOT NULL 0/1 flag): the totals come from the covering
+    # (session_id, id) index, and only the few replayed rows are read from the wide
+    # events table, instead of every row for its is_replay value.
     rows = conn.execute(
         """
+        WITH
+        event_totals AS (
+            SELECT session_id, COUNT(*) AS n FROM events GROUP BY session_id
+        ),
+        replay_totals AS (
+            SELECT session_id, COUNT(*) AS n FROM events WHERE is_replay = 1 GROUP BY session_id
+        ),
+        subagent_totals AS (
+            SELECT parent_session_id AS session_id, COUNT(*) AS n
+            FROM subagents
+            GROUP BY parent_session_id
+        )
         SELECT
             p.id,
             p.export_name,
             p.inferred_cwd,
-            COUNT(DISTINCT s.id) AS session_count,
-            COUNT(DISTINCT CASE WHEN e.is_replay = 0 THEN e.id END) AS event_count,
-            COUNT(DISTINCT sa.id) AS subagent_count
+            COUNT(s.id) AS session_count,
+            COALESCE(SUM(et.n), 0) - COALESCE(SUM(rt.n), 0) AS event_count,
+            COALESCE(SUM(st.n), 0) AS subagent_count
         FROM projects p
         LEFT JOIN sessions s ON s.project_id = p.id
-        LEFT JOIN events e ON e.session_id = s.id
-        LEFT JOIN subagents sa ON sa.parent_session_id = s.id
+        LEFT JOIN event_totals et ON et.session_id = s.id
+        LEFT JOIN replay_totals rt ON rt.session_id = s.id
+        LEFT JOIN subagent_totals st ON st.session_id = s.id
         GROUP BY p.id
         ORDER BY p.export_name
         """
