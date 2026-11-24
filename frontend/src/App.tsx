@@ -322,7 +322,6 @@ function App() {
           <TriageBoard
             key={contextEpoch.local}
             memory={sessionsMemory}
-            projects={projects.data ?? []}
             sessions={sessions.data ?? []}
             loading={projects.isLoading || sessions.isLoading}
             onOpenSession={(session) => openSession(session, "map")}

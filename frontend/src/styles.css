@@ -777,7 +777,7 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
   }
 }
 
-.triage-page { display: grid; grid-template-rows: auto 1fr auto; gap: 14px; min-height: 100%; padding: 20px 22px; }
+.triage-page { display: grid; grid-template-rows: auto auto 1fr; gap: 14px; min-height: 100%; padding: 20px 22px; }
 .triage-card { display: flex; flex-direction: column; min-height: 0; }
 .triage-toolbar {
   flex-wrap: wrap;

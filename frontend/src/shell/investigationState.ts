@@ -24,12 +24,11 @@ export type SessionSortKey = "first_ts" | "last_ts" | "cost_usd" | "error_count"
 
 export interface SessionsViewState {
   query: string;
-  projectId: number | "all";
   onlyErrors: boolean;
   sortKey: SessionSortKey;
   scrollTop: number;
 }
 
 export function initialSessionsViewState(): SessionsViewState {
-  return { query: "", projectId: "all", onlyErrors: false, sortKey: "first_ts", scrollTop: 0 };
+  return { query: "", onlyErrors: false, sortKey: "first_ts", scrollTop: 0 };
 }

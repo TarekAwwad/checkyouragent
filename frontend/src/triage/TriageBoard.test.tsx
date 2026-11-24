@@ -1,7 +1,23 @@
+import type React from "react";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import TriageBoard from "./TriageBoard";
+import Board from "./TriageBoard";
 import type { Project, SessionCard } from "../api/types";
+import { TestScopeProvider } from "../shell/TestScopeProvider";
+import type { DateRange } from "../shell/dateRange";
+
+// The board reads project and range from the shared scope; this wrapper keeps
+// the existing render calls readable.
+function TriageBoard({ projects, range, ...props }: React.ComponentProps<typeof Board> & {
+  projects: Project[];
+  range?: DateRange;
+}) {
+  return (
+    <TestScopeProvider projects={projects.map((p) => ({ id: p.id, name: p.display_name }))} range={range}>
+      <Board {...props} />
+    </TestScopeProvider>
+  );
+}
 
 function s(partial: Partial<SessionCard>): SessionCard {
   return {
@@ -33,7 +49,7 @@ describe("TriageBoard", () => {
 
     render(<TriageBoard projects={projectOptions} sessions={sessions} loading={false} onOpenSession={() => {}} />);
 
-    expect(screen.getByRole("combobox", { name: "Project" })).toHaveValue("all");
+    expect(screen.getByRole("combobox", { name: "Project" })).toHaveValue("");
     expect(screen.getByText(/herm0001/)).toBeInTheDocument();
     expect(screen.getByText(/dash0002/)).toBeInTheDocument();
   });
@@ -265,7 +281,7 @@ describe("TriageBoard", () => {
     ];
     render(<TriageBoard projects={projectOptions} sessions={sessions} loading={false} onOpenSession={() => {}} />);
 
-    const summary = screen.getByLabelText("Project cost summary");
+    const summary = screen.getByLabelText("Session totals");
     expect(within(summary).getByText("$1.75")).toBeInTheDocument();
   });
 
@@ -310,7 +326,8 @@ describe("TriageBoard", () => {
       />,
     );
 
-    expect(screen.getByText("2 observed errors")).toBeInTheDocument();
+    const totals = screen.getByLabelText("Session totals");
+    expect(within(totals).getByText("Observed errors").closest(".cost-insight")).toHaveTextContent("2");
     expect(screen.queryByText(/alert events/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/9 observed errors/i)).not.toBeInTheDocument();
   });
@@ -329,5 +346,30 @@ describe("TriageBoard", () => {
     expect(screen.queryByText("Delegated work")).not.toBeInTheDocument();
     expect(screen.getByText("No supported finding detected")).toBeInTheDocument();
     expect(screen.queryByText("No immediate issue")).not.toBeInTheDocument();
+  });
+
+  it("lists sessions with any activity in the shared range", () => {
+    const sessions = [
+      s({ id: 1, session_id: "before01", first_ts: "2026-05-30T08:00:00Z", last_ts: "2026-05-31T08:00:00Z" }),
+      s({ id: 2, session_id: "straddle", first_ts: "2026-05-31T20:00:00Z", last_ts: "2026-06-01T12:00:00Z" }),
+      s({ id: 3, session_id: "inside03", first_ts: "2026-06-02T08:00:00Z", last_ts: "2026-06-02T09:00:00Z" }),
+      s({ id: 4, session_id: "after004", first_ts: "2026-06-04T08:00:00Z", last_ts: "2026-06-04T09:00:00Z" }),
+    ];
+    render(
+      <TriageBoard projects={projects} sessions={sessions} loading={false} onOpenSession={vi.fn()}
+                   range={{ preset: "custom", from: "2026-06-01", to: "2026-06-02" }} />,
+    );
+    expect(screen.queryByText(/before01/)).not.toBeInTheDocument();
+    expect(screen.getByText(/straddle/)).toBeInTheDocument();
+    expect(screen.getByText(/inside03/)).toBeInTheDocument();
+    expect(screen.queryByText(/after004/)).not.toBeInTheDocument();
+  });
+
+  it("keeps search, errors and sort in the header", () => {
+    render(<TriageBoard projects={projects} sessions={[s({})]} loading={false} onOpenSession={() => {}} />);
+    expect(within(screen.getByRole("group", { name: "Filters" })).getByPlaceholderText("Search sessions"))
+      .toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: "Filters" })).getByLabelText("Errors only")).toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: "View" })).getByLabelText("Sort sessions")).toBeInTheDocument();
   });
 });
