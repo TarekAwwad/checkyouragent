@@ -326,6 +326,32 @@ describe("LimitHits", () => {
     });
   });
 
+  it("keeps the results on screen and marks them as updating while a refetch runs", async () => {
+    const { getLimits } = await import("../../api/client");
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <LimitHits projects={projects} onOpenSession={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText("1 of 2")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("");
+
+    let finishRequest!: (value: LimitsResponse) => void;
+    vi.mocked(getLimits).mockImplementationOnce(() => (
+      new Promise<LimitsResponse>((resolve) => { finishRequest = resolve; })
+    ));
+    void client.invalidateQueries({ queryKey: ["limits"] });
+
+    expect(await screen.findByText("Updating…")).toBeInTheDocument();
+    expect(screen.getByText("1 of 2")).toBeInTheDocument();
+    expect(screen.queryByText("Loading limit hits…")).not.toBeInTheDocument();
+
+    finishRequest({ ...payload, meta: { ...payload.meta, hit_counts: { session: 2 } } });
+    expect(await screen.findByText("2 session")).toBeInTheDocument();
+    await vi.waitFor(() => expect(screen.queryByText("Updating…")).not.toBeInTheDocument());
+  });
+
   it("keeps Add plan disabled until the saved history has loaded", async () => {
     // A row added before the settings fetch resolves would be wiped by it.
     const { getSettings } = await import("../../api/client");
