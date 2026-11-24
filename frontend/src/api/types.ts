@@ -612,7 +612,7 @@ export interface SessionContextEconomicsResponse {
   cost_available: boolean;
 }
 
-// --- Usage Mindmap -----------------------------------------------------------
+// --- Activity map ------------------------------------------------------------
 
 export interface UsageHabit {
   key: string;

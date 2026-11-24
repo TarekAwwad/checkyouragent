@@ -6,7 +6,9 @@ import { getUsageMap, getUsageMapEvidence } from "../../api/client";
 import type { UsageMapEvidenceResponse, UsageMapResponse } from "../../api/types";
 import type { UsagePhase } from "../../api/types";
 import MindmapCanvas from "./MindmapCanvas";
-import UsageMindmap, { DATE_FILTER_DEBOUNCE_MS } from "./UsageMindmap";
+import UsageMindmap from "./UsageMindmap";
+import { TestScopeProvider } from "../../shell/TestScopeProvider";
+import { instantBounds, type DateRange } from "../../shell/dateRange";
 import { buildActivityMapExport } from "./exportMap";
 
 const PHASES: UsagePhase[] = [
@@ -80,11 +82,13 @@ vi.mock("../../api/client", () => ({
   getUsageMapEvidence: vi.fn(() => Promise.resolve(evidencePayload)),
 }));
 
-function renderPage(onOpenSession = vi.fn()) {
+function renderPage(onOpenSession = vi.fn(), range?: DateRange) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <UsageMindmap projects={[]} onOpenSession={onOpenSession} />
+      <TestScopeProvider range={range}>
+        <UsageMindmap onOpenSession={onOpenSession} />
+      </TestScopeProvider>
     </QueryClientProvider>,
   );
 }
@@ -191,7 +195,7 @@ describe("UsageMindmap", () => {
     fireEvent.click(screen.getByRole("button", { name: /Implement: 30%/ }));
     expect(container.querySelector(".mindmap-node.is-selected")
       ?.getAttribute("aria-label")).toMatch(/^Implement/);
-    fireEvent.change(screen.getByLabelText("From date"), { target: { value: "2026-06-01" } });
+    fireEvent.change(screen.getByLabelText("Date range"), { target: { value: "7d" } });
     await waitFor(() => {
       const selected = container.querySelectorAll(".mindmap-node.is-selected");
       expect(selected).toHaveLength(1);
@@ -199,51 +203,53 @@ describe("UsageMindmap", () => {
     });
   });
 
-  it("shows compare deltas when both dates are set and compare is on", async () => {
-    renderPage();
+  it("shows compare deltas for a bounded range with compare on", async () => {
+    renderPage(vi.fn(), { preset: "custom", from: "2026-06-01", to: "2026-06-10" });
     await screen.findByText("Observed");
-    fireEvent.change(screen.getByLabelText("From date"), { target: { value: "2026-06-01" } });
-    fireEvent.change(screen.getByLabelText("To date"), { target: { value: "2026-06-10" } });
     fireEvent.click(screen.getByLabelText("Compare with previous period"));
     expect((await screen.findAllByText("=")).length).toBeGreaterThan(0);
   });
 
-  it("waits for date edits to pause before requesting the map and its comparison", async () => {
-    renderPage();
+  it("requests the shared range and the previous window as local-day instants", async () => {
+    renderPage(vi.fn(), { preset: "custom", from: "2026-06-01", to: "2026-06-10" });
     await screen.findByText("Observed");
-    vi.useFakeTimers();
-    const fromInput = screen.getByLabelText("From date");
-    fireEvent.change(fromInput, { target: { value: "2026-06-01" } });
-    fireEvent.change(screen.getByLabelText("To date"), { target: { value: "2026-06-10" } });
     fireEvent.click(screen.getByLabelText("Compare with previous period"));
-    act(() => vi.advanceTimersByTime(DATE_FILTER_DEBOUNCE_MS));
+    await waitFor(() => expect(vi.mocked(getUsageMap)).toHaveBeenCalledWith(
+      { projectId: null, ...instantBounds({ from: "2026-05-22", to: "2026-05-31" }) }));
     expect(vi.mocked(getUsageMap)).toHaveBeenCalledWith(
-      { projectId: null, dateFrom: "2026-06-01", dateTo: "2026-06-10" });
-    expect(vi.mocked(getUsageMap)).toHaveBeenCalledWith(
-      { projectId: null, dateFrom: "2026-05-22", dateTo: "2026-05-31" });
-    vi.mocked(getUsageMap).mockClear();
-
-    // Stepping the start date: the input follows each edit, the requests wait.
-    for (const day of ["02", "03", "04"]) {
-      fireEvent.change(fromInput, { target: { value: `2026-06-${day}` } });
-      expect(fromInput).toHaveValue(`2026-06-${day}`);
-      act(() => vi.advanceTimersByTime(DATE_FILTER_DEBOUNCE_MS - 100));
-    }
-    act(() => vi.advanceTimersByTime(99));
-    expect(vi.mocked(getUsageMap)).not.toHaveBeenCalled();
-
-    act(() => vi.advanceTimersByTime(1));
-    expect(vi.mocked(getUsageMap).mock.calls).toEqual([
-      [{ projectId: null, dateFrom: "2026-06-04", dateTo: "2026-06-10" }],
-      [{ projectId: null, dateFrom: "2026-05-28", dateTo: "2026-06-03" }],
-    ]);
+      { projectId: null, ...instantBounds({ from: "2026-06-01", to: "2026-06-10" }) });
   });
 
-  it("offers JSON and PNG export buttons", async () => {
+  it("turns compare off for all time", async () => {
     renderPage();
     await screen.findByText("Observed");
-    expect(screen.getByRole("button", { name: "Export JSON" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Export PNG" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Compare with previous period")).toBeDisabled();
+  });
+
+  it("offers JSON and PNG exports from one menu", async () => {
+    renderPage();
+    await screen.findByText("Observed");
+    fireEvent.click(screen.getByRole("button", { name: "Export" }));
+    expect(screen.getByRole("menuitem", { name: "Export JSON" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Export PNG" })).toBeInTheDocument();
+  });
+
+  it("keeps the header on an empty window and recovers when the range changes", async () => {
+    vi.mocked(getUsageMap).mockResolvedValueOnce({
+      ...mapPayload, meta: { ...mapPayload.meta, sessions_analyzed: 0 },
+    });
+    renderPage();
+    expect(await screen.findByText(/No imported sessions in this window/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Activity map" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Date range"), { target: { value: "7d" } });
+    expect(await screen.findByText("Observed")).toBeInTheDocument();
+  });
+
+  it("keeps the header when the map fails to load", async () => {
+    vi.mocked(getUsageMap).mockRejectedValueOnce(new Error("boom"));
+    renderPage();
+    expect(await screen.findByText("The activity map could not be loaded.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Date range")).toBeInTheDocument();
   });
 
   it("switches between the neutral patterns and tools lenses", async () => {

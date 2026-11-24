@@ -118,12 +118,12 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
       "How the timeline spaces events along the x-axis. Raw time uses real wall-clock gaps; Compressed gaps shortens long idle stretches so activity isn't squished; Event order ignores time and spaces events evenly.",
   },
 
-  // Workflow — the Usage Mindmap's phases and habits.
+  // Workflow — the Activity map's phases and habits.
   {
     category: "Workflow",
-    term: "Usage Mindmap",
+    term: "Activity map",
     definition:
-      "The activity map on Explore. It groups observed tool calls and text-only assistant steps into workflow phases, tools, and recurring habits. It describes recorded activity, not cost attribution. Click a node to inspect its rule and supporting sessions.",
+      "The Explore map that groups observed tool calls and text-only assistant steps into workflow phases, tools, and recurring habits. It describes recorded activity, not cost attribution. Click a node to inspect its rule and supporting sessions.",
   },
   {
     category: "Workflow",

@@ -101,7 +101,7 @@ describe("Sidebar", () => {
     const experimental = screen.getByRole("group", { name: "Experimental techniques" });
     expect(within(experimental).getByRole("button", { name: "Context economics" })).toBeInTheDocument();
     expect(within(experimental).getByRole("button", { name: "Subgroups" })).toBeInTheDocument();
-    expect(within(experimental).queryByRole("button", { name: "Usage Mindmap" })).not.toBeInTheDocument();
+    expect(within(experimental).queryByRole("button", { name: "Activity map" })).not.toBeInTheDocument();
     expect(within(experimental).queryByRole("button", { name: "Usage drivers" })).not.toBeInTheDocument();
     expect(screen.getByText("Experimental")).toBeInTheDocument();
   });

@@ -99,7 +99,7 @@ describe("GlossaryDialog", () => {
     expect(glossaryCopy).not.toMatch(/plan era/i);
   });
 
-  it("shows the Usage Mindmap phase/habit terms on the Workflow tab", () => {
+  it("shows the Activity map phase/habit terms on the Workflow tab", () => {
     render(<GlossaryDialog open onClose={vi.fn()} />);
 
     fireEvent.click(screen.getByRole("tab", { name: "Workflow" }));
