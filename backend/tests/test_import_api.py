@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from ccfr.api import routes
 from ccfr.api.deps import get_db
+from ccfr.api.import_progress import ImportProgressStore
 from ccfr.analysis.team_bundles import bundle_content_id
 from ccfr.main import create_app
 from ccfr.storage import init_db
@@ -50,6 +51,8 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     # Point import_root() at our temp source tree, and keep startup's DB off the repo.
     monkeypatch.setattr(routes, "import_root", lambda: tmp_path)
     monkeypatch.setattr("ccfr.main.database_path", lambda: tmp_path / "startup.sqlite3")
+    # A fresh progress store per test, so data_version starts at 0.
+    monkeypatch.setattr(routes, "import_progress_store", ImportProgressStore())
 
     app = create_app()
     app.dependency_overrides[get_db] = lambda: conn
@@ -189,7 +192,41 @@ def test_import_progress_is_inactive_before_import(client) -> None:
         "totals": None,
         "summary": None,
         "updated_at": None,
+        "data_version": 0,
     }
+
+
+def test_import_progress_data_version_counts_finished_changes(
+    client, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    c, root = client
+    _write_project(root, "d--Alpha", "11111111-1111-1111-1111-111111111111")
+
+    def version() -> int:
+        return c.get("/api/imports/progress").json()["data_version"]
+
+    # A request rejected before importing changes nothing.
+    assert c.post("/api/imports", json={"project": "../etc"}).status_code == 400
+    assert version() == 0
+
+    assert c.post("/api/imports", json={"project": "d--Alpha"}).status_code == 200
+    assert version() == 1
+    # Each finished change counts, even when nothing new was imported.
+    assert c.post("/api/imports", json={}).status_code == 200
+    assert version() == 2
+
+    def failing_import(conn, source, *, progress_callback=None):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(routes, "import_all_new", failing_import)
+    failing = TestClient(c.app, raise_server_exceptions=False)
+    assert failing.post("/api/imports", json={}).status_code == 500
+    # A failed import may have committed some projects, so it counts too.
+    assert version() == 3
+    assert c.get("/api/imports/progress").json()["active"] is False
+
+    assert c.post("/api/imports/reset").status_code == 200
+    assert version() == 4
 
 
 def test_import_progress_reports_running_project(client, monkeypatch: pytest.MonkeyPatch) -> None:

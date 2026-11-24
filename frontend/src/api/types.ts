@@ -48,6 +48,8 @@ export interface ImportProgress {
   totals: CacheStats | null;
   summary: ImportProgressSummary | null;
   updated_at: string | null;
+  /** Changes each time the server finishes an import, demo load or local reset. */
+  data_version: number;
 }
 
 export interface Project {

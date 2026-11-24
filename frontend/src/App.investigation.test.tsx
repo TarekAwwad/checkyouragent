@@ -9,6 +9,10 @@ vi.mock("./api/client", () => ({
   getRuntimeConfig: vi.fn(), listProjects: vi.fn(), listSessions: vi.fn(), listTeamImports: vi.fn(),
   getSettings: vi.fn(), updateSettings: vi.fn(), getCostAnalytics: vi.fn(), getTeamCostAnalytics: vi.fn(),
   getSessionTurnCosts: vi.fn(),
+  getImportProgress: vi.fn(async () => ({
+    active: false, import_id: null, status: "idle", source_path: null, project: null,
+    totals: null, summary: null, updated_at: null, data_version: 0,
+  })),
 }));
 
 vi.mock("./pages/SessionWorkspace", () => ({

@@ -56,6 +56,9 @@ class ImportProgressResponse(BaseModel):
     totals: CacheStatsResponse | None = None
     summary: ImportProgressSummary | None = None
     updated_at: str | None = None
+    # Increments when an import, demo load or local reset finishes in this server
+    # process; clients refetch imported data when it changes.
+    data_version: int = 0
 
 
 class ImportSummaryResponse(BaseModel):

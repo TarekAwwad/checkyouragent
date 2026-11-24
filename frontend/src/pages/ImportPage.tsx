@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, FolderInput, RotateCcw, Search, Trash2 } from "lucide-react";
 import { createImport, discoverSourceProjects, getCacheStats, getImportProgress, getRuntimeConfig, listImports, loadDemoData, resetImports } from "../api/client";
 import type { DiscoveredProject } from "../api/types";
-import { invalidateImportedData } from "../api/importedData";
+import { refreshAfterLocalChange } from "../api/importedData";
 import { useImportRoot } from "./useImportRoot";
 import LoadingBar from "../components/LoadingBar";
 
@@ -22,23 +22,25 @@ function ImportPage({ onViewCosts }: Props) {
 
   const stats = useQuery({ queryKey: ["stats"], queryFn: getCacheStats });
 
-  const invalidateAll = () => invalidateImportedData(queryClient);
+  // The app-level watcher also sees these changes; this refreshes at once, and
+  // the mutation stays pending until the refreshed data arrives.
+  const refreshNow = () => refreshAfterLocalChange(queryClient);
 
   const importOne = useMutation({
     mutationFn: (name: string) => createImport(root, name),
-    onSuccess: invalidateAll,
+    onSettled: refreshNow,
   });
   const importAll = useMutation({
     mutationFn: () => createImport(root, null),
-    onSuccess: invalidateAll,
+    onSettled: refreshNow,
   });
   const reset = useMutation({
     mutationFn: () => resetImports(),
-    onSuccess: invalidateAll,
+    onSettled: refreshNow,
   });
   const loadDemo = useMutation({
     mutationFn: () => loadDemoData(),
-    onSuccess: invalidateAll,
+    onSettled: refreshNow,
   });
 
   const importPending = importOne.isPending || importAll.isPending;

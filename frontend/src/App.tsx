@@ -23,6 +23,7 @@ import { PrivacyModeProvider } from "./shell/PrivacyModeContext";
 import { useTheme } from "./theme/useTheme";
 import LoadingBar from "./components/LoadingBar";
 import { initialCostViewState, initialSessionsViewState } from "./shell/investigationState";
+import { useImportedDataWatcher } from "./api/importedData";
 
 type SessionOrigin = Extract<View, "map" | "cost" | "discover">;
 
@@ -68,6 +69,7 @@ function pushSessionHistory(
 }
 
 function App() {
+  useImportedDataWatcher();
   const config = useQuery({ queryKey: ["config"], queryFn: getRuntimeConfig });
   const projects = useQuery({ queryKey: ["projects"], queryFn: listProjects });
   const sessions = useQuery({ queryKey: ["sessions", {}], queryFn: () => listSessions() });
