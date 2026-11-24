@@ -321,7 +321,7 @@ html:has(.glossary-dialog[open]) { overflow: hidden; }
   overflow-x: auto;
 }
 
-.page { flex: 1; width: 100%; max-width: var(--page-max-width); margin: 0 auto; padding: 18px var(--page-gutter); }
+.page { flex: 1; width: 100%; max-width: var(--page-max-width); margin: 0 auto; padding: 0 var(--page-gutter) 18px; }
 .team-export-page,
 .team-import-page { overflow: auto; width: 100%; }
 
@@ -748,7 +748,7 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
   }
 }
 
-.triage-page { display: grid; grid-template-rows: auto auto 1fr; gap: 14px; min-height: 100%; padding: 18px var(--page-gutter); }
+.triage-page { display: grid; grid-template-rows: auto auto 1fr; gap: 14px; min-height: 100%; padding: 0 var(--page-gutter) 18px; }
 .triage-card { display: flex; flex-direction: column; min-height: 0; }
 .triage-table-wrap { overflow: auto; min-height: 0; }
 .triage-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
@@ -1000,7 +1000,7 @@ pre { max-height: 260px; overflow: auto; background: var(--track); color: var(--
 
 /* ---- Cost analytics page ---- */
 .cost-page { flex: 1; min-height: 0; overflow-y: auto; width: 100%; }
-.cost-page-inner { max-width: var(--page-max-width); margin: 0 auto; padding: 18px var(--page-gutter); display: flex; flex-direction: column; gap: 14px; }
+.cost-page-inner { max-width: var(--page-max-width); margin: 0 auto; padding: 0 var(--page-gutter) 18px; display: flex; flex-direction: column; gap: 14px; }
 .cost-partial { color: var(--warning); }
 
 .cost-bento { display: grid; grid-template-columns: 1.7fr 1fr; gap: 14px; grid-auto-rows: minmax(250px, auto); }
@@ -1347,7 +1347,7 @@ button.spike-insight:focus-visible { outline: 1px solid var(--accent); outline-o
 .discover-page.discover-section-cost_associations { --discover-active: var(--accent); }
 .discover-page.discover-section-tool_error_associations { --discover-active: var(--err); }
 .discover-page-inner {
-  max-width: var(--page-max-width); margin: 0 auto; padding: 18px var(--page-gutter);
+  max-width: var(--page-max-width); margin: 0 auto; padding: 0 var(--page-gutter) 18px;
   min-height: 100%;
   display: flex; flex-direction: column; gap: 14px;
 }
@@ -1611,7 +1611,7 @@ button.spike-insight:focus-visible { outline: 1px solid var(--accent); outline-o
 .session-header-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
 .session-search-wrap { position: relative; flex: 0 1 280px; width: min(100%, 280px); min-width: 220px; }
 .session-search-wrap .search-popover {
-  top: 46px; width: min(420px, calc(100vw - (var(--page-gutter) * 2)));
+  top: 46px; left: 0; right: auto; width: min(420px, calc(100vw - (var(--page-gutter) * 2)));
   max-width: calc(100vw - (var(--page-gutter) * 2));
 }
 
@@ -4379,7 +4379,7 @@ html:has(.specimen-dialog[open]) {
 .page-header {
   position: sticky; top: 0; z-index: 6;
   display: flex; flex-direction: column; gap: 10px;
-  margin-top: -18px; padding-top: 18px; padding-bottom: 12px; background: var(--bg);
+  padding-top: 18px; padding-bottom: 12px; background: var(--bg);
 }
 .page-header-row { display: flex; align-items: flex-start; gap: 12px 18px; }
 .page-header-identity { flex: 1 1 auto; min-width: 0; }
