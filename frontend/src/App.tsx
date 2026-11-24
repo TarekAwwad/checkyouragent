@@ -1,6 +1,6 @@
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getRuntimeConfig, listProjects, listSessions, listTeamImports } from "./api/client";
+import { getRuntimeConfig, getTeamDashboard, listProjects, listSessions, listTeamImports } from "./api/client";
 import type { SessionCard } from "./api/types";
 import ImportPage from "./pages/ImportPage";
 import TriageBoard from "./triage/TriageBoard";
@@ -24,6 +24,9 @@ import { useTheme } from "./theme/useTheme";
 import LoadingBar from "./components/LoadingBar";
 import { initialCostViewState, initialSessionsViewState } from "./shell/investigationState";
 import { useImportedDataWatcher } from "./api/importedData";
+import { AnalysisScopeContext, type ProjectOption, type ScopeSignal } from "./shell/analysisScope";
+import { useScopeStore } from "./shell/useScopeStore";
+import { toLocalDay } from "./shell/dateRange";
 
 type SessionOrigin = Extract<View, "map" | "cost" | "discover">;
 
@@ -75,6 +78,9 @@ function App() {
   const sessions = useQuery({ queryKey: ["sessions", {}], queryFn: () => listSessions() });
   const { scope, setScope } = useDataScope();
   const teamImports = useQuery({ queryKey: ["team-import-list"], queryFn: listTeamImports, enabled: scope === "team" });
+  // Team scope's default range comes from the dashboard's latest bundle date;
+  // the key is shared with TeamOverview, so it is one request.
+  const teamDashboard = useQuery({ queryKey: ["team-dashboard"], queryFn: getTeamDashboard, enabled: scope === "team" });
   const activeDataset = scope === "team" ? teamImports : sessions;
   // A failed availability check is not evidence of an empty dataset. Open the
   // remembered analytical page; its own request can display the actual error.
@@ -124,6 +130,36 @@ function App() {
     }
     teamDataset.current = dataset;
   }, [teamImports.isSuccess, teamImports.data]);
+
+  const localSignal = React.useMemo<ScopeSignal | null>(() => {
+    if (sessions.isError) return { populated: false, latestDay: null };
+    if (!sessions.isSuccess) return null;
+    let latestDay: string | null = null;
+    for (const card of sessions.data) {
+      const day = toLocalDay(card.last_ts ?? card.first_ts);
+      if (day && (latestDay === null || day > latestDay)) latestDay = day;
+    }
+    return { populated: sessions.data.length > 0, latestDay };
+  }, [sessions.isError, sessions.isSuccess, sessions.data]);
+  const teamSignal = React.useMemo<ScopeSignal | null>(() => {
+    if (teamDashboard.isError) return { populated: false, latestDay: null };
+    if (!teamDashboard.isSuccess) return null;
+    const meta = teamDashboard.data.meta;
+    return { populated: (meta?.session_count ?? 0) > 0, latestDay: toLocalDay(meta?.date_to) };
+  }, [teamDashboard.isError, teamDashboard.isSuccess, teamDashboard.data]);
+  const scopeSignals = React.useMemo(() => ({ local: localSignal, team: teamSignal }), [localSignal, teamSignal]);
+  const scopeProjects = React.useMemo<ProjectOption[]>(
+    () => (scope === "local" ? (projects.data ?? []).map((p) => ({ id: p.id, name: p.display_name })) : []),
+    [scope, projects.data],
+  );
+  const { value: analysisScope, ready: scopeReady } = useScopeStore({
+    scope,
+    signals: scopeSignals,
+    epochs: contextEpoch,
+    projects: scopeProjects,
+    projectsLoaded: scope === "local" && projects.isSuccess,
+  });
+  const waitingForScope = (view === "cost" || view === "map" || view === "discover") && !scopeReady;
 
   // Keep analytical and data-management pages addressable. Session navigation
   // retains its origin entry so browser Back returns to the investigation.
@@ -276,11 +312,13 @@ function App() {
         <GlossaryDialog open={glossaryOpen} onClose={() => setGlossaryOpen(false)} />
 
         {view === null && <div className="empty-state"><LoadingBar caption="Opening your workspace…" /></div>}
+        <AnalysisScopeContext.Provider value={analysisScope}>
+        {waitingForScope && <div className="empty-state"><LoadingBar caption="Opening your workspace…" /></div>}
         {view === "import" && scope === "local" && <ImportPage onViewCosts={() => setView("cost")} />}
         {view === "import" && scope === "team" && <TeamBundleImport onViewCosts={() => setView("cost")} />}
         {view === "export" && <TeamBundleExport />}
-        {view === "map" && scope === "team" && <TeamOverview onGoToImport={() => setView("import")} />}
-        {view === "map" && scope === "local" && (
+        {!waitingForScope && view === "map" && scope === "team" && <TeamOverview onGoToImport={() => setView("import")} />}
+        {!waitingForScope && view === "map" && scope === "local" && (
           <TriageBoard
             key={contextEpoch.local}
             memory={sessionsMemory}
@@ -290,7 +328,7 @@ function App() {
             onOpenSession={(session) => openSession(session, "map")}
           />
         )}
-        {view === "cost" && (
+        {!waitingForScope && view === "cost" && (
           <CostAnalyticsPage
             key={`${scope}:${contextEpoch[scope]}`}
             memory={costMemory.current[scope]}
@@ -300,7 +338,7 @@ function App() {
             onHistoricalChange={setHistoricalPricing}
           />
         )}
-        {view === "discover" && scope === "local" && (
+        {!waitingForScope && view === "discover" && scope === "local" && (
           <DiscoverPage
             projects={projects.data ?? []}
             onOpenSession={(sessionId, eventId = null) => openSessionById(sessionId, eventId, "discover")}
@@ -316,6 +354,7 @@ function App() {
             historical={historicalPricing}
           />
         )}
+        </AnalysisScopeContext.Provider>
       </main>
     </div>
     </PrivacyModeProvider>

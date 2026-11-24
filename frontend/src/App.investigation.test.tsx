@@ -6,7 +6,7 @@ import * as client from "./api/client";
 import type { CostAnalyticsResponse, SessionCard } from "./api/types";
 
 vi.mock("./api/client", () => ({
-  getRuntimeConfig: vi.fn(), listProjects: vi.fn(), listSessions: vi.fn(), listTeamImports: vi.fn(),
+  getRuntimeConfig: vi.fn(), listProjects: vi.fn(), listSessions: vi.fn(), listTeamImports: vi.fn(), getTeamDashboard: vi.fn(),
   getSettings: vi.fn(), updateSettings: vi.fn(), getCostAnalytics: vi.fn(), getTeamCostAnalytics: vi.fn(),
   getSessionTurnCosts: vi.fn(),
   getImportProgress: vi.fn(async () => ({
@@ -72,6 +72,7 @@ beforeEach(() => {
   vi.mocked(client.updateSettings).mockImplementation(async (settings) => settings as never);
   vi.mocked(client.getCostAnalytics).mockResolvedValue(payload);
   vi.mocked(client.getTeamCostAnalytics).mockResolvedValue(payload);
+  vi.mocked(client.getTeamDashboard).mockResolvedValue({ meta: { session_count: 2, date_to: "2026-05-02" } } as never);
 });
 
 function renderApp() {
