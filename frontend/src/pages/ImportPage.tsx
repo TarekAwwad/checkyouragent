@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, FolderInput, RotateCcw, Search, Trash2 } from "lucide-react";
 import { createImport, discoverSourceProjects, getCacheStats, getImportProgress, getRuntimeConfig, listImports, loadDemoData, resetImports } from "../api/client";
 import type { DiscoveredProject } from "../api/types";
+import { invalidateImportedData } from "../api/importedData";
 import { useImportRoot } from "./useImportRoot";
 import LoadingBar from "../components/LoadingBar";
 
@@ -21,16 +22,7 @@ function ImportPage({ onViewCosts }: Props) {
 
   const stats = useQuery({ queryKey: ["stats"], queryFn: getCacheStats });
 
-  const invalidateAll = async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["source-projects"] }),
-      queryClient.invalidateQueries({ queryKey: ["imports"] }),
-      queryClient.invalidateQueries({ queryKey: ["projects"] }),
-      queryClient.invalidateQueries({ queryKey: ["sessions"] }),
-      queryClient.invalidateQueries({ queryKey: ["stats"] }),
-      queryClient.invalidateQueries({ queryKey: ["cost-analytics", "local"] }),
-    ]);
-  };
+  const invalidateAll = () => invalidateImportedData(queryClient);
 
   const importOne = useMutation({
     mutationFn: (name: string) => createImport(root, name),

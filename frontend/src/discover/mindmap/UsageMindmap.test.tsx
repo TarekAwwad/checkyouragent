@@ -1,12 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { getUsageMapEvidence } from "../../api/client";
+import { getUsageMap, getUsageMapEvidence } from "../../api/client";
 import type { UsageMapEvidenceResponse, UsageMapResponse } from "../../api/types";
 import type { UsagePhase } from "../../api/types";
 import MindmapCanvas from "./MindmapCanvas";
-import UsageMindmap from "./UsageMindmap";
+import UsageMindmap, { DATE_FILTER_DEBOUNCE_MS } from "./UsageMindmap";
 import { buildActivityMapExport } from "./exportMap";
 
 const PHASES: UsagePhase[] = [
@@ -154,6 +154,7 @@ describe("UsageMindmap", () => {
   beforeEach(() => {
     vi.mocked(getUsageMapEvidence).mockClear();
   });
+  afterEach(() => vi.useRealTimers());
 
   it("labels the view as an observed-activity map", async () => {
     renderPage();
@@ -204,6 +205,37 @@ describe("UsageMindmap", () => {
     fireEvent.change(screen.getByLabelText("To date"), { target: { value: "2026-06-10" } });
     fireEvent.click(screen.getByLabelText("Compare with previous period"));
     expect((await screen.findAllByText("=")).length).toBeGreaterThan(0);
+  });
+
+  it("waits for date edits to pause before requesting the map and its comparison", async () => {
+    renderPage();
+    await screen.findByText("Observed");
+    vi.useFakeTimers();
+    const fromInput = screen.getByLabelText("From date");
+    fireEvent.change(fromInput, { target: { value: "2026-06-01" } });
+    fireEvent.change(screen.getByLabelText("To date"), { target: { value: "2026-06-10" } });
+    fireEvent.click(screen.getByLabelText("Compare with previous period"));
+    act(() => vi.advanceTimersByTime(DATE_FILTER_DEBOUNCE_MS));
+    expect(vi.mocked(getUsageMap)).toHaveBeenCalledWith(
+      { projectId: null, dateFrom: "2026-06-01", dateTo: "2026-06-10" });
+    expect(vi.mocked(getUsageMap)).toHaveBeenCalledWith(
+      { projectId: null, dateFrom: "2026-05-22", dateTo: "2026-05-31" });
+    vi.mocked(getUsageMap).mockClear();
+
+    // Stepping the start date: the input follows each edit, the requests wait.
+    for (const day of ["02", "03", "04"]) {
+      fireEvent.change(fromInput, { target: { value: `2026-06-${day}` } });
+      expect(fromInput).toHaveValue(`2026-06-${day}`);
+      act(() => vi.advanceTimersByTime(DATE_FILTER_DEBOUNCE_MS - 100));
+    }
+    act(() => vi.advanceTimersByTime(99));
+    expect(vi.mocked(getUsageMap)).not.toHaveBeenCalled();
+
+    act(() => vi.advanceTimersByTime(1));
+    expect(vi.mocked(getUsageMap).mock.calls).toEqual([
+      [{ projectId: null, dateFrom: "2026-06-04", dateTo: "2026-06-10" }],
+      [{ projectId: null, dateFrom: "2026-05-28", dateTo: "2026-06-03" }],
+    ]);
   });
 
   it("offers JSON and PNG export buttons", async () => {

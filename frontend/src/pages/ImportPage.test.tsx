@@ -4,8 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ImportPage from "./ImportPage";
 import * as client from "../api/client";
 
-function renderPage(onViewCosts?: () => void) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function renderPage(
+  onViewCosts?: () => void,
+  queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+) {
   return render(
     <QueryClientProvider client={queryClient}>
       <ImportPage onViewCosts={onViewCosts} />
@@ -245,6 +247,52 @@ describe("ImportPage", () => {
     fireEvent.click(button);
 
     await waitFor(() => expect(loadDemo).toHaveBeenCalledTimes(1));
+  });
+
+  it.each([
+    { action: "importing one project", button: /Import Beta/i, hasSource: true },
+    { action: "syncing all projects", button: /Sync new and updated/i, hasSource: true },
+    // The demo card only shows while the source and cache are both empty.
+    { action: "loading demo data", button: /Load demo data/i, hasSource: false },
+    { action: "resetting local data", button: /Reset local data/i, hasSource: true },
+  ])("refreshes Explore results after $action", async ({ button, hasSource }) => {
+    vi.spyOn(client, "discoverSourceProjects").mockResolvedValue(hasSource ? [{ name: "d--Beta", display_name: "Beta", imported: false, session_count: 0, last_imported_at: null }] : []);
+    vi.spyOn(client, "createImport").mockResolvedValue({
+      import_id: 1, source_path: "/srv/Data", project_count: 1, session_count: 1,
+      event_count: 1, subagent_count: 0, persisted_output_count: 0,
+      file_count: 1, error_count: 0, errors: [],
+    });
+    vi.spyOn(client, "loadDemoData").mockResolvedValue({
+      import_id: 1, source_path: "/srv/Data", project_count: 1, session_count: 1,
+      event_count: 1, subagent_count: 0, persisted_output_count: 0,
+      file_count: 1, error_count: 0, errors: [],
+    });
+    vi.spyOn(client, "resetImports").mockResolvedValue({ ok: true });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const exploreKeys = [
+      ["context-economics", null],
+      ["session-context-economics", 4],
+      ["usage-map", null, "", ""],
+      ["usage-map-prev", null, "2026-05-01", "2026-05-10"],
+      ["usage-map-evidence", "phase:explore", null, null, null],
+      ["usage-characteristics", null, "30d"],
+      ["discovery", null, 5],
+      ["limits"],
+    ];
+    for (const key of exploreKeys) queryClient.setQueryData(key, { cached: true });
+    queryClient.setQueryData(["settings"], { cached: true });
+
+    renderPage(undefined, queryClient);
+    if (hasSource) await screen.findByText("d--Beta");
+    fireEvent.click(await screen.findByRole("button", { name: button }));
+
+    await waitFor(() => {
+      for (const key of exploreKeys) {
+        expect(queryClient.getQueryState(key)?.isInvalidated, String(key[0])).toBe(true);
+      }
+    });
+    expect(queryClient.getQueryState(["settings"])?.isInvalidated).toBe(false);
   });
 
   it("hides the demo card once projects exist in the source", async () => {
