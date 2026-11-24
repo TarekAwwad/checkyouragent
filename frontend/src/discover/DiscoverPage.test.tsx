@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Project } from "../api/types";
+import { TestScopeProvider } from "../shell/TestScopeProvider";
 
 const { getDiscoveryAnalytics, getLimits } = vi.hoisted(() => ({
   getDiscoveryAnalytics: vi.fn(),
@@ -18,7 +19,9 @@ function renderPage(technique: string) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={queryClient}>
-      <DiscoverPage projects={projects} onOpenSession={vi.fn()} technique={technique} />
+      <TestScopeProvider>
+        <DiscoverPage projects={projects} onOpenSession={vi.fn()} technique={technique} />
+      </TestScopeProvider>
     </QueryClientProvider>,
   );
 }

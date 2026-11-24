@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { LimitsResponse, Project } from "../../api/types";
 import CapZones from "./CapZones";
 import LimitHits from "./LimitHits";
 import WindowsTimeline from "./WindowsTimeline";
+import { TestScopeProvider } from "../../shell/TestScopeProvider";
+import { instantBounds, type DateRange } from "../../shell/dateRange";
 
 const payload: LimitsResponse = {
   meta: {
@@ -80,11 +82,13 @@ vi.mock("../../api/client", () => ({
 
 const projects: Project[] = [];
 
-function renderPage(onOpenSession = vi.fn()) {
+function renderPage(onOpenSession = vi.fn(), range?: DateRange) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
-      <LimitHits projects={projects} onOpenSession={onOpenSession} />
+      <TestScopeProvider range={range}>
+        <LimitHits projects={projects} onOpenSession={onOpenSession} />
+      </TestScopeProvider>
     </QueryClientProvider>,
   );
   return onOpenSession;
@@ -331,7 +335,9 @@ describe("LimitHits", () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <LimitHits projects={projects} onOpenSession={vi.fn()} />
+        <TestScopeProvider>
+          <LimitHits projects={projects} onOpenSession={vi.fn()} />
+        </TestScopeProvider>
       </QueryClientProvider>,
     );
     expect(await screen.findByText("1 of 2")).toBeInTheDocument();
@@ -361,5 +367,21 @@ describe("LimitHits", () => {
     fireEvent.click(screen.getByRole("button", { name: "Plan history" }));
     expect(await screen.findByRole("dialog", { name: "Plan history" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add plan" })).toBeDisabled();
+  });
+
+  it("requests the shared range as local-day instants", async () => {
+    const { getLimits } = await import("../../api/client");
+    vi.mocked(getLimits).mockClear();
+    renderPage(vi.fn(), { preset: "custom", from: "2026-11-24", to: "2026-11-24" });
+    expect(await screen.findByText("1 of 2")).toBeInTheDocument();
+    expect(vi.mocked(getLimits)).toHaveBeenCalledWith(instantBounds({ from: "2026-11-24", to: "2026-11-24" }));
+  });
+
+  it("shows the project scope as fixed", async () => {
+    renderPage();
+    await screen.findByText("1 of 2");
+    expect(within(screen.getByRole("group", { name: "Scope" })).getByText("All projects")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Project")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Date range")).toBeInTheDocument();
   });
 });

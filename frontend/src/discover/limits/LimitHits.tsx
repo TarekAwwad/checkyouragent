@@ -6,6 +6,10 @@ import { getLimits } from "../../api/client";
 import WindowsTimeline from "./WindowsTimeline";
 import CapZones from "./CapZones";
 import PlanHistoryModal from "./PlanHistoryModal";
+import PageHeader from "../../shell/PageHeader";
+import SegmentedControl from "../../components/controls/SegmentedControl";
+import { useAnalysisScope } from "../../shell/analysisScope";
+import { instantBounds } from "../../shell/dateRange";
 import { Blurred } from "../../shell/Blurred";
 import InsightStat from "../../components/InsightStat";
 import LoadingBar from "../../components/LoadingBar";
@@ -25,10 +29,17 @@ function sessionHitWindowCount(windows: LimitsResponse["windows"]): number {
 }
 
 // Explore technique: measured subscription limits. Account-level by design,
-// so unlike the other techniques there is no project filter (a limit window
-// may have been filled by several projects at once).
+// so the project scope is fixed (a limit window may have been filled by
+// several projects at once); the date range follows the shared scope.
 export default function LimitHits({ onOpenSession }: TechniqueProps) {
-  const query = useQuery<LimitsResponse>({ queryKey: ["limits"], queryFn: getLimits });
+  const { resolvedRange } = useAnalysisScope();
+  const { from, to } = resolvedRange;
+  const bounds = React.useMemo(() => instantBounds({ from, to }), [from, to]);
+  const query = useQuery<LimitsResponse>({
+    queryKey: ["limits", bounds.dateFrom, bounds.dateTo],
+    queryFn: () => getLimits(bounds),
+    placeholderData: (previous) => previous,
+  });
   const data = query.data;
   const [selected, setSelected] = React.useState<number | null>(null);
   const [planOpen, setPlanOpen] = React.useState(false);
@@ -49,31 +60,29 @@ export default function LimitHits({ onOpenSession }: TechniqueProps) {
   return (
     <main className="discover-page" aria-busy={query.isFetching}>
       <div className="discover-page-inner">
-        <div className="discover-toolbar" aria-label="Limit hits controls">
-          <div className="discover-toolbar-lead">
-            <h1>Limit hits</h1>
-            <p className="discover-subtitle">
-              Limit hits and 5-hour windows, all projects.
-              <span className="cost-query-status" role="status">{updating ? "Updating…" : ""}</span>
-            </p>
-          </div>
-          <div className="limit-toolbar-actions">
-            <div className="segmented-control" role="group" aria-label="Usage measurement">
-              {(["tokens", "cost"] as LimitBasis[]).map((item) => (
-                <button key={item} type="button"
-                        className={basis === item ? "active" : ""}
-                        aria-pressed={basis === item}
-                        disabled={item === "cost" && costUnusable}
-                        onClick={() => setChosenBasis(item)}>
-                  {item === "cost" ? "Cost" : "Tokens"}
-                </button>
-              ))}
-            </div>
+        <PageHeader
+          section="Explore"
+          title="Limit hits"
+          subtitle="Limit hits and 5-hour windows."
+          status={updating ? "Updating…" : null}
+          actions={(
             <button type="button" className="ghost-action" onClick={() => setPlanOpen(true)}>
               Plan history
             </button>
-          </div>
-        </div>
+          )}
+          scope={{ date: "filter", project: "fixed" }}
+          view={(
+            <SegmentedControl
+              label="Usage measurement"
+              options={[
+                { value: "tokens", label: "Tokens" },
+                { value: "cost", label: "Cost", disabled: costUnusable },
+              ]}
+              value={basis}
+              onChange={setChosenBasis}
+            />
+          )}
+        />
 
         {query.isLoading && (
           <div className="loading-view"><LoadingBar caption="Loading limit hits…" /></div>

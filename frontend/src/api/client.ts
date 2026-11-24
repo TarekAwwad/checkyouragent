@@ -254,8 +254,12 @@ export function getUsageCharacteristics(filters: UsageMapFilters = {}) {
   );
 }
 
-export function getLimits() {
-  return request<LimitsResponse>("/analytics/limits");
+export function getLimits(filters: { dateFrom?: string | null; dateTo?: string | null } = {}) {
+  const params = new URLSearchParams();
+  if (filters.dateFrom) params.set("date_from", filters.dateFrom);
+  if (filters.dateTo) params.set("date_to", filters.dateTo);
+  const query = params.toString();
+  return request<LimitsResponse>(`/analytics/limits${query ? `?${query}` : ""}`);
 }
 
 export function getSettings() {
