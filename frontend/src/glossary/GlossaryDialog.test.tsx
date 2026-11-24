@@ -36,10 +36,31 @@ describe("GlossaryDialog", () => {
       "Same-tool streak",
       "Estimated context opportunity",
       "Estimated API-equivalent cost",
-      "Observed hit-level percentile",
+      "Hit-level percentile",
     ]) {
       expect(terms).toContain(term);
     }
+  });
+
+  it("explains the Limit hits figures on the Discovery tab, per plan period", () => {
+    render(<GlossaryDialog open onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Discovery" }));
+
+    // One entry per label the page shows without explanation.
+    for (const term of [
+      "Limit hit",
+      "5-hour window",
+      "Usage at hit",
+      "Plan period",
+      "Hits per week",
+      "Hit-level percentile",
+      "Time to reset",
+    ]) {
+      expect(screen.getByText(term)).toBeInTheDocument();
+    }
+    // Statistics are per plan-history entry, not per plan name.
+    expect(screen.getByText(/Pro → Max → Pro is three periods/)).toBeInTheDocument();
   });
 
   it("does not document removed scores, loop metrics, or cap claims", () => {
@@ -52,6 +73,8 @@ describe("GlossaryDialog", () => {
     expect(terms).not.toContain("Max loop");
     expect(terms).not.toContain("Necessary cost");
     expect(glossaryCopy).not.toMatch(/risk(?:y)? pattern|headroom|comfortably dimensioned/i);
+    // Limit statistics are per plan period; "plan era" was the old grouping.
+    expect(glossaryCopy).not.toMatch(/plan era/i);
   });
 
   it("shows the Usage Mindmap phase/habit terms on the Workflow tab", () => {

@@ -352,7 +352,7 @@ def test_limits_analytics_full_payload(priced: None) -> None:
     assert payload["meta"]["hit_counts"] == {"session": 2}
     assert payload["meta"]["total_windows"] == 3
     assert payload["meta"]["cost_available"] is True
-    assert payload["meta"]["method_note"]
+    assert "method_note" not in payload["meta"]
     assert "blocked_minutes" not in payload["meta"]
     assert "minutes_until_reset" in payload["meta"]
 

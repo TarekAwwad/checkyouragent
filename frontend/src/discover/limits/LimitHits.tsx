@@ -17,8 +17,7 @@ import {
 } from "./limitMath";
 
 function hitCountsHint(counts: Record<string, number>): string {
-  const parts = Object.entries(counts).map(([kind, count]) => `${count} ${kind}`);
-  return parts.length > 0 ? parts.join(" · ") : "in your exported logs";
+  return Object.entries(counts).map(([kind, count]) => `${count} ${kind}`).join(" · ");
 }
 
 function sessionHitWindowCount(windows: LimitsResponse["windows"]): number {
@@ -50,10 +49,7 @@ export default function LimitHits({ onOpenSession }: TechniqueProps) {
         <div className="discover-toolbar" aria-label="Limit hits controls">
           <div className="discover-toolbar-lead">
             <h1>Limit hits</h1>
-            <p className="discover-subtitle">
-              Every recorded limit hit in your logs, and the 5-hour windows behind
-              session-limit hits. Covers all projects: limits are account-level.
-            </p>
+            <p className="discover-subtitle">Limit hits and 5-hour windows, all projects.</p>
           </div>
           <div className="limit-toolbar-actions">
             <div className="segmented-control" role="group" aria-label="Usage measurement">
@@ -74,36 +70,35 @@ export default function LimitHits({ onOpenSession }: TechniqueProps) {
         </div>
 
         {query.isLoading && (
-          <div className="loading-view"><LoadingBar caption="Reconstructing 5-hour windows…" /></div>
+          <div className="loading-view"><LoadingBar caption="Loading limit hits…" /></div>
         )}
         {query.isError && (
           <div className="empty-state panel-error">
             <strong>Failed to load</strong>
-            <span>Limit analytics could not be loaded.</span>
+            <span>Limit hits could not be loaded.</span>
           </div>
         )}
 
         {data && (
           <>
             {!data.meta.cost_available && (
-              <p className="tile-note">Price table unavailable, so window dollar values cannot be computed.</p>
+              <p className="tile-note">No price table: tokens only.</p>
             )}
             {data.meta.cost_available && data.meta.costs_partial && (
-              <p className="tile-note">Some models lack prices, so window values are a lower bound.</p>
+              <p className="tile-note">Some models are unpriced: costs are a lower bound.</p>
             )}
             <div className="cost-insight-strip limit-insight-strip" aria-label="Limit stats">
               <InsightStat label="Limit hits" value={data.meta.total_hits}
                            hint={hitCountsHint(data.meta.hit_counts)} />
-              <InsightStat label="Time remaining until recorded reset"
+              <InsightStat label="Time to reset"
                            value={formatResetInterval(data.meta.minutes_until_reset)}
-                           hint="sum of parsed reset-minus-hit intervals" />
-              <InsightStat label="Recorded session-hit windows"
-                           value={`${sessionHitWindowCount(data.windows)} of ${data.windows.length}`}
-                           hint="reconstructed five-hour windows" />
+                           hint="across all hits" />
+              <InsightStat label="Windows with a session hit"
+                           value={`${sessionHitWindowCount(data.windows)} of ${data.windows.length}`} />
             </div>
             <section className="card" aria-label="Windows timeline">
               <div className="card-head">
-                <h2>5-hour windows, recorded hits marked</h2>
+                <h2>5-hour windows</h2>
                 <span className="card-count"><b>{data.meta.total_windows}</b> windows</span>
               </div>
               <div className="card-pad">
@@ -113,9 +108,9 @@ export default function LimitHits({ onOpenSession }: TechniqueProps) {
               </div>
             </section>
 
-            <section className="card" aria-label="Visible usage at recorded hit">
+            <section className="card" aria-label="Usage at session-limit hit">
               <div className="card-head">
-                <h2>Visible usage at recorded hit</h2>
+                <h2>Usage at session-limit hit</h2>
               </div>
               <div className="card-pad">
                 <CapZones eras={data.eras} basis={basis} />
@@ -137,12 +132,12 @@ export default function LimitHits({ onOpenSession }: TechniqueProps) {
                       <span>{new Date(h.ts).toLocaleString()}</span>
                       <span>
                         {h.minutes_until_reset != null
-                          ? `Time remaining until recorded reset: ${formatResetInterval(h.minutes_until_reset)}`
-                          : "Recorded reset time unavailable"}
+                          ? `resets in ${formatResetInterval(h.minutes_until_reset)}`
+                          : "reset time unknown"}
                       </span>
                       {hitUsage(h, basis) != null && (
                         <span>
-                          at {formatLimitValue(hitUsage(h, basis), basis)} of window usage
+                          at {formatLimitValue(hitUsage(h, basis), basis)} usage
                         </span>
                       )}
                       {h.occurrence_count > 1 && <span>seen {h.occurrence_count} times</span>}
@@ -162,8 +157,6 @@ export default function LimitHits({ onOpenSession }: TechniqueProps) {
                 </div>
               </section>
             )}
-
-            <p className="limit-footnote">{data.meta.method_note}</p>
           </>
         )}
 

@@ -170,7 +170,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     category: "Evidence",
     term: "Inferred",
     definition:
-      "Reconstructed from indirect evidence because the source export does not record the value directly. The UI states the reconstruction basis and sample wherever an inferred result is shown.",
+      "Reconstructed from indirect evidence because the source export does not record the value directly, such as 5-hour windows.",
   },
   {
     category: "Evidence",
@@ -198,7 +198,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     ],
   },
 
-  // Discovery — the Subgroup view that explains outcomes.
+  // Discovery — Explore's subgroup, limit-hit and context analyses.
   {
     category: "Discovery",
     term: "Subgroup",
@@ -246,12 +246,50 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     definition:
       "The \"stays at or above X%\" figure. Even on a pessimistic reading of a small sample, the subgroup's rate must still beat the baseline — and the bar rises with the number of conditions tested (a Bonferroni adjustment), so a long screen doesn't manufacture false positives. The gate is conservative: weak real effects can be hidden. Treat results as leads to investigate, not proof of cause.",
   },
+
   {
     category: "Discovery",
-    term: "Observed hit-level percentile",
+    term: "Limit hit",
     definition:
-      "Where a recorded limit hit's token volume or estimated API-equivalent cost falls within the reconstructed usage windows for the same plan era. For example, p50 is the median observed hit level. The windows are inferred; the percentile does not measure unused plan capacity.",
+      "A usage-limit message in a session log: session (5-hour), weekly, or org. Repeats of one message count once. Only hits inside exported Claude Code sessions are visible, so counts are a lower bound.",
   },
+  {
+    category: "Discovery",
+    term: "5-hour window",
+    definition:
+      "The span a session limit covers, rebuilt from your logs: it opens at the first message after the previous window and lasts 5 hours, or ends at the reset time a session-limit message states. Limits are account-wide, so Limit hits always covers all projects.",
+  },
+  {
+    category: "Discovery",
+    term: "Usage at hit",
+    definition:
+      "A window's logged cost or tokens up to a session-limit hit. Usage outside Claude Code counts toward the same limit but is not in these logs, so the real total can be higher.",
+  },
+  {
+    category: "Discovery",
+    term: "Plan period",
+    definition:
+      "One Plan history entry, from its start date until the next entry starts, so Pro → Max → Pro is three periods. Usage before the first entry is its own period; with no history, all usage is one. A window counts for the plan in force at its first session-limit hit, else at its start.",
+  },
+  {
+    category: "Discovery",
+    term: "Hits per week",
+    definition:
+      "A plan period's session-limit hits divided by the weeks that period overlaps your logs, with a minimum of one week.",
+  },
+  {
+    category: "Discovery",
+    term: "Hit-level percentile",
+    definition:
+      "The share of a plan period's 5-hour windows that used no more than the period's median usage at hit, shown on hover as \"71% of windows at or below the median\". It is not a share of your plan's limit.",
+  },
+  {
+    category: "Discovery",
+    term: "Time to reset",
+    definition:
+      "The reset time a limit message states, minus the time of the hit. The stat adds it up over all hits. It is not measured downtime.",
+  },
+
   {
     category: "Discovery",
     term: "Context tax",

@@ -787,7 +787,6 @@ class LimitsMeta(BaseModel):
     hits_per_week_recent: float = 0
     hit_counts: dict[str, int] = Field(default_factory=dict)
     plan_history: list[dict[str, str]] = Field(default_factory=list)
-    method_note: str = ""
 
 
 class LimitsResponse(BaseModel):

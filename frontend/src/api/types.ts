@@ -776,7 +776,6 @@ export interface LimitsMeta {
   hits_per_week_recent: number;
   hit_counts: Record<string, number>;
   plan_history: PlanEra[];
-  method_note: string;
 }
 
 export interface LimitsResponse {

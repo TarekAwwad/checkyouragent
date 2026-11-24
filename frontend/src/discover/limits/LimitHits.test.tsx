@@ -17,7 +17,6 @@ const payload: LimitsResponse = {
     hits_per_week_recent: 0.25,
     hit_counts: { session: 1 },
     plan_history: [{ plan: "Max 5x", start_date: "2026-06-10" }],
-    method_note: "Account-level view: dollars are API-equivalent value.",
   },
   hits: [
     {
@@ -94,9 +93,10 @@ function renderPage(onOpenSession = vi.fn()) {
 describe("LimitHits", () => {
   it("renders the stat tiles without per-plan cards", async () => {
     renderPage();
-    expect(await screen.findByText("Time remaining until recorded reset")).toBeInTheDocument();
-    expect(screen.getByText("Recorded session-hit windows")).toBeInTheDocument();
+    expect(await screen.findByText("Time to reset")).toBeInTheDocument();
+    expect(screen.getByText("Windows with a session hit")).toBeInTheDocument();
     expect(screen.getByText("1 of 2")).toBeInTheDocument();
+    expect(screen.getByText("1 session")).toBeInTheDocument();
     expect(screen.queryByText("Time blocked")).not.toBeInTheDocument();
     expect(screen.queryByText("Hits per week")).not.toBeInTheDocument();
     expect(screen.queryByText("Max 5x cap")).not.toBeInTheDocument();
@@ -104,50 +104,89 @@ describe("LimitHits", () => {
 
   it("shows the windows timeline with its legend and opens the hit detail on click", async () => {
     const onOpenSession = renderPage();
-    await screen.findByText("Time remaining until recorded reset");
-    expect(screen.getByRole("img", { name: /5-hour windows timeline/ })).toBeInTheDocument();
+    await screen.findByText("Time to reset");
+    expect(screen.getByRole("img", { name: "5-hour windows timeline by cost" })).toBeInTheDocument();
     expect(screen.getByText("window usage")).toBeInTheDocument();
-    expect(screen.getByText("recorded session-limit hit")).toBeInTheDocument();
+    expect(screen.getByText("session-limit hit")).toBeInTheDocument();
+    expect(screen.getByText("plan period")).toBeInTheDocument();
     expect(screen.getByText("1.0 hits/wk")).toBeInTheDocument();
-    expect(screen.getByText(/x-axis: window start date/)).toBeInTheDocument();
+    // The tooltip carries the value, the hit, and the bar's period with its rate.
+    fireEvent.mouseMove(screen.getByRole("button", { name: /window 1/i }));
+    expect(screen.getByText("$76.20")).toBeInTheDocument();
+    expect(screen.getByText("session limit hit")).toBeInTheDocument();
+    expect(screen.getByText("Max 5x · 1.0 hits/wk")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /window 1/i }));
-    expect(await screen.findByText(/session limit/)).toBeInTheDocument();
-    expect(screen.getByText("Time remaining until recorded reset: 0.8h"))
-      .toBeInTheDocument();
+    expect(await screen.findByText("session limit")).toBeInTheDocument();
+    expect(screen.getByText("resets in 0.8h")).toBeInTheDocument();
+    expect(screen.getByText("at $76.20 usage")).toBeInTheDocument();
     expect(screen.getByText("seen 2 times")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Ship the release/ }));
     expect(onOpenSession).toHaveBeenCalledWith(7);
   });
 
-  it("shows observed hit-level metrics with sample and inferred basis", async () => {
+  it("shows each period's hits and rate, and the rest on hover", async () => {
     renderPage();
-    await screen.findByText("Time remaining until recorded reset");
-    expect(screen.getByRole("heading", { name: "Visible usage at recorded hit" }))
+    await screen.findByText("Time to reset");
+    expect(screen.getByRole("heading", { name: "Usage at session-limit hit" }))
       .toBeInTheDocument();
-    expect(screen.getByText(/sample: 1 recorded session hit/)).toBeInTheDocument();
-    expect(screen.getByText(/median \$76\.2/)).toBeInTheDocument();
-    expect(screen.getByText(/range \$76\.2.*\$76\.2/)).toBeInTheDocument();
-    expect(screen.getByText(/Observed hit-level percentile p50/)).toBeInTheDocument();
-    expect(screen.getByText(/inferred from 2 reconstructed windows/)).toBeInTheDocument();
-    expect(screen.getByText("observed min–max range")).toBeInTheDocument();
+    expect(document.querySelector(".limit-zone-stats")?.textContent).toBe("1 hit · 1.0/wk");
+    // Median, range, window count and percentile wait for the hover.
+    expect(screen.queryByText(/median \$76\.20|p50|% of windows/)).not.toBeInTheDocument();
+
+    // Only the figures open the details: passing over the name or the strip
+    // must not pop a tooltip.
+    fireEvent.mouseMove(document.querySelector(".limit-zone-head strong")!);
+    fireEvent.mouseMove(document.querySelector(".limit-zone-strip")!);
+    expect(document.querySelector(".chart-tooltip")).toBeNull();
+
+    fireEvent.mouseMove(document.querySelector(".limit-zone-stats")!);
+    const tip = document.querySelector(".chart-tooltip");
+    expect([...tip!.querySelectorAll("span")].map((el) => el.textContent)).toEqual([
+      "median $76.20",
+      "range $76.20–$76.20",
+      "2 windows in 1 week",
+      "50% of windows at or below the median",
+    ]);
+    // The strip's accessible name carries the same details for keyboard and
+    // screen-reader users, who never see the hover.
+    expect(screen.getByRole("img", {
+      name: "Max 5x: 1 hit, 1.0/wk, median $76.20, range $76.20–$76.20,"
+        + " 2 windows in 1 week, 50% of windows at or below the median",
+    })).toBeInTheDocument();
+    for (const legend of ["usage at hit", "range", "median"]) {
+      expect(screen.getByText(legend)).toBeInTheDocument();
+    }
     expect(screen.queryByText(/avg/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/near-miss/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/x-axis: window usage/)).toBeInTheDocument();
+  });
+
+  it("leaves method notes to the glossary", async () => {
+    renderPage();
+    await screen.findByText("Time to reset");
+    // How windows, hits and dollars are derived is the glossary's job; the
+    // page carries numbers and labels only.
+    expect(document.body.textContent).not.toMatch(
+      /account-level view|reconstructed|inferred|sample:|not an invoice|downtime/i,
+    );
   });
 
   it("switches every usage display and percentile to token volume", async () => {
     renderPage();
-    await screen.findByText("Time remaining until recorded reset");
+    await screen.findByText("Time to reset");
     expect(screen.getByRole("button", { name: "Cost" })).toHaveAttribute("aria-pressed", "true");
 
     fireEvent.click(screen.getByRole("button", { name: "Tokens" }));
 
     expect(screen.getByText("tokens per window")).toBeInTheDocument();
-    expect(screen.getByText(/median 900k tok/)).toBeInTheDocument();
-    expect(screen.getByText(/Observed hit-level percentile p95/)).toBeInTheDocument();
-    expect(screen.getByText(/x-axis: window usage, token volume/)).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "5-hour windows timeline by tokens" }))
+      .toBeInTheDocument();
+    fireEvent.mouseMove(document.querySelector(".limit-zone-stats")!);
+    expect(screen.getByText("median 900k tok")).toBeInTheDocument();
+    expect(screen.getByText("95% of windows at or below the median")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /, median 900k tok, range 900k tok–900k tok,/ }))
+      .toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /window 1/i }));
-    expect(await screen.findByText(/at 900k tok of window usage/)).toBeInTheDocument();
+    expect(await screen.findByText("at 900k tok usage")).toBeInTheDocument();
   });
 
   it("falls back to tokens when cost is unavailable", async () => {
@@ -158,7 +197,7 @@ describe("LimitHits", () => {
     });
     renderPage();
 
-    await screen.findByText(/Price table unavailable/);
+    await screen.findByText(/No price table/);
     await vi.waitFor(() => {
       expect(screen.getByRole("button", { name: "Tokens" })).toHaveAttribute(
         "aria-pressed", "true",
@@ -169,7 +208,7 @@ describe("LimitHits", () => {
 
   it("does not render an automatic plan-fit verdict", async () => {
     renderPage();
-    await screen.findByText("Time remaining until recorded reset");
+    await screen.findByText("Time to reset");
     expect(screen.queryByText(
       /comfortably dimensioned|plan fits|well dimensioned|outgrown|headroom|watch the trend/i,
     )).not.toBeInTheDocument();
@@ -186,9 +225,7 @@ describe("LimitHits", () => {
       usage_at_hit_usd: [], usage_at_hit_tokens: [],
       start_date: null, end_date: null, weeks: 1, hits_per_week: 0,
     }]} />);
-    expect(screen.getByText(
-      "No recorded session-limit hit was found in the available logs.",
-    )).toBeInTheDocument();
+    expect(screen.getByText("No session-limit hits.")).toBeInTheDocument();
   });
 
   it("draws one axis tick when the observed hit level sits at zero usage", () => {
@@ -224,9 +261,9 @@ describe("LimitHits", () => {
     expect(screen.getAllByText("Pro")).toHaveLength(1);
     expect(screen.getByText("0.5 hits/wk")).toBeInTheDocument();
     expect(screen.queryByText("2.0 hits/wk")).not.toBeInTheDocument();
+    // The tooltip names the bar's own period (dates, then its rate).
     fireEvent.mouseMove(screen.getByRole("button", { name: /window 1/ }));
-    expect(screen.getByText(/^plan: Pro · .+ – /)).toBeInTheDocument();
-    expect(screen.getByText("2.0 hits/wk in this plan period")).toBeInTheDocument();
+    expect(screen.getByText(/^Pro · .+ – .+ · 2\.0 hits\/wk$/)).toBeInTheDocument();
   });
 
   it("gives each plan period its own hit-level row, labelled by its dates", () => {
@@ -238,8 +275,16 @@ describe("LimitHits", () => {
     expect(heads).toHaveLength(2);
     expect(heads[0]).toMatch(/^Pro · .+ – .+/);
     expect(heads[1]).toMatch(/^Pro · since .+/);
-    expect(screen.getByText(/2\.0 hits\/wk · median \$10/)).toBeInTheDocument();
-    expect(screen.getByText(/0\.5 hits\/wk · median \$30/)).toBeInTheDocument();
+    expect([...container.querySelectorAll(".limit-zone-stats")].map((el) => el.textContent))
+      .toEqual(["1 hit · 2.0/wk", "1 hit · 0.5/wk"]);
+  });
+
+  it("keeps a dot's own value tooltip", () => {
+    const { container } = render(<CapZones basis="cost" eras={twoProPeriods} />);
+    fireEvent.mouseMove(container.querySelector(".limit-zone-dot")!);
+    const tip = container.querySelector(".chart-tooltip");
+    expect(tip?.querySelector("strong")?.textContent).toBe("$10.00");
+    expect(tip?.textContent).not.toMatch(/median/);
   });
 
   it("lists a plan period without recorded hits instead of hiding it", () => {
@@ -258,16 +303,17 @@ describe("LimitHits", () => {
     // below never reads as belonging to a row without a strip.
     expect(container.querySelectorAll(".limit-zone-strip")).toHaveLength(2);
     expect(container.querySelectorAll(".limit-zone-dot")).toHaveLength(1);
-    expect(screen.getByRole("img", { name: /^Pro \(since .+\) no recorded session hits$/ }))
+    expect([...container.querySelectorAll(".limit-zone-stats")].map((el) => el.textContent))
+      .toEqual(["1 hit · 2.0/wk", "0 hits · 0.0/wk"]);
+    expect(screen.getByRole("img", { name: /^Pro \(since .+\): no hits, 45 windows in 15\.1 weeks$/ }))
       .toBeInTheDocument();
-    expect(screen.getByText(
-      "no recorded session hits · 45 reconstructed windows over 15.1 weeks",
-    )).toBeInTheDocument();
+    fireEvent.mouseMove(container.querySelectorAll(".limit-zone-stats")[1]);
+    expect(screen.getByText("45 windows in 15.1 weeks")).toBeInTheDocument();
   });
 
   it("edits plan history through the modal and saves it to settings", async () => {
     renderPage();
-    await screen.findByText("Time remaining until recorded reset");
+    await screen.findByText("Time to reset");
     fireEvent.click(screen.getByRole("button", { name: "Plan history" }));
     expect(await screen.findByRole("dialog", { name: "Plan history" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Add plan" }));
@@ -285,7 +331,7 @@ describe("LimitHits", () => {
     const { getSettings } = await import("../../api/client");
     vi.mocked(getSettings).mockImplementationOnce(() => new Promise(() => {}));
     renderPage();
-    await screen.findByText("Time remaining until recorded reset");
+    await screen.findByText("Time to reset");
     fireEvent.click(screen.getByRole("button", { name: "Plan history" }));
     expect(await screen.findByRole("dialog", { name: "Plan history" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add plan" })).toBeDisabled();

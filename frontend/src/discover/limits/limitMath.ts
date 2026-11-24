@@ -67,14 +67,12 @@ export function eraDateRange(
   return null;
 }
 
-/** A period's session-hit rate, as the timeline and the hit-level rows show it. */
-export function formatHitRate(era: LimitEraEntry): string {
-  return `${era.hits_per_week.toFixed(1)} hits/wk`;
-}
-
-/** How the selected basis names itself in legends and aria-labels. */
-export function basisLabel(basis: LimitBasis): string {
-  return basis === "cost" ? "API-equivalent cost" : "token volume";
+/**
+ * A period's session-hit rate: "2.3 hits/wk", or "2.3/wk" in a hit-level row,
+ * where the hit count just before it already names the unit.
+ */
+export function formatHitRate(era: LimitEraEntry, short = false): string {
+  return `${era.hits_per_week.toFixed(1)}${short ? "/wk" : " hits/wk"}`;
 }
 
 export interface EraHitLevel {
@@ -86,7 +84,7 @@ export interface EraHitLevel {
 }
 
 /**
- * The era's observed hit levels on the selected basis. The backend sends both bases side
+ * The era's hit levels on the selected basis. The backend sends both bases side
  * by side; picking between them belongs here, not in every chart.
  */
 export function eraHitLevel(era: LimitEraEntry, basis: LimitBasis): EraHitLevel {

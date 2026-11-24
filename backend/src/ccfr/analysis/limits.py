@@ -37,16 +37,6 @@ SNAP_TOLERANCE = timedelta(minutes=30)
 RECENT_DAYS = 28
 _DEDUP_BUCKET_S = 300  # fallback dedup bucket for hits without a reset stamp
 
-METHOD_NOTE = (
-    "Account-level view: 5-hour windows are shared across every project and "
-    "Claude surface, so this page always covers the whole corpus. Dollars are "
-    "API-equivalent value, not an invoice. Hit counts are a lower bound (only "
-    "hits recorded inside exported sessions are visible), and usage outside "
-    "Claude Code shares the same pool but is invisible here. Time until reset "
-    "is the parsed reset timestamp minus the recorded hit timestamp, not "
-    "observed downtime."
-)
-
 
 def classify_hit_text(text: str) -> str:
     """Bucket a rate-limit message by which cap it reports."""
@@ -544,7 +534,6 @@ def limits_analytics(
             "hits_per_week_recent": round(len(recent) / (RECENT_DAYS / 7), 2),
             "hit_counts": dict(Counter(h.kind for h in hits)),
             "plan_history": history,
-            "method_note": METHOD_NOTE,
         },
         "hits": [_hit_payload(h) for h in hits],
         "windows": [

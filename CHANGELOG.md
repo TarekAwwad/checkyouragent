@@ -6,6 +6,14 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- Shorten the Limit hits page copy to numbers and labels, and move the
+  explanations to the glossary (Limit hit, 5-hour window, Usage at hit, Plan
+  period, Hits per week, Hit-level percentile, Time to reset). Each plan
+  period's row shows its hits and rate; hovering those figures shows the
+  median, range, window count and percentile. The page footnote is gone, and
+  `GET /api/analytics/limits` no longer returns `meta.method_note`.
+
 ### Fixed
 - Compute Limit hits per plan period instead of per plan name, so Pro → Max →
   Pro shows two Pro periods with their own hit levels and hits per week. Each
