@@ -129,7 +129,7 @@ function TriageBoard({ sessions, loading, onOpenSession, memory }: Props) {
     <main className="page triage-page">
       <PageHeader
         title="Sessions"
-        subtitle="Every recorded session."
+        subtitle="Recorded sessions."
         scope={{ date: "filter", project: "filter" }}
         filters={(
           <>

@@ -59,7 +59,7 @@ the current workspace visit.
 - **Usage drivers** — overlapping, cost- or token-weighted characteristics such
   as subagent activity, large input contexts, and long-running sessions. These
   shares are independent characteristics, not a breakdown.
-- **Usage Mindmap** — observed activity grouped into workflow phases, tools,
+- **Activity map** — observed activity grouped into workflow phases, tools,
   and recurring habits. It describes recorded activity, not cost attribution.
 - **Experimental analysis** — Context Economics (explicitly defined opportunity
   signals with receipts and session drilldown; estimated and unattributed

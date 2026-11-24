@@ -179,9 +179,6 @@ export default function CostAnalyticsPage({
       label="Historical pricing"
       checked={historical}
       onChange={onHistoricalChange}
-      title={historical
-        ? "Use price rates effective on each session's date"
-        : "Use the current price table for every session"}
     />
   );
 

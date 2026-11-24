@@ -29,7 +29,7 @@ function OverviewHeader() {
   return (
     <PageHeader
       title="Overview"
-      subtitle="Aggregated usage across imported team bundles — no prompts, file contents, or commands."
+      subtitle="Aggregated usage across imported team bundles."
       scope={{ date: "fixed", project: "fixed" }}
     />
   );

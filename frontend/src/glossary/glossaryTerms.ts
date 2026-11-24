@@ -63,6 +63,12 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
   },
   {
     category: "Structure",
+    term: "Team bundle",
+    definition:
+      "An aggregate export of one machine's usage that teammates import for team Overview and Cost. It carries counts and totals only — no prompts, file contents, or commands.",
+  },
+  {
+    category: "Structure",
     term: "Large output",
     definition:
       "A tool output big enough that it was stored on its own rather than inline with the event — typically a heavy file read or verbose command output. The Sources & sync page's \"Large outputs\" stat counts these.",
