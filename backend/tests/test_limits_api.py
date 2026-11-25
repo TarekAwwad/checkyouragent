@@ -52,6 +52,11 @@ def test_limits_endpoint_returns_hits_windows_and_eras(client: TestClient) -> No
     assert body["meta"]["plan_history"] == [{"plan": "Max 5x", "start_date": "2026-06-10"}]
     assert body["windows"][0]["hit_kinds"] == ["session"]
     assert body["eras"][0]["era"] == "Max 5x"
+    assert body["eras"][0]["start_date"] == "2026-06-10"
+    assert body["eras"][0]["end_date"] is None
+    assert body["eras"][0]["weeks"] == 1.0
+    assert body["eras"][0]["hits_per_week"] == 1.0
+    assert body["windows"][0]["era_index"] == 0
     assert body["hits"][0]["usage_at_hit"] == 10.0
     assert body["hits"][0]["usage_at_hit_tokens"] == 1_000_000
     assert body["eras"][0]["hit_level_median_tokens"] == 1_000_000

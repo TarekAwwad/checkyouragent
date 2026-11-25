@@ -9,7 +9,7 @@
 //
 // Wave-1 screen map (derived from `git diff --name-only main...ship/integration`):
 //   usage-drivers     Explore > Usage drivers            (P09 UsageDrivers.tsx + UsageCharacteristicsPanel.tsx)
-//   mindmap           Explore > Usage Mindmap            (P13 removed its redundant "Usage drivers" dialog)
+//   mindmap           Explore > Activity map            (P13 removed its redundant "Usage drivers" dialog)
 //   context           Explore > Context economics        (P08 TaxMeterHero.tsx; also a REFERENCE screen)
 //   context-drilldown Context economics with a finding open (P08 SessionDrilldown.tsx)
 //   cost              Cost                               (P08 InsightStrip.tsx; also a REFERENCE screen)
@@ -117,17 +117,17 @@ const SCREENS = [
       await nav(page, "Explore");
       await page.getByRole("button", { name: "Usage drivers" }).click();
     },
-    ready: ".usage-drivers-body .uc-row",
+    ready: ".usage-drivers-rows",
     pre: 400,
   },
   {
     // Same page with the widest range selected — the demo corpus is weeks old,
-    // so Day/Week show 0% and only All exercises the rows with real numbers.
+    // so short ranges show 0% and only All time exercises the rows with real numbers.
     name: "usage-drivers-all",
     go: async (page) => {
-      await page.getByRole("button", { name: "All", exact: true }).click();
+      await page.getByLabel("Date range").selectOption("all");
     },
-    ready: ".usage-drivers-body .uc-row",
+    ready: ".usage-drivers-rows",
     pre: 400,
   },
   {
@@ -136,7 +136,7 @@ const SCREENS = [
     name: "mindmap",
     go: async (page) => {
       await nav(page, "Explore");
-      await page.getByRole("button", { name: "Usage Mindmap" }).click();
+      await page.getByRole("button", { name: "Activity map" }).click();
     },
     ready: ".mindmap-stage",
     pre: 1600,

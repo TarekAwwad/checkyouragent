@@ -11,7 +11,7 @@ from typing import Any, Callable
 
 from ccfr.analysis.session_findings import rebuild_session_findings
 from ccfr.ingest.file_ext import file_ext_from_tool_input
-from ccfr.storage.database import init_db
+from ccfr.storage.database import init_db, refresh_planner_stats
 from ccfr.storage.replay import reconcile_replays, token_usage
 
 
@@ -331,6 +331,7 @@ def _finalize_import(
     import_id: int,
     session_ids: list[int],
     *,
+    data_changed: bool,
     progress_callback: ProgressCallback | None = None,
 ) -> None:
     summary.session_count = len(session_ids)
@@ -349,6 +350,10 @@ def _finalize_import(
         (status, summary.error_count, import_id),
     )
     conn.commit()
+    if data_changed:
+        # After the commit, before the terminal status: the views refetched on
+        # completion are planned with statistics that match the new rows.
+        refresh_planner_stats(conn)
     _notify_progress(progress_callback, summary, status)
 
 
@@ -376,7 +381,10 @@ def _finish_import_or_strand(
     try:
         _notify_progress(progress_callback, summary, "rebuilding")
         _rebuild_derived(conn, session_ids, project_ids)
-        _finalize_import(conn, summary, import_id, session_ids, progress_callback=progress_callback)
+        _finalize_import(
+            conn, summary, import_id, session_ids,
+            data_changed=bool(project_ids), progress_callback=progress_callback,
+        )
     except Exception:
         conn.rollback()
         if project_ids:

@@ -3,6 +3,8 @@ import { ArrowRight } from "lucide-react";
 import { getTeamDashboard } from "../api/client";
 import { compactInt } from "./bundlePresentation";
 import { buildAreaChart } from "./teamCharts";
+import PageHeader from "../shell/PageHeader";
+import InsightStat from "../components/InsightStat";
 import LoadingBar from "../components/LoadingBar";
 
 const CHART_W = 600;
@@ -23,12 +25,23 @@ interface Props {
 // The team-scope "Overview": the same aggregate story the local Sessions view tells,
 // but computed on the backend from imported team bundles. No per-session detail
 // exists in a bundle, so there is nothing to drill into here by design.
+function OverviewHeader() {
+  return (
+    <PageHeader
+      title="Overview"
+      subtitle="Aggregated usage across imported team bundles."
+      scope={{ date: "fixed", project: "fixed" }}
+    />
+  );
+}
+
 export default function TeamOverview({ onGoToImport }: Props) {
   const dashboard = useQuery({ queryKey: ["team-dashboard"], queryFn: getTeamDashboard });
 
   if (dashboard.isLoading) {
     return (
       <main className="page team-flow-page team-overview-page">
+        <OverviewHeader />
         <div className="loading-view"><LoadingBar caption="Loading team overview…" /></div>
       </main>
     );
@@ -37,6 +50,7 @@ export default function TeamOverview({ onGoToImport }: Props) {
   if (dashboard.isError || !dashboard.data) {
     return (
       <main className="page team-flow-page team-overview-page">
+        <OverviewHeader />
         <div className="team-state panel-error">
           <strong>Team overview unavailable.</strong>
           <span>Could not load the aggregated team dashboard.</span>
@@ -52,7 +66,7 @@ export default function TeamOverview({ onGoToImport }: Props) {
   if (sessionCount === 0) {
     return (
       <main className="page team-flow-page team-overview-page">
-        <Header />
+        <OverviewHeader />
         <div className="team-empty card">
           <strong>No team bundles imported yet.</strong>
           <p>Import a team bundle to see aggregated activity and reliability summaries.</p>
@@ -90,14 +104,13 @@ export default function TeamOverview({ onGoToImport }: Props) {
 
   return (
     <main className="page team-flow-page team-overview-page">
-      <Header>
-        <div className="team-metrics team-flow-metrics" aria-label="Team totals">
-          <Metric value={meta?.member_count ?? 0} label="Members" />
-          <Metric value={meta?.project_count ?? 0} label="Projects" />
-          <Metric value={sessionCount} label="Sessions" />
-          <Metric value={tokens?.total ?? 0} label="Tokens" />
-        </div>
-      </Header>
+      <OverviewHeader />
+      <div className="cost-insight-strip" aria-label="Team totals">
+        <InsightStat label="Members" value={compactInt(meta?.member_count ?? 0)} />
+        <InsightStat label="Projects" value={compactInt(meta?.project_count ?? 0)} />
+        <InsightStat label="Sessions" value={compactInt(sessionCount)} />
+        <InsightStat label="Tokens" value={compactInt(tokens?.total ?? 0)} />
+      </div>
 
       <section className="team-overview-body" aria-label="Team overview workspace">
         <section className="team-dashboard-strip" aria-label="Team totals detail">
@@ -204,27 +217,6 @@ export default function TeamOverview({ onGoToImport }: Props) {
         </div>
       </section>
     </main>
-  );
-}
-
-function Header({ children }: { children?: React.ReactNode }) {
-  return (
-    <section className="team-flow-header" aria-labelledby="team-title">
-      <div className="team-titleblock">
-        <h1 id="team-title">Team overview</h1>
-        <p>Aggregated usage across imported team bundles — no prompts, file contents, or commands.</p>
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function Metric({ value, label }: { value: number; label: string }) {
-  return (
-    <div className="team-metric">
-      <strong>{compactInt(value)}</strong>
-      <span>{label}</span>
-    </div>
   );
 }
 

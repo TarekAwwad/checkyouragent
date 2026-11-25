@@ -1,26 +1,14 @@
-import { describe, expect, it } from "vitest";
-import type { LimitEraEntry, LimitHitEntry, LimitWindowEntry } from "../../api/types";
+import { describe, expect, it, vi } from "vitest";
+import type { LimitEraEntry } from "../../api/types";
 import * as limitMath from "./limitMath";
 import {
+  eraDateRange,
   eraHitLevel,
-  eraRates,
+  eraName,
   formatLimitTick,
   formatLimitValue,
   formatResetInterval,
 } from "./limitMath";
-
-function win(start: string, end: string, era: string, hit = false): LimitWindowEntry {
-  return { start, end, value_usd: 10, tokens: 1, era, hit_kinds: hit ? ["session"] : [] };
-}
-
-function hit(windowIndex: number | null): LimitHitEntry {
-  return {
-    ts: "2026-07-01T01:00:00Z", kind: "session", reset_at: null,
-    minutes_until_reset: null, usage_at_hit: null, usage_at_hit_tokens: null,
-    occurrence_count: 1,
-    window_index: windowIndex, session_ids: [], session_titles: [],
-  };
-}
 
 function era(overrides: Partial<LimitEraEntry>): LimitEraEntry {
   return {
@@ -28,7 +16,9 @@ function era(overrides: Partial<LimitEraEntry>): LimitEraEntry {
     hit_level_median_usd: 10, hit_level_min_usd: 8, hit_level_max_usd: 12,
     hit_level_median_tokens: 1000, hit_level_min_tokens: 800, hit_level_max_tokens: 1200,
     hit_level_percentile: 0.7, hit_level_percentile_tokens: 0.95,
-    usage_at_hit_usd: [8, 12], usage_at_hit_tokens: [800, 1200], ...overrides,
+    usage_at_hit_usd: [8, 12], usage_at_hit_tokens: [800, 1200],
+    start_date: "2026-05-01", end_date: "2026-06-01", weeks: 4, hits_per_week: 0.5,
+    ...overrides,
   };
 }
 
@@ -50,25 +40,39 @@ describe("formatLimitValue and formatLimitTick", () => {
   });
 });
 
-describe("eraRates", () => {
-  it("floors tenure at one week and counts hits per era", () => {
-    const windows = [
-      win("2026-07-01T00:00:00Z", "2026-07-01T05:00:00Z", "Pro", true),
-      win("2026-07-02T00:00:00Z", "2026-07-02T05:00:00Z", "Pro"),
-    ];
-    const rates = eraRates(windows, [hit(0)]);
-    expect(rates.get("Pro")).toMatchObject({ hitCount: 1, weeks: 1, perWeek: 1 });
+describe("eraDateRange and eraName", () => {
+  // Pinned clock and locale: the year rule depends on "now", and the month
+  // names on the runtime locale (a French machine prints "1 mai").
+  const now = new Date("2026-11-24T12:00:00Z");
+  const range = (overrides: Partial<LimitEraEntry>) =>
+    eraDateRange(era(overrides), now, "en-US");
+
+  it("labels a period by its plan dates, end exclusive", () => {
+    expect(range({})).toBe("May 1 – Jun 1");
+    expect(range({ end_date: null })).toBe("since May 1");
+    expect(range({ start_date: null })).toBe("until Jun 1");
+    expect(range({ start_date: null, end_date: null })).toBeNull();
   });
 
-  it("uses real tenure once past a week and skips unattached hits", () => {
-    const windows = [
-      win("2026-06-01T00:00:00Z", "2026-06-01T05:00:00Z", "Pro", true),
-      win("2026-06-15T00:00:00Z", "2026-06-15T05:00:00Z", "Pro", true),
-    ];
-    const rates = eraRates(windows, [hit(0), hit(1), hit(null)]);
-    expect(rates.get("Pro")!.weeks).toBeGreaterThan(2);
-    expect(rates.get("Pro")!.hitCount).toBe(2);
-    expect(rates.get("Pro")!.perWeek).toBeCloseTo(1, 1);
+  it("reads plan dates as calendar days, not local midnight", () => {
+    // "2026-05-01" parsed as UTC midnight would print Apr 30 west of UTC.
+    vi.stubEnv("TZ", "America/Los_Angeles");
+    try {
+      expect(range({ start_date: "2026-05-01", end_date: null })).toBe("since May 1");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("adds the year only when it is not the current one", () => {
+    expect(range({ start_date: "2025-12-01", end_date: "2026-02-01" }))
+      .toBe("Dec 1, 2025 – Feb 1");
+  });
+
+  it("names the unplanned period by whether other periods exist", () => {
+    expect(eraName(era({ era: "Pro" }), 3)).toBe("Pro");
+    expect(eraName(era({ era: "" }), 1)).toBe("All usage");
+    expect(eraName(era({ era: "" }), 2)).toBe("Before plan history");
   });
 });
 

@@ -25,6 +25,7 @@ from statistics import median
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from ccfr.analysis.date_bounds import sql_terms
 from ccfr.analysis.pricing import load_price_timeline
 from ccfr.analysis.usage_map import load_events
 from ccfr.config import pricing_dir, pricing_path
@@ -37,21 +38,15 @@ SNAP_TOLERANCE = timedelta(minutes=30)
 RECENT_DAYS = 28
 _DEDUP_BUCKET_S = 300  # fallback dedup bucket for hits without a reset stamp
 
-METHOD_NOTE = (
-    "Account-level view: 5-hour windows are shared across every project and "
-    "Claude surface, so this page always covers the whole corpus. Dollars are "
-    "API-equivalent value, not an invoice. Hit counts are a lower bound (only "
-    "hits recorded inside exported sessions are visible), and usage outside "
-    "Claude Code shares the same pool but is invisible here. Time until reset "
-    "is the parsed reset timestamp minus the recorded hit timestamp, not "
-    "observed downtime."
-)
+
+# "You've hit your 5-hour limit" is the newer wording of the session limit.
+_FIVE_HOUR_RE = re.compile(r"\b(?:5|five)[- ]?hour\b.*\blimit")
 
 
 def classify_hit_text(text: str) -> str:
     """Bucket a rate-limit message by which cap it reports."""
     lowered = (text or "").lower()
-    if "session limit" in lowered:
+    if "session limit" in lowered or _FIVE_HOUR_RE.search(lowered):
         return "session"
     if "weekly" in lowered:
         return "weekly"
@@ -95,6 +90,54 @@ def parse_reset_at(text: str, hit_at: datetime) -> datetime | None:
     if candidate <= local_hit:
         candidate += timedelta(days=1)
     return candidate.astimezone(timezone.utc)
+
+
+def _kind_from_limit_type(limit_type: Any) -> str | None:
+    """Map a structured rateLimitType to a hit kind; None when unrecognised.
+
+    Only "five_hour" has been observed. Weekly names are matched loosely
+    ("seven_day", "seven_day_opus", ...); anything else defers to the text.
+    """
+    if not isinstance(limit_type, str):
+        return None
+    lowered = limit_type.lower()
+    if lowered == "five_hour":
+        return "session"
+    if "seven_day" in lowered or "week" in lowered:
+        return "weekly"
+    return None
+
+
+def _epoch_to_utc(value: Any) -> datetime | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+        return None
+    try:
+        return datetime.fromtimestamp(value, tz=timezone.utc)
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
+def _structured_limit(raw: dict) -> tuple[str | None, datetime | None]:
+    """Hit kind and exact reset time from a 429's structured quota fields.
+
+    Newer Claude Code logs carry apiErrorParams.rate_limit_info and
+    quotaLimits, each with rateLimitType ("five_hour") and resetsAt (epoch
+    seconds). Either part is None when absent or unrecognised, so older logs
+    fall back to the message text.
+    """
+    params = raw.get("apiErrorParams")
+    sources = [
+        params.get("rate_limit_info") if isinstance(params, dict) else None,
+        raw.get("quotaLimits"),
+    ]
+    kind: str | None = None
+    reset_at: datetime | None = None
+    for info in sources:
+        if not isinstance(info, dict):
+            continue
+        kind = kind or _kind_from_limit_type(info.get("rateLimitType"))
+        reset_at = reset_at or _epoch_to_utc(info.get("resetsAt"))
+    return kind, reset_at
 
 
 def _parse_ts(ts: str | None) -> datetime | None:
@@ -153,17 +196,17 @@ def detect_limit_hits(
 
     Detection is structured-first: '<synthetic>' messages whose event raw_json
     carries error == "rate_limit" (or apiErrorStatus == 429 on older logs).
-    Events sharing (kind, reset stamp) are one hit; without a parsed stamp the
-    fallback key buckets timestamps into 5-minute slots.
+    Kind and reset time come from the structured quota fields when logged,
+    else from the message text. Events sharing (kind, reset minute) are one
+    hit, so a main session and its subagent logging the same 429 count once;
+    without a reset stamp the fallback key buckets timestamps into 5-minute
+    slots.
     """
     where = ["m.model = ?", "e.is_replay = 0"]
     params: list[Any] = [SYNTHETIC_MODEL]
-    if date_from:
-        where.append("date(e.timestamp) >= date(?)")
-        params.append(date_from)
-    if date_to:
-        where.append("date(e.timestamp) <= date(?)")
-        params.append(date_to)
+    date_terms, date_params = sql_terms("e.timestamp", date_from, date_to)
+    where.extend(date_terms)
+    params.extend(date_params)
     rows = conn.execute(
         f"""
         SELECT e.timestamp AS ts, e.raw_json AS raw_json,
@@ -192,11 +235,14 @@ def detect_limit_hits(
         if ts is None:
             continue
         text = _hit_text(row["text"], raw)
-        kind = classify_hit_text(text)
-        reset_at = parse_reset_at(text, ts)
+        structured_kind, structured_reset = _structured_limit(raw)
+        kind = structured_kind or classify_hit_text(text)
+        reset_at = structured_reset or parse_reset_at(text, ts)
         key: tuple[str, Any]
         if reset_at is not None:
-            key = (kind, reset_at.isoformat())
+            # Minute precision: the text stamp is minute-rounded, so a text-only
+            # record and an exact resetsAt for the same cap share one key.
+            key = (kind, reset_at.replace(second=0, microsecond=0).isoformat())
         else:
             key = (kind, int(ts.timestamp()) // _DEDUP_BUCKET_S)
         hit = merged.get(key)
@@ -297,14 +343,62 @@ def fold_windows(events: list[UsageEvent], hits: list[LimitHit]) -> list[UsageWi
     return windows
 
 
-def _era_for(ts: datetime, history: list[dict[str, str]]) -> str:
-    """Label for the last plan whose start_date is on or before ts (else "")."""
-    day = ts.date().isoformat()
-    label = ""
-    for row in history:
-        if row["start_date"] <= day:
-            label = row["plan"]
-    return label
+@dataclass(frozen=True)
+class _PlanPeriod:
+    """One stint on a plan: a plan-history entry until the next one starts.
+
+    Keyed by entry, not plan name, so Pro -> Max -> Pro is three periods. The
+    leading period (plan "", no start) holds windows logged before the first
+    entry; with no history at all it is the only period and has no bounds.
+    """
+
+    plan: str
+    start_date: str | None  # YYYY-MM-DD, inclusive
+    end_date: str | None  # next entry's start_date, exclusive
+
+
+def _plan_periods(history: list[dict[str, str]]) -> list[_PlanPeriod]:
+    periods = [_PlanPeriod("", None, history[0]["start_date"] if history else None)]
+    for i, row in enumerate(history):
+        end = history[i + 1]["start_date"] if i + 1 < len(history) else None
+        periods.append(_PlanPeriod(row["plan"], row["start_date"], end))
+    return periods
+
+
+def _period_index_for(ts: datetime, periods: list[_PlanPeriod]) -> int:
+    """Index of the last period whose start_date is on or before ts's UTC day.
+
+    Plan dates are UTC calendar days, the same boundaries _period_weeks uses,
+    so the timestamp is read in UTC whatever offset it was logged with.
+    """
+    day = ts.astimezone(timezone.utc).date().isoformat()
+    index = 0
+    for i, period in enumerate(periods):
+        if period.start_date is not None and period.start_date <= day:
+            index = i
+    return index
+
+
+def _day_start(day: str) -> datetime:
+    return datetime.fromisoformat(day).replace(tzinfo=timezone.utc)
+
+
+def _period_weeks(
+    period: _PlanPeriod, logs_from: datetime, logs_to: datetime,
+) -> float:
+    """Calendar weeks the period overlaps the logs, floored at one week.
+
+    Clipped to the logged span: hits before the first export or after the last
+    one are invisible, so that time must not dilute the rate. The floor keeps
+    a young period from extrapolating a single day into a wild weekly rate.
+    """
+    start = logs_from
+    if period.start_date is not None:
+        start = max(start, _day_start(period.start_date))
+    end = logs_to
+    if period.end_date is not None:
+        end = min(end, _day_start(period.end_date))
+    return max((end - start) / timedelta(weeks=1), 1.0)
 
 
 def _hit_payload(hit: LimitHit) -> dict[str, Any]:
@@ -385,24 +479,49 @@ def limits_analytics(
     hits = detect_limit_hits(conn, date_from=date_from, date_to=date_to)
     session_hits = [hit for hit in hits if hit.kind == "session"]
     windows = fold_windows(usage, session_hits)
-    for window in windows:
-        window.era = _era_for(window.start, history)
+    periods = _plan_periods(history)
+    # A window belongs to the plan in force at its first session hit (the cap
+    # that was hit), else at its start. Moving the whole window keeps its
+    # band, its hits and its percentile pool in one period; hits never reach
+    # into the next window, so periods stay in time order.
+    first_hit_at: dict[int, datetime] = {}
+    for hit in session_hits:
+        if hit.window_index is not None:
+            first_hit_at.setdefault(hit.window_index, hit.ts)
+    window_periods = [
+        _period_index_for(first_hit_at.get(i, window.start), periods)
+        for i, window in enumerate(windows)
+    ]
+    for window, period_index in zip(windows, window_periods):
+        window.era = periods[period_index].plan
 
-    era_order: list[str] = []
-    for window in windows:
-        if window.era not in era_order:
-            era_order.append(window.era)
-    if not era_order:
-        era_order = [""]
+    # Only periods with logged windows become eras; era_index on a window
+    # points into the eras list, not into the plan history.
+    used_periods = sorted(set(window_periods)) or [0]
+    era_index_of = {period_index: i for i, period_index in enumerate(used_periods)}
+    window_era_indices = [era_index_of[p] for p in window_periods]
+    # The observed span is everything the logs prove was covered: windows,
+    # plus hits outside them (a weekly-limit hit after the last usage).
+    observed = [w.start for w in windows] + [w.end for w in windows] + [h.ts for h in hits]
+    logs_from = min(observed, default=None)
+    logs_to = max(observed, default=None)
 
     eras_payload: list[dict[str, Any]] = []
-    for era in era_order:
-        era_indices = [i for i, w in enumerate(windows) if w.era == era]
-        era_windows = [windows[i] for i in era_indices]
+    for era_index, period_index in enumerate(used_periods):
+        period = periods[period_index]
+        era = period.plan
+        era_windows = [
+            w for w, idx in zip(windows, window_era_indices) if idx == era_index
+        ]
         era_session_hits = [
             hit for hit in session_hits
-            if hit.window_index is not None and windows[hit.window_index].era == era
+            if hit.window_index is not None
+            and window_era_indices[hit.window_index] == era_index
         ]
+        weeks = (
+            _period_weeks(period, logs_from, logs_to)
+            if logs_from is not None and logs_to is not None else 1.0
+        )
         observed_hit_levels_usd = sorted(
             hit.usage_at_hit
             for hit in era_session_hits
@@ -447,6 +566,10 @@ def limits_analytics(
             "hit_level_percentile_tokens": tokens.percentile,
             "usage_at_hit_usd": [round(value, 4) for value in observed_hit_levels_usd],
             "usage_at_hit_tokens": observed_hit_levels_tokens,
+            "start_date": period.start_date,
+            "end_date": period.end_date,
+            "weeks": round(weeks, 2),
+            "hits_per_week": round(len(era_session_hits) / weeks, 2),
         })
 
     minutes_until_reset_total = sum(hit.minutes_until_reset or 0.0 for hit in hits)
@@ -467,7 +590,6 @@ def limits_analytics(
             "hits_per_week_recent": round(len(recent) / (RECENT_DAYS / 7), 2),
             "hit_counts": dict(Counter(h.kind for h in hits)),
             "plan_history": history,
-            "method_note": METHOD_NOTE,
         },
         "hits": [_hit_payload(h) for h in hits],
         "windows": [
@@ -477,9 +599,10 @@ def limits_analytics(
                 "value_usd": round(w.value_usd, 4),
                 "tokens": w.tokens,
                 "era": w.era,
+                "era_index": era_index,
                 "hit_kinds": list(w.hit_kinds),
             }
-            for w in windows
+            for w, era_index in zip(windows, window_era_indices)
         ],
         "eras": eras_payload,
     }

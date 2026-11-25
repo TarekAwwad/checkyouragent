@@ -76,6 +76,7 @@ function baseSession(id: number): SessionCard {
 
 function renderWorkspace(options: {
   initialEventId?: number | null;
+  section?: string;
   backLabel?: string;
   onBack?: () => void;
   historical?: boolean;
@@ -99,7 +100,7 @@ describe("SessionWorkspace", () => {
     expect(container.querySelector(".cost-page.session-page")).not.toBeNull();
     expect(container.querySelector(".cost-page-inner.session-page-inner")).not.toBeNull();
     expect(container.querySelector(".session-page-inner")).not.toBeNull();
-    expect(container.querySelector(".session-toolbar")).not.toBeNull();
+    expect(container.querySelector(".page-header")).not.toBeNull();
     expect(container.querySelector(".session-overview .session-summary-grid")).not.toBeNull();
     expect(container.querySelector(".session-workspace")).not.toBeNull();
     expect(screen.getByText("Estimated API-equivalent cost")).toBeInTheDocument();
@@ -144,5 +145,12 @@ describe("SessionWorkspace", () => {
     renderWorkspace({ initialEventId: 42 });
 
     expect(await screen.findByTestId("trace-view")).toHaveAttribute("data-selected-event-id", "42");
+  });
+
+  it("puts the session title and its origin in the header", async () => {
+    renderWorkspace({ section: "Cost", backLabel: "Back to Cost", onBack: vi.fn() });
+    expect(await screen.findByRole("heading", { level: 1, name: "Balanced layout pass" })).toBeInTheDocument();
+    expect(screen.getByText("Cost")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "Trace" })).toBeInTheDocument();
   });
 });

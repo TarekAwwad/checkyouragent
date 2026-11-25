@@ -12,7 +12,7 @@ describe("technique registry", () => {
 
   it("ranks techniques limits-first and opens Explore on the top entry", () => {
     expect(TECHNIQUES.map((t) => t.key)).toEqual([
-      "limits", "context", "drivers", "mindmap", "subgroup",
+      "limits", "drivers", "mindmap", "context", "subgroup",
     ]);
     expect(DEFAULT_TECHNIQUE).toBe(TECHNIQUES[0].key);
   });
@@ -20,9 +20,9 @@ describe("technique registry", () => {
   it("separates established and experimental techniques", () => {
     expect(TECHNIQUES.map(({ key, section }) => ({ key, section }))).toEqual([
       { key: "limits", section: "main" },
-      { key: "context", section: "main" },
       { key: "drivers", section: "main" },
-      { key: "mindmap", section: "experimental" },
+      { key: "mindmap", section: "main" },
+      { key: "context", section: "experimental" },
       { key: "subgroup", section: "experimental" },
     ]);
   });

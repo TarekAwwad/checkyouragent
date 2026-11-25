@@ -1,9 +1,10 @@
 import React from "react";
-import type { LimitHitEntry, LimitWindowEntry } from "../../api/types";
+import type { LimitEraEntry, LimitWindowEntry } from "../../api/types";
 import { useChartTooltip } from "../context/chartTooltip";
 import {
-  basisLabel,
-  eraRates,
+  eraDateRange,
+  eraName,
+  formatHitRate,
   formatLimitTick,
   formatLimitValue,
   type LimitBasis,
@@ -18,20 +19,23 @@ const XLABEL_H = 20;
 const HEIGHT = PLOT_TOP + PLOT_H + XLABEL_H;
 const MIN_XLABEL_GAP = 64; // px between date labels
 const FALLBACK_W = 860;
+// Room a band needs to carry its plan label and rate ("2.3 hits/wk" at 9px)
+// without running into the next band's.
+const MIN_BAND_LABEL_W = 60;
 const Y_FRACTIONS = [1, 0.75, 0.5, 0.25, 0];
 
 function dayLabel(iso: string): string {
   return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-// One bar per reconstructed 5-hour window, uniform spacing. Hits are marked by
-// color; era changes get a background band with the plan label. Bars widen (up
-// to a limit) to fill the panel; past that the chart scrolls horizontally inside
-// its container so the page never scrolls sideways, and the metric axis stays
+// One bar per 5-hour window, uniform spacing. Hits are marked by color; each
+// plan period gets a background band with its plan label. Bars widen (up to a
+// limit) to fill the panel; past that the chart scrolls horizontally inside its
+// container so the page never scrolls sideways, and the metric axis stays
 // fixed outside the scroller.
-export default function WindowsTimeline({ windows, hits, basis, selected, onSelectWindow }: {
+export default function WindowsTimeline({ windows, eras, basis, selected, onSelectWindow }: {
   windows: LimitWindowEntry[];
-  hits: LimitHitEntry[];
+  eras: LimitEraEntry[];
   basis: LimitBasis;
   selected: number | null;
   onSelectWindow: (index: number) => void;
@@ -63,7 +67,7 @@ export default function WindowsTimeline({ windows, hits, basis, selected, onSele
   }, [windows.length, hostWidth]);
 
   if (windows.length === 0) {
-    return <div className="empty-state">No usage found, so no windows to show.</div>;
+    return <div className="empty-state">No windows to show.</div>;
   }
   const metric = (window: LimitWindowEntry) => (
     basis === "cost" ? window.value_usd : window.tokens
@@ -82,18 +86,32 @@ export default function WindowsTimeline({ windows, hits, basis, selected, onSele
     label: formatLimitTick(max * f, basis),
   }));
 
-  const bands: { era: string; from: number; to: number }[] = [];
+  // Bands follow plan periods, not plan names: Pro -> Max -> Pro is three
+  // bands even when the Max stint left no windows between the two Pro ones.
+  const bands: { eraIndex: number; era: string; from: number; to: number }[] = [];
   windows.forEach((w, i) => {
     const last = bands[bands.length - 1];
-    if (last && last.era === w.era) last.to = i;
-    else bands.push({ era: w.era, from: i, to: i });
+    if (last && last.eraIndex === w.era_index) last.to = i;
+    else bands.push({ eraIndex: w.era_index, era: w.era, from: i, to: i });
   });
   const hasEras = bands.some((b) => b.era);
-
-  // Average hits per week of each plan's tenure, annotated on its era band.
-  // The rate cannot share the dollar axis, so it rides the band label instead
-  // of pretending to be a level line.
-  const rates = eraRates(windows, hits);
+  // A band too narrow for its label leaves it to the bar tooltip; drawing it
+  // anyway would print it under the next band's.
+  const labelled = (bi: number) => {
+    const next = bands[bi + 1];
+    return (next ? x(next.from) : width) - x(bands[bi].from) >= MIN_BAND_LABEL_W;
+  };
+  // The bar's plan period and that period's rate, as one tooltip line.
+  const periodLines = (w: LimitWindowEntry): string[] => {
+    const era = eras[w.era_index];
+    if (!era || (!era.era && eras.length < 2)) return [];
+    const dates = eras.length > 1 ? eraDateRange(era) : null;
+    return [[
+      eraName(era, eras.length),
+      ...(dates ? [dates] : []),
+      ...(era.session_hit_count > 0 ? [formatHitRate(era)] : []),
+    ].join(" · ")];
+  };
 
   const labelStep = Math.ceil(MIN_XLABEL_GAP / (barW + gap));
   const xLabelIdx: number[] = [];
@@ -114,21 +132,24 @@ export default function WindowsTimeline({ windows, hits, basis, selected, onSele
           <div className="limit-timeline-scroll" ref={scrollRef}>
             <svg width={width} height={HEIGHT}
                  role="img"
-                 aria-label={`5-hour windows timeline by ${basisLabel(basis)}`}>
+                 aria-label={`5-hour windows timeline by ${basis}`}>
               {bands.map((b, bi) => (
-                <g key={`${b.era}-${b.from}`}>
+                <g key={`${b.eraIndex}-${b.from}`}>
                   <rect x={x(b.from) - gap / 2} y={0}
                         width={x(b.to) + barW + gap / 2 - x(b.from) + gap / 2}
                         height={PLOT_TOP + PLOT_H}
                         className={bi % 2 ? "limit-era-band alt" : "limit-era-band"} />
-                  {b.era && (
+                  {labelled(bi) && b.era && (
                     <text x={x(b.from) + 2} y={12} className="limit-era-label">
                       {b.era}
                     </text>
                   )}
-                  {(rates.get(b.era)?.hitCount ?? 0) > 0 && (
+                  {/* Hits per week of this period's own tenure. The rate cannot
+                      share the dollar axis, so it rides the band label instead
+                      of pretending to be a level line. */}
+                  {labelled(bi) && (eras[b.eraIndex]?.session_hit_count ?? 0) > 0 && (
                     <text x={x(b.from) + 2} y={b.era ? 24 : 12} className="limit-era-rate">
-                      {`${rates.get(b.era)!.perWeek.toFixed(1)} hits/wk`}
+                      {formatHitRate(eras[b.eraIndex])}
                     </text>
                   )}
                 </g>
@@ -164,9 +185,9 @@ export default function WindowsTimeline({ windows, hits, basis, selected, onSele
                         onClick={() => onSelectWindow(i)}
                         onKeyDown={(e) => e.key === "Enter" && onSelectWindow(i)}
                         onMouseMove={(e) => show(e, dayLabel(w.start), [
-                          `${formattedValue} in this window`,
-                          ...(hit ? [`recorded ${w.hit_kinds.join(", ")} limit hit`] : []),
-                          ...(w.era ? [`plan: ${w.era}`] : []),
+                          formattedValue,
+                          ...(hit ? [`${w.hit_kinds.join(", ")} limit hit`] : []),
+                          ...periodLines(w),
                         ])}
                         onMouseLeave={hide} />
                 );
@@ -178,9 +199,8 @@ export default function WindowsTimeline({ windows, hits, basis, selected, onSele
       </div>
       <div className="chip-legend card-bottom-legend limit-legend">
         <span><i className="is-window" />window usage</span>
-        <span><i className="is-hit" />recorded session-limit hit</span>
-        {hasEras && <span><i className="is-era" />plan era</span>}
-        <em>{`y-axis: ${basisLabel(basis)} · x-axis: window start date`}</em>
+        <span><i className="is-hit" />session-limit hit</span>
+        {hasEras && <span><i className="is-era" />plan period</span>}
       </div>
     </>
   );

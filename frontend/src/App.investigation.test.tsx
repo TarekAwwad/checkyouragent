@@ -6,9 +6,13 @@ import * as client from "./api/client";
 import type { CostAnalyticsResponse, SessionCard } from "./api/types";
 
 vi.mock("./api/client", () => ({
-  getRuntimeConfig: vi.fn(), listProjects: vi.fn(), listSessions: vi.fn(), listTeamImports: vi.fn(),
+  getRuntimeConfig: vi.fn(), listProjects: vi.fn(), listSessions: vi.fn(), listTeamImports: vi.fn(), getTeamDashboard: vi.fn(),
   getSettings: vi.fn(), updateSettings: vi.fn(), getCostAnalytics: vi.fn(), getTeamCostAnalytics: vi.fn(),
   getSessionTurnCosts: vi.fn(),
+  getImportProgress: vi.fn(async () => ({
+    active: false, import_id: null, status: "idle", source_path: null, project: null,
+    totals: null, summary: null, updated_at: null, data_version: 0,
+  })),
 }));
 
 vi.mock("./pages/SessionWorkspace", () => ({
@@ -68,6 +72,7 @@ beforeEach(() => {
   vi.mocked(client.updateSettings).mockImplementation(async (settings) => settings as never);
   vi.mocked(client.getCostAnalytics).mockResolvedValue(payload);
   vi.mocked(client.getTeamCostAnalytics).mockResolvedValue(payload);
+  vi.mocked(client.getTeamDashboard).mockResolvedValue({ meta: { session_count: 2, date_to: "2026-05-02" } } as never);
 });
 
 function renderApp() {
@@ -86,6 +91,7 @@ describe("investigation context", () => {
   it("restores Cost filters, preset, selected period, chart view, and scroll after app Back", async () => {
     const view = renderApp();
     await screen.findByRole("heading", { name: "Spend over time" });
+    fireEvent.change(screen.getByLabelText("Date range"), { target: { value: "custom" } });
     fireEvent.change(screen.getByLabelText("Start date"), { target: { value: "2026-05-01" } });
     fireEvent.change(screen.getByLabelText("Project"), { target: { value: "1" } });
     fireEvent.change(screen.getByLabelText("Model"), { target: { value: opus } });
@@ -134,11 +140,14 @@ describe("investigation context", () => {
   it("keeps local and team investigation filters separate across scope changes", async () => {
     renderApp();
     await screen.findByRole("heading", { name: "Spend over time" });
+    fireEvent.change(screen.getByLabelText("Date range"), { target: { value: "custom" } });
     fireEvent.change(screen.getByLabelText("Start date"), { target: { value: "2026-05-01" } });
     fireEvent.change(screen.getByLabelText("Model"), { target: { value: opus } });
     fireEvent.click(screen.getByRole("button", { name: "Team" }));
-    await waitFor(() => expect(screen.getByLabelText("Start date")).toHaveValue(""));
+    await waitFor(() => expect(screen.getByLabelText("Date range")).toHaveValue("all"));
+    expect(screen.queryByLabelText("Start date")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Model")).toHaveValue("");
+    fireEvent.change(screen.getByLabelText("Date range"), { target: { value: "custom" } });
     fireEvent.change(screen.getByLabelText("Start date"), { target: { value: "2026-05-02" } });
     fireEvent.change(screen.getByLabelText("Model"), { target: { value: sonnet } });
     fireEvent.click(screen.getByRole("button", { name: "This machine" }));
@@ -169,11 +178,40 @@ describe("investigation context", () => {
   it("clears stale context when the local index is reset", async () => {
     const view = renderApp();
     await screen.findByRole("heading", { name: "Spend over time" });
+    fireEvent.change(screen.getByLabelText("Date range"), { target: { value: "custom" } });
     fireEvent.change(screen.getByLabelText("Start date"), { target: { value: "2026-05-01" } });
     fireEvent.change(screen.getByLabelText("Model"), { target: { value: opus } });
     await act(async () => { view.queryClient.setQueryData(["sessions", {}], []); });
-    await waitFor(() => expect(screen.getByLabelText("Start date")).toHaveValue(""));
+    await waitFor(() => expect(screen.getByLabelText("Date range")).toHaveValue("all"));
+    expect(screen.queryByLabelText("Start date")).not.toBeInTheDocument();
     expect(screen.getByLabelText("Model")).toHaveValue("");
+  });
+
+  it("carries the project and range from Cost to Sessions", async () => {
+    renderApp();
+    await screen.findByRole("heading", { name: "Spend over time" });
+    fireEvent.change(screen.getByLabelText("Date range"), { target: { value: "90d" } });
+    fireEvent.change(screen.getByLabelText("Project"), { target: { value: "1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Sessions" }));
+    await screen.findByPlaceholderText("Search sessions");
+    expect(screen.getByLabelText("Date range")).toHaveValue("90d");
+    expect(screen.getByLabelText("Project")).toHaveValue("1");
+  });
+
+  it("opens on the last 30 days when the index has recent sessions", async () => {
+    const now = new Date().toISOString();
+    vi.mocked(client.listSessions).mockResolvedValue([{ ...session(7, 12), first_ts: now, last_ts: now }]);
+    renderApp();
+    await screen.findByRole("heading", { name: "Spend over time" });
+    expect(screen.getByLabelText("Date range")).toHaveValue("30d");
+  });
+
+  it("opens on all time when every session is older than 30 days", async () => {
+    vi.mocked(client.listSessions).mockResolvedValue([
+      { ...session(7, 12), first_ts: "2020-01-01T00:00:00Z", last_ts: "2020-01-01T01:00:00Z" },
+    ]);
+    renderApp();
+    await screen.findByRole("heading", { name: "Spend over time" });
     expect(screen.getByLabelText("Date range")).toHaveValue("all");
   });
 });

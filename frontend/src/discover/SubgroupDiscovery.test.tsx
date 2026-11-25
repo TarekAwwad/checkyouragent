@@ -7,6 +7,7 @@ const { getDiscoveryAnalytics } = vi.hoisted(() => ({ getDiscoveryAnalytics: vi.
 vi.mock("../api/client", () => ({ getDiscoveryAnalytics }));
 
 import SubgroupDiscovery from "./SubgroupDiscovery";
+import { TestScopeProvider } from "../shell/TestScopeProvider";
 
 const projects: Project[] = [
   {
@@ -108,7 +109,9 @@ function renderPage(onOpenSession = vi.fn()) {
     onOpenSession,
     ...render(
       <QueryClientProvider client={queryClient}>
-        <SubgroupDiscovery projects={projects} onOpenSession={onOpenSession} />
+        <TestScopeProvider projects={projects.map((p) => ({ id: p.id, name: p.display_name }))}>
+          <SubgroupDiscovery onOpenSession={onOpenSession} />
+        </TestScopeProvider>
       </QueryClientProvider>,
     ),
   };
@@ -124,10 +127,10 @@ describe("SubgroupDiscovery", () => {
     const onOpenSession = vi.fn();
     renderPage(onOpenSession);
 
-    expect(await screen.findByRole("heading", { name: "Experimental subgroup associations" }))
+    expect(await screen.findByRole("heading", { name: "Subgroups" }))
       .toBeInTheDocument();
-    expect(screen.queryByText(/^Experimental$/)).not.toBeInTheDocument();
-    expect(screen.getByRole("note")).toHaveTextContent(/observed associations, not causal/i);
+    expect(screen.getByText("Observed associations, not causes.")).toBeInTheDocument();
+    expect(screen.getByText("Experimental")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Observed cost association" }))
       .toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Associations" })).toBeInTheDocument();
@@ -148,7 +151,7 @@ describe("SubgroupDiscovery", () => {
     expect(await screen.findByText("Unit: session")).toBeInTheDocument();
     expect(await screen.findAllByText("54.5%")).not.toHaveLength(0);
     expect(await screen.findAllByText("8.7%")).not.toHaveLength(0);
-    expect(document.body.textContent).not.toMatch(/drives|causes|more likely/i);
+    expect(document.body.textContent).not.toMatch(/drives|(?<!not )causes|more likely/i);
 
     fireEvent.click(screen.getByRole("button", { name: /Open receipt/ }));
 
@@ -171,7 +174,7 @@ describe("SubgroupDiscovery", () => {
 
   it("passes project and minimum support filters to the API", async () => {
     renderPage();
-    await screen.findAllByRole("heading", { name: "Experimental subgroup associations" });
+    await screen.findAllByRole("heading", { name: "Subgroups" });
 
     fireEvent.change(screen.getByLabelText("Project"), { target: { value: "1" } });
     fireEvent.change(screen.getByLabelText("Minimum support"), { target: { value: "10" } });

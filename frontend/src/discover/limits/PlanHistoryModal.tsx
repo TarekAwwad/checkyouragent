@@ -10,7 +10,7 @@ const PLAN_OPTIONS = ["Pro", "Max 5x", "Max 20x", "Team", "Enterprise"];
 
 // Small editor for the optional subscription history. Rows are {plan, start
 // date}; the backend sanitizes and sorts. Saving invalidates the limits query
-// so eras recompute immediately.
+// so plan periods recompute immediately.
 export default function PlanHistoryModal({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient();
   const [rows, setRows] = React.useState<PlanEra[] | null>(null);
@@ -50,10 +50,7 @@ export default function PlanHistoryModal({ onClose }: { onClose: () => void }) {
           <h2>Plan history</h2>
         </div>
         <div className="card-pad">
-          <p className="plan-intro">
-            Which subscription you were on, and since when. Eras split the
-            timeline and the observed hit levels. Leave empty for a single view.
-          </p>
+          <p className="plan-intro">Each plan you have been on, from the day it started.</p>
           {rows !== null && rows.length === 0 && (
             <p className="plan-empty">No plans recorded yet.</p>
           )}

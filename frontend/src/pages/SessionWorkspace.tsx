@@ -1,6 +1,8 @@
 import React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ArrowLeftRight, Search } from "lucide-react";
+import { ArrowLeft, ArrowLeftRight } from "lucide-react";
+import PageHeader from "../shell/PageHeader";
+import SearchField from "../components/controls/SearchField";
 import { getEvent, getSession, getSessionFindings, getSubagents, getTimeline, getToolActivity, getTrace, search } from "../api/client";
 import { Blurred } from "../shell/Blurred";
 import type { SessionCard } from "../api/types";
@@ -18,13 +20,15 @@ interface Props {
   session: SessionCard;
   /** Event to select on entry (deep-link from analytics views); null = default. */
   initialEventId?: number | null;
+  /** Where the session was opened from, shown before its title. */
+  section?: string;
   /** Label for the origin-aware navigation control, for example "Back to Cost". */
   backLabel?: string;
   onBack?: () => void;
   historical?: boolean;
 }
 
-function SessionWorkspace({ session, initialEventId = null, backLabel, onBack, historical = true }: Props) {
+function SessionWorkspace({ session, initialEventId = null, section, backLabel, onBack, historical = true }: Props) {
   const workspaceRef = React.useRef<HTMLElement | null>(null);
   const [selectedEventId, setSelectedEventId] = React.useState<number | null>(initialEventId);
   const [query, setQuery] = React.useState("");
@@ -115,30 +119,36 @@ function SessionWorkspace({ session, initialEventId = null, backLabel, onBack, h
   return (
     <main className="cost-page session-page">
       <div className="cost-page-inner session-page-inner">
-        <div className="cost-filterbar session-toolbar">
-          {backLabel && onBack && (
+        <PageHeader
+          leading={backLabel && onBack ? (
             <button type="button" className="ghost-action" onClick={onBack} aria-label={backLabel}>
               <ArrowLeft size={15} />
               <span>{backLabel}</span>
             </button>
+          ) : undefined}
+          section={section}
+          title={<Blurred>{card.title || card.session_id}</Blurred>}
+          subtitle={(
+            <Blurred>
+              {[`${card.project_name}${card.git_branch ? ` / ${card.git_branch}` : ""}`, ...metaParts].join(" · ")}
+            </Blurred>
           )}
-          <div className="session-search-wrap">
-            <label className="session-search">
-              <Search size={15} />
-              <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search inside session" />
-            </label>
-            {searchResults.data && query && (
-              <div className="search-popover">
-                {searchResults.data.slice(0, 8).map((result) => (
-                  <button key={`${result.kind}-${result.ref_id}`} onClick={() => result.kind === "message" && setSelectedEventId(result.ref_id)}>
-                    <strong><Blurred>{result.title || result.kind}</Blurred></strong>
-                    <span><Blurred>{result.preview}</Blurred></span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+          filters={(
+            <div className="session-search-wrap">
+              <SearchField value={query} onChange={setQuery} placeholder="Search inside session" />
+              {searchResults.data && query && (
+                <div className="search-popover">
+                  {searchResults.data.slice(0, 8).map((result) => (
+                    <button key={`${result.kind}-${result.ref_id}`} onClick={() => result.kind === "message" && setSelectedEventId(result.ref_id)}>
+                      <strong><Blurred>{result.title || result.kind}</Blurred></strong>
+                      <span><Blurred>{result.preview}</Blurred></span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        />
         <SessionInsightStrip
           session={card}
           costUsd={trace.data?.cost.usd}
@@ -160,13 +170,7 @@ function SessionWorkspace({ session, initialEventId = null, backLabel, onBack, h
         <section ref={workspaceRef} className="cost-bento session-workspace" aria-label="Session workspace">
             <section className="tile tile-full session-trace-tile">
               <div className="session-tile-heading">
-                <div className="session-title">
-                  <p className="crumb">
-                    <Blurred>{card.project_name}{card.git_branch ? ` / ${card.git_branch}` : ""}</Blurred>
-                  </p>
-                  <h2><Blurred>{card.title || card.session_id}</Blurred></h2>
-                  <p className="session-meta"><Blurred>{metaParts.length ? metaParts.join(" · ") : card.session_id}</Blurred></p>
-                </div>
+                <h2>Trace</h2>
                 <span className="hint"><ArrowLeftRight size={13} /> spacing · lanes · same-tool streaks</span>
               </div>
               <div className="session-trace-body event-graph">

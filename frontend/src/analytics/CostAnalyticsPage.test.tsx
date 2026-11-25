@@ -1,8 +1,12 @@
 // frontend/src/analytics/CostAnalyticsPage.test.tsx
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CostAnalyticsResponse, TurnCostBreakdown } from "../api/types";
+import { TestScopeProvider } from "../shell/TestScopeProvider";
+import { instantBounds, presetRange, type DateRange } from "../shell/dateRange";
+import { initialCostViewState } from "../shell/investigationState";
+import { GLOSSARY_TERMS } from "../glossary/glossaryTerms";
 
 // vi.hoisted gives a mock handle usable inside the hoisted vi.mock factory.
 const { getCostAnalytics, getTeamCostAnalytics, getSessionTurnCosts } = vi.hoisted(() => ({
@@ -173,33 +177,38 @@ beforeEach(() => {
   getSessionTurnCosts.mockResolvedValue(turnBreakdown);
 });
 
+const scopeProjects = [{ id: 1, name: "alpha" }, { id: 2, name: "beta" }];
+
 function renderPage(
   onOpenSession = () => {},
   historical?: boolean,
   scope: "local" | "team" = "local",
   onHistoricalChange = (_value: boolean) => {},
+  range?: DateRange,
 ) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <CostAnalyticsPage
-        onOpenSession={onOpenSession}
-        historical={historical}
-        onHistoricalChange={onHistoricalChange}
-        scope={scope}
-      />
+      <TestScopeProvider projects={scopeProjects} range={range} today="2026-11-24">
+        <CostAnalyticsPage
+          onOpenSession={onOpenSession}
+          historical={historical}
+          onHistoricalChange={onHistoricalChange}
+          scope={scope}
+        />
+      </TestScopeProvider>
     </QueryClientProvider>,
   );
 }
 
 describe("CostAnalyticsPage", () => {
-  it("opens with all imported history so the initial landing is not limited to recent activity", async () => {
+  it("requests the shared range and shows no date inputs outside Custom", async () => {
     renderPage();
     await screen.findByRole("heading", { name: "Cost by model" });
     expect(screen.getByLabelText("Date range")).toHaveValue("all");
-    expect(screen.getByLabelText("Start date")).toHaveValue("");
-    expect(screen.getByLabelText("End date")).toHaveValue("");
-    expect(getCostAnalytics.mock.calls[0][0]).toMatchObject({ dateFrom: null, dateTo: null });
+    expect(screen.queryByLabelText("Start date")).not.toBeInTheDocument();
+    expect(getCostAnalytics.mock.calls[0][0]).toMatchObject(
+      { dateFrom: null, dateTo: null, projectId: null, model: null });
   });
 
   it("keeps the chart panels mounted while a different date range loads", async () => {
@@ -211,7 +220,7 @@ describe("CostAnalyticsPage", () => {
     const heading = await screen.findByRole("heading", { name: "Spend over time" });
     const modelCosts = screen.getByRole("region", { name: "Model costs" });
 
-    fireEvent.change(screen.getByLabelText("Date range"), { target: { value: "7" } });
+    fireEvent.change(screen.getByLabelText("Date range"), { target: { value: "7d" } });
 
     expect(await screen.findByText("Updating…")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Spend over time" })).toBe(heading);
@@ -227,7 +236,9 @@ describe("CostAnalyticsPage", () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const view = render(
       <QueryClientProvider client={qc}>
-        <CostAnalyticsPage onOpenSession={() => {}} scope="local" historical />
+        <TestScopeProvider projects={scopeProjects}>
+          <CostAnalyticsPage onOpenSession={() => {}} scope="local" historical />
+        </TestScopeProvider>
       </QueryClientProvider>,
     );
     await screen.findByRole("heading", { name: "Cost by model" });
@@ -236,7 +247,9 @@ describe("CostAnalyticsPage", () => {
 
     view.rerender(
       <QueryClientProvider client={qc}>
-        <CostAnalyticsPage onOpenSession={() => {}} scope={change === "scope" ? "team" : "local"} historical={change === "scope"} />
+        <TestScopeProvider projects={scopeProjects}>
+          <CostAnalyticsPage onOpenSession={() => {}} scope={change === "scope" ? "team" : "local"} historical={change === "scope"} />
+        </TestScopeProvider>
       </QueryClientProvider>,
     );
 
@@ -275,65 +288,16 @@ describe("CostAnalyticsPage", () => {
     expect(screen.queryByText("Turn distribution")).not.toBeInTheDocument();
   });
 
-  it("clears the project/model filters but preserves dates when scope changes", async () => {
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const view = render(
-      <QueryClientProvider client={qc}>
-        <CostAnalyticsPage onOpenSession={() => {}} scope="local" />
-      </QueryClientProvider>,
-    );
-    await screen.findAllByText("alpha");
-
-    fireEvent.change(screen.getByLabelText("Project"), { target: { value: "1" } });
-    await vi.waitFor(() =>
-      expect(getCostAnalytics.mock.calls.some(([f]) => f.projectId === 1)).toBe(true),
-    );
-    // Let the refetch resolve (repopulating meta.available_models) before the
-    // Model select's options exist to pick from.
-    await screen.findAllByText("alpha");
-
-    fireEvent.change(screen.getByLabelText("Model"), { target: { value: "claude-opus-4-8" } });
-    await vi.waitFor(() =>
-      expect(getCostAnalytics.mock.calls.some(([f]) => f.projectId === 1 && f.model === "claude-opus-4-8")).toBe(true),
-    );
-    const localDateFrom = getCostAnalytics.mock.calls[getCostAnalytics.mock.calls.length - 1][0].dateFrom;
-
-    view.rerender(
-      <QueryClientProvider client={qc}>
-        <CostAnalyticsPage onOpenSession={() => {}} scope="team" />
-      </QueryClientProvider>,
-    );
-
-    // The team endpoint must never see the local scope's projectId/model (different
-    // namespaces), but the scope-agnostic date filters must survive the switch.
-    await vi.waitFor(() =>
-      expect(getTeamCostAnalytics.mock.calls.some(([f]) => f.projectId == null && f.model == null)).toBe(true),
-    );
-    const teamCall = getTeamCostAnalytics.mock.calls[getTeamCostAnalytics.mock.calls.length - 1][0];
-    expect(teamCall.projectId).toBeFalsy();
-    expect(teamCall.model).toBeFalsy();
-    expect(teamCall.dateFrom).toBe(localDateFrom);
-  });
-
-  it("applies custom start and end date filters", async () => {
+  it("applies a custom range as local-day instants", async () => {
     renderPage();
     await screen.findAllByText("alpha");
-
+    fireEvent.change(screen.getByLabelText("Date range"), { target: { value: "custom" } });
     fireEvent.change(screen.getByLabelText("Start date"), { target: { value: "2026-05-01" } });
-
-    expect((screen.getByLabelText("Date range") as HTMLSelectElement).value).toBe("custom");
-    await vi.waitFor(() =>
-      expect(getCostAnalytics.mock.calls.some(([nextFilters]) => (
-        nextFilters.dateFrom === "2026-05-01T00:00:00.000Z"
-      ))).toBe(true),
-    );
-
     fireEvent.change(screen.getByLabelText("End date"), { target: { value: "2026-05-02" } });
-
+    const expected = instantBounds({ from: "2026-05-01", to: "2026-05-02" });
     await vi.waitFor(() =>
-      expect(getCostAnalytics.mock.calls.some(([nextFilters]) => (
-        nextFilters.dateFrom === "2026-05-01T00:00:00.000Z"
-        && nextFilters.dateTo === "2026-05-02T23:59:59.999Z"
+      expect(getCostAnalytics.mock.calls.some(([f]) => (
+        f.dateFrom === expected.dateFrom && f.dateTo === expected.dateTo
       ))).toBe(true),
     );
   });
@@ -398,7 +362,9 @@ describe("CostAnalyticsPage", () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const view = render(
       <QueryClientProvider client={qc}>
-        <CostAnalyticsPage onOpenSession={() => {}} historical={true} />
+        <TestScopeProvider projects={scopeProjects}>
+          <CostAnalyticsPage onOpenSession={() => {}} historical={true} />
+        </TestScopeProvider>
       </QueryClientProvider>,
     );
     await screen.findAllByText("alpha");
@@ -406,7 +372,9 @@ describe("CostAnalyticsPage", () => {
 
     view.rerender(
       <QueryClientProvider client={qc}>
-        <CostAnalyticsPage onOpenSession={() => {}} historical={false} />
+        <TestScopeProvider projects={scopeProjects}>
+          <CostAnalyticsPage onOpenSession={() => {}} historical={false} />
+        </TestScopeProvider>
       </QueryClientProvider>,
     );
     // Flipping the mode must drive a fresh request carrying the new mode.
@@ -462,18 +430,11 @@ describe("CostAnalyticsPage", () => {
     expect(onOpenSession).toHaveBeenCalledWith(7);
   });
 
-  it("describes historical pricing mode in the cost note", async () => {
+  it("leaves the pricing explanation to the glossary", async () => {
     renderPage();
-    expect(
-      await screen.findByText(/priced at the rates in effect on each session/i),
-    ).toBeInTheDocument();
-  });
-
-  it("switches the cost note to current-rate wording when historical pricing is off", async () => {
-    renderPage(() => {}, false);
-    expect(
-      await screen.findByText(/priced at current rates for every session/i),
-    ).toBeInTheDocument();
+    await screen.findByRole("heading", { name: "Cost by model" });
+    expect(screen.queryByText(/priced at (the rates in effect|current rates)/i)).not.toBeInTheDocument();
+    expect(GLOSSARY_TERMS.some((term) => term.term === "Historical pricing")).toBe(true);
   });
 
   it("offers the persisted historical-pricing mode as a labeled Cost control", async () => {
@@ -491,5 +452,55 @@ describe("CostAnalyticsPage", () => {
     renderPage();
     expect(await screen.findByText("Cost analytics failed.")).toBeInTheDocument();
     expect(await screen.findByText(/base_input_tokens/)).toBeInTheDocument();
+  });
+
+  it("marks a selected project that has no activity in the range", async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <TestScopeProvider projects={scopeProjects} projectId={2}>
+          <CostAnalyticsPage onOpenSession={() => {}} />
+        </TestScopeProvider>
+      </QueryClientProvider>,
+    );
+    await screen.findByRole("heading", { name: "Cost by model" });
+    expect(screen.getByRole("option", { name: "beta (no activity in range)" })).toBeInTheDocument();
+    expect(getCostAnalytics.mock.calls[0][0]).toMatchObject({ projectId: 2 });
+  });
+
+  it("keeps a remembered model visible when the range has none of it", async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const memory = { current: { ...initialCostViewState(), model: "claude-haiku-9" } };
+    render(
+      <QueryClientProvider client={qc}>
+        <TestScopeProvider projects={scopeProjects}>
+          <CostAnalyticsPage onOpenSession={() => {}} memory={memory} />
+        </TestScopeProvider>
+      </QueryClientProvider>,
+    );
+    await screen.findByRole("heading", { name: "Cost by model" });
+    expect(screen.getByLabelText("Model")).toHaveValue("claude-haiku-9");
+    expect(within(screen.getByLabelText("Model")).getByRole("option", { name: /\(no activity in range\)$/ }))
+      .toBeInTheDocument();
+  });
+});
+
+describe("Cost date bounds per data scope", () => {
+  beforeEach(() => { vi.stubEnv("TZ", "Europe/Paris"); });
+  afterEach(() => { vi.unstubAllEnvs(); });
+
+  it("sends local Cost the local day as instants", async () => {
+    renderPage(() => {}, undefined, "local", undefined, presetRange("today"));
+    await screen.findAllByText("alpha");
+    expect(getCostAnalytics.mock.calls[0][0]).toMatchObject(
+      { dateFrom: "2026-11-23T23:00:00.000Z", dateTo: "2026-11-24T22:59:59.999Z" });
+  });
+
+  it("sends Team Cost plain local dates, so one day stays one day", async () => {
+    renderPage(() => {}, undefined, "team", undefined, presetRange("today"));
+    await screen.findByText("Cost by model");
+    const [filters] = getTeamCostAnalytics.mock.calls[0];
+    expect(filters).toMatchObject({ dateFrom: "2026-11-24", dateTo: "2026-11-24" });
+    expect(JSON.stringify(filters)).not.toContain("2026-11-23");
   });
 });

@@ -4,7 +4,94 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims
 to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.0] - 2026-11-25
+
+This release shares date and project filters across analytics pages, redesigns
+Usage drivers, and improves the Activity map and Limit hits. Explore views load
+faster on large caches and refresh when imported data changes.
+
+### Changed
+- Every page now opens with the same header: title, then date range and
+  project, then the page's own filters and view options. The date range
+  carries across Cost, Sessions, Limit hits, Usage drivers and the Activity
+  map; the project carries across Cost, Sessions, Usage drivers, the Activity
+  map, Context economics and Subgroups. Limit hits keeps all projects
+  (account-level), and Context economics and Subgroups keep all time. Pages
+  that cannot filter by one show it as fixed. The app opens on the last 30
+  days when there is recent activity, otherwise on all time.
+- A date range now means the same local calendar days on every page. Cost
+  presets were rolling 24-hour periods in UTC and custom dates were UTC days;
+  Usage drivers, the Activity map and Limit hits matched UTC dates. Totals
+  near range edges can shift slightly. Spend over time still groups by UTC
+  day, so outside UTC a "Today" range can show a thin extra bucket for the
+  previous UTC day.
+- Sessions can be narrowed by date (sessions with any activity in the range),
+  and Limit hits follows the selected range.
+- The Usage Mindmap is now called the Activity map everywhere. Its JSON and
+  PNG exports share one Export menu.
+- Shorten the Limit hits page copy to numbers and labels, and move the
+  explanations to the glossary (Limit hit, 5-hour window, Usage at hit, Plan
+  period, Hits per week, Hit-level percentile, Time to reset). Each plan
+  period's row shows its hits and rate; hovering those figures shows the
+  median, range, window count and percentile. The page footnote is gone, and
+  `GET /api/analytics/limits` no longer returns `meta.method_note`.
+- Move Context economics to the Experimental section of Explore, and promote
+  the Usage Mindmap out of it. The map's heading and exports drop the
+  "experimental" label.
+- Redesign Usage drivers to match the other Explore pages: a Cost, Sessions
+  and Tokens stat strip, then one row per driver with a bar, its share and its
+  cost (tokens without a price table). Each bar's track is all of the window's
+  usage, since drivers overlap. Shares under 1% read "<1%" instead of "0%". The
+  range picker uses the Cost page's labels (Today, Last 7 days, Last 30 days,
+  All time). The advice paragraphs, the basis footnote and the long subtitle
+  move to the glossary (Usage driver, Share of usage, and one entry per
+  driver). `GET /api/analytics/usage-characteristics` returns a short `label`
+  and `tokens` per driver, and no longer returns `headline`, `guidance` or
+  `meta.basis_note`.
+
+### Fixed
+- Usage drivers' Today and Last N days ranges use your local date. They used
+  the UTC date, which is a day off for part of every day outside UTC.
+- Compute Limit hits per plan period instead of per plan name, so Pro → Max →
+  Pro shows two Pro periods with their own hit levels and hits per week. Each
+  rate now divides by its own period's logged weeks instead of the span from
+  the plan's first window to its last, which counted the time on other plans.
+  A window that hits its limit after a plan switch counts for the new plan.
+  Hit-level rows show each period's dates and rate, and list periods without
+  recorded hits. Timeline labels too narrow for their band move to its tooltip.
+- Load Context economics and the Usage Mindmap about four times faster on
+  large caches (25 s to 5 s, and 29 s to 6.5 s, on a 1 GB cache). The database
+  had no query-planner statistics, so SQLite read every assistant message once
+  per session. Each import that changes data now runs `ANALYZE` after it
+  commits, and startup runs it once for an existing cache that has none.
+- Refresh Explore, session and team export views after a sync, an import, a
+  demo load or a local reset, instead of showing results from before it. This
+  includes changes started from another tab or before a page reload: the app
+  checks `GET /api/imports/progress` every 10 s while the tab is visible (every
+  second while an import runs), and its new `data_version` changes each time
+  one finishes. The Usage Mindmap now waits 400 ms after the last date edit
+  before it refetches, so editing a date no longer sends a request for each
+  change, or two with "vs previous period" on.
+- Count Claude Code's newer "You've hit your 5-hour limit" message as a session
+  limit hit instead of an unknown one, so it lands in its 5-hour window. When a
+  hit logs its structured quota fields, the limit type and exact reset time are
+  read from them, and the message text is the fallback for older logs. The same
+  hit logged by a session and its subagent still counts once.
+- Show "Updating…" on Limit hits while it reloads after a sync, instead of
+  keeping the old results on screen with no sign that new ones are coming.
+- Load the project list faster: its event, session and subagent counts take
+  0.1 s instead of 4 s on a 1 GB cache, which halves `GET /api/projects`
+  (8 s to 3.7 s). The counts joined each event to every subagent of its
+  session and read every event row for its replay flag. They are now counted
+  per session from indexes, and only replayed events are read.
+
+### Upgrade notes
+- Existing SQLite caches can be reused. On first startup, the app builds
+  query-planner statistics for caches that lack them.
+- Date filters now use local calendar days. Totals may differ near the
+  boundaries of a range.
+- API consumers should check the response changes for
+  `/api/analytics/limits` and `/api/analytics/usage-characteristics` above.
 
 ## [0.4.0] - 2026-11-05
 

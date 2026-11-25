@@ -363,12 +363,10 @@ def create_import(payload: ImportRequest, conn: Connection = Depends(get_db)) ->
         else:
             summary = import_all_new(conn, source, progress_callback=progress_callback)
     except (FileNotFoundError, NotADirectoryError) as exc:
-        import_progress_store.clear()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception:
-        import_progress_store.clear()
-        raise
-    import_progress_store.clear()
+    finally:
+        # A failed import may still have committed some projects.
+        import_progress_store.finish()
     return ImportSummaryResponse(**summary.__dict__)
 
 
@@ -387,19 +385,18 @@ def create_demo_import(conn: Connection = Depends(get_db)) -> ImportSummaryRespo
     try:
         summary = import_all_new(conn, source, progress_callback=progress_callback)
     except (FileNotFoundError, NotADirectoryError) as exc:
-        import_progress_store.clear()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception:
-        import_progress_store.clear()
-        raise
-    import_progress_store.clear()
+    finally:
+        import_progress_store.finish()
     return ImportSummaryResponse(**summary.__dict__)
 
 
 @router.post("/imports/reset", response_model=dict[str, bool])
 def reset_import(conn: Connection = Depends(get_db)) -> dict:
-    reset_local_data(conn)
-    import_progress_store.clear()
+    try:
+        reset_local_data(conn)
+    finally:
+        import_progress_store.finish()
     return {"ok": True}
 
 

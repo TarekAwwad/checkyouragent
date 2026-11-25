@@ -48,6 +48,8 @@ export interface ImportProgress {
   totals: CacheStats | null;
   summary: ImportProgressSummary | null;
   updated_at: string | null;
+  /** Changes each time the server finishes an import, demo load or local reset. */
+  data_version: number;
 }
 
 export interface Project {
@@ -610,7 +612,7 @@ export interface SessionContextEconomicsResponse {
   cost_available: boolean;
 }
 
-// --- Usage Mindmap -----------------------------------------------------------
+// --- Activity map ------------------------------------------------------------
 
 export interface UsageHabit {
   key: string;
@@ -680,13 +682,16 @@ export interface UsageMapEvidenceResponse {
   sessions: UsageEvidenceSession[];
 }
 
+// One usage driver. Drivers overlap (not a breakdown), so shares need not sum
+// to 1. `share` is cost-weighted, or token-weighted when meta.share_basis is
+// "tokens"; `cost_usd` and `tokens` are always the driver's own sums.
 export interface UsageCharacteristic {
   key: string;
-  headline: string;
+  label: string;
   share: number;
   cost_usd: number;
+  tokens: number;
   kind: string;
-  guidance: string;
 }
 
 export interface UsageCharacteristicsMeta {
@@ -698,7 +703,6 @@ export interface UsageCharacteristicsMeta {
   costs_partial: boolean;
   sessions_analyzed: number;
   share_basis: "cost" | "tokens";
-  basis_note: string;
 }
 
 export interface UsageCharacteristicsResponse {
@@ -737,6 +741,8 @@ export interface LimitWindowEntry {
   value_usd: number;
   tokens: number;
   era: string;
+  // Index into LimitsResponse.eras: the plan period this window falls in.
+  era_index: number;
   hit_kinds: string[];
 }
 
@@ -755,6 +761,13 @@ export interface LimitEraEntry {
   hit_level_percentile_tokens: number | null;
   usage_at_hit_usd: number[];
   usage_at_hit_tokens: number[];
+  // One era is one plan period (a plan-history entry until the next), so a
+  // plan held twice is two eras. Dates are the entry's bounds, end exclusive.
+  start_date: string | null;
+  end_date: string | null;
+  // Logged calendar weeks inside the period, floored at one week.
+  weeks: number;
+  hits_per_week: number;
 }
 
 export interface LimitsMeta {
@@ -767,7 +780,6 @@ export interface LimitsMeta {
   hits_per_week_recent: number;
   hit_counts: Record<string, number>;
   plan_history: PlanEra[];
-  method_note: string;
 }
 
 export interface LimitsResponse {

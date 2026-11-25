@@ -54,8 +54,8 @@ vi.mock("./api/client", () => ({
     last_successful_sync_at: null, latest_import_error_count: 0,
   })),
   getImportProgress: vi.fn(async () => ({
-    active: false, import_id: null, project_count: 0, session_count: 0,
-    event_count: 0, subagent_count: 0, persisted_output_count: 0,
+    active: false, import_id: null, status: "idle", source_path: null, project: null,
+    totals: null, summary: null, updated_at: null, data_version: 0,
   })),
   getCostAnalytics: vi.fn(async () => ({
     meta: { available: false, unpriced_models: [], costs_partial: false, costs_are_lower_bound: false, total_usd: 0, total_tokens: 0,
@@ -258,7 +258,7 @@ describe("App", () => {
     mockImportedSession();
     localStorage.setItem("ccfr.dataScope", "team");
     renderApp();
-    expect(await screen.findByRole("heading", { name: "Import a team bundle" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Manage bundles" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Open cost session" })).not.toBeInTheDocument();
   });
 
@@ -388,7 +388,7 @@ describe("App", () => {
 
     // Local scope: Export shares this machine's bundle.
     fireEvent.click(await screen.findByRole("button", { name: "Share team bundle" }));
-    expect(await screen.findByRole("heading", { name: /Export a team bundle/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Share team bundle" })).toBeInTheDocument();
 
     // Team scope drops Export (nothing local to share) and the Import view
     // becomes the team-bundle importer, not the projects importer.
@@ -396,7 +396,7 @@ describe("App", () => {
     await waitFor(() => expect(screen.queryByRole("button", { name: "Share team bundle" })).not.toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: "Manage bundles" }));
-    expect(await screen.findByRole("heading", { name: /Import a team bundle/i })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Manage bundles" })).toBeInTheDocument();
     expect(screen.queryByText("Projects in source")).not.toBeInTheDocument();
   });
 

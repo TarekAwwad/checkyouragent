@@ -2,11 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { getUsageMapEvidence } from "../../api/client";
+import { getUsageMap, getUsageMapEvidence } from "../../api/client";
 import type { UsageMapEvidenceResponse, UsageMapResponse } from "../../api/types";
 import type { UsagePhase } from "../../api/types";
 import MindmapCanvas from "./MindmapCanvas";
 import UsageMindmap from "./UsageMindmap";
+import { TestScopeProvider } from "../../shell/TestScopeProvider";
+import { instantBounds, type DateRange } from "../../shell/dateRange";
 import { buildActivityMapExport } from "./exportMap";
 
 const PHASES: UsagePhase[] = [
@@ -80,11 +82,13 @@ vi.mock("../../api/client", () => ({
   getUsageMapEvidence: vi.fn(() => Promise.resolve(evidencePayload)),
 }));
 
-function renderPage(onOpenSession = vi.fn()) {
+function renderPage(onOpenSession = vi.fn(), range?: DateRange) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <UsageMindmap projects={[]} onOpenSession={onOpenSession} />
+      <TestScopeProvider range={range}>
+        <UsageMindmap onOpenSession={onOpenSession} />
+      </TestScopeProvider>
     </QueryClientProvider>,
   );
 }
@@ -97,7 +101,7 @@ describe("MindmapCanvas", () => {
     expect(screen.getByText("Explore")).toBeInTheDocument();
     expect(screen.getByText("50%")).toBeInTheDocument();
     expect(screen.getByText("Repeated file…")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "Experimental activity map" }))
+    expect(screen.getByRole("img", { name: "Activity map" }))
       .toHaveTextContent(/not cost attribution/i);
     expect(container.querySelector(".is-good")).toBeNull();
     expect(container.querySelector(".is-anti")).toBeNull();
@@ -155,11 +159,12 @@ describe("UsageMindmap", () => {
     vi.mocked(getUsageMapEvidence).mockClear();
   });
 
-  it("labels the view as an experimental observed-activity map", async () => {
+  it("labels the view as an observed-activity map", async () => {
     renderPage();
-    expect(await screen.findByRole("heading", { name: "Experimental activity map" }))
+    expect(await screen.findByRole("heading", { name: "Activity map" }))
       .toBeInTheDocument();
-    expect(screen.getByText(/observed activity, not cost attribution/i)).toBeInTheDocument();
+    expect(screen.getByText("Tool calls and assistant steps by phase.")).toBeInTheDocument();
+    expect(screen.queryByText(/counts once in its classified phase/i)).not.toBeInTheDocument();
     expect(await screen.findByText(/classified as Explore/)).toBeInTheDocument();
     expect(screen.getByText("Share of observed activity")).toBeInTheDocument();
     expect(screen.queryByText(/share of spend/i)).not.toBeInTheDocument();
@@ -189,7 +194,7 @@ describe("UsageMindmap", () => {
     fireEvent.click(screen.getByRole("button", { name: /Implement: 30%/ }));
     expect(container.querySelector(".mindmap-node.is-selected")
       ?.getAttribute("aria-label")).toMatch(/^Implement/);
-    fireEvent.change(screen.getByLabelText("From date"), { target: { value: "2026-06-01" } });
+    fireEvent.change(screen.getByLabelText("Date range"), { target: { value: "7d" } });
     await waitFor(() => {
       const selected = container.querySelectorAll(".mindmap-node.is-selected");
       expect(selected).toHaveLength(1);
@@ -197,20 +202,64 @@ describe("UsageMindmap", () => {
     });
   });
 
-  it("shows compare deltas when both dates are set and compare is on", async () => {
-    renderPage();
+  it("shows compare deltas for a bounded range with compare on", async () => {
+    renderPage(vi.fn(), { preset: "custom", from: "2026-06-01", to: "2026-06-10" });
     await screen.findByText("Observed");
-    fireEvent.change(screen.getByLabelText("From date"), { target: { value: "2026-06-01" } });
-    fireEvent.change(screen.getByLabelText("To date"), { target: { value: "2026-06-10" } });
     fireEvent.click(screen.getByLabelText("Compare with previous period"));
     expect((await screen.findAllByText("=")).length).toBeGreaterThan(0);
   });
 
-  it("offers JSON and PNG export buttons", async () => {
+  it("requests the shared range and the previous window as local-day instants", async () => {
+    renderPage(vi.fn(), { preset: "custom", from: "2026-06-01", to: "2026-06-10" });
+    await screen.findByText("Observed");
+    fireEvent.click(screen.getByLabelText("Compare with previous period"));
+    await waitFor(() => expect(vi.mocked(getUsageMap)).toHaveBeenCalledWith(
+      { projectId: null, ...instantBounds({ from: "2026-05-22", to: "2026-05-31" }) }));
+    expect(vi.mocked(getUsageMap)).toHaveBeenCalledWith(
+      { projectId: null, ...instantBounds({ from: "2026-06-01", to: "2026-06-10" }) });
+  });
+
+  it("turns compare off for all time", async () => {
     renderPage();
     await screen.findByText("Observed");
-    expect(screen.getByRole("button", { name: "Export JSON" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Export PNG" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Compare with previous period")).toBeDisabled();
+  });
+
+  it("unchecks compare when the range becomes all time", async () => {
+    renderPage(vi.fn(), { preset: "custom", from: "2026-06-01", to: "2026-06-10" });
+    await screen.findByText("Observed");
+    const compare = screen.getByLabelText("Compare with previous period");
+    fireEvent.click(compare);
+    expect(compare).toBeChecked();
+    fireEvent.change(screen.getByLabelText("Date range"), { target: { value: "all" } });
+    await waitFor(() => expect(compare).toBeDisabled());
+    expect(compare).not.toBeChecked();
+  });
+
+  it("offers JSON and PNG exports from one menu", async () => {
+    renderPage();
+    await screen.findByText("Observed");
+    fireEvent.click(screen.getByRole("button", { name: "Export" }));
+    expect(screen.getByRole("menuitem", { name: "Export JSON" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Export PNG" })).toBeInTheDocument();
+  });
+
+  it("keeps the header on an empty window and recovers when the range changes", async () => {
+    vi.mocked(getUsageMap).mockResolvedValueOnce({
+      ...mapPayload, meta: { ...mapPayload.meta, sessions_analyzed: 0 },
+    });
+    renderPage();
+    expect(await screen.findByText(/No imported sessions in this window/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Activity map" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Date range"), { target: { value: "7d" } });
+    expect(await screen.findByText("Observed")).toBeInTheDocument();
+  });
+
+  it("keeps the header when the map fails to load", async () => {
+    vi.mocked(getUsageMap).mockRejectedValueOnce(new Error("boom"));
+    renderPage();
+    expect(await screen.findByText("The activity map could not be loaded.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Date range")).toBeInTheDocument();
   });
 
   it("switches between the neutral patterns and tools lenses", async () => {

@@ -1,65 +1,102 @@
 import React from "react";
-import type { TechniqueProps } from "../techniques";
-import {
-  PRESETS,
-  PRESET_LABELS,
-  UC_SUBTITLE,
-  UsageCharacteristicsRows,
-  useUsageCharacteristics,
-  type Preset,
-} from "../mindmap/UsageCharacteristicsPanel";
+import type { UsageCharacteristicsResponse } from "../../api/types";
+import { formatTokens, formatUsd } from "../../analytics/chartGeometry";
+import InsightStat from "../../components/InsightStat";
+import LoadingBar from "../../components/LoadingBar";
+import { Blurred } from "../../shell/Blurred";
+import { formatShare, useUsageCharacteristics } from "./driverData";
+import PageHeader from "../../shell/PageHeader";
+import { useAnalysisScope } from "../../shell/analysisScope";
+import { instantBounds } from "../../shell/dateRange";
 
-// Explore technique: the /usage-style "what's driving your usage" view, promoted
-// from the mindmap's dialog to a first-class page. Shares the fetch hook and the
-// characteristic rows with the dialog, but wears the Explore page shell: a
-// .discover-toolbar header (title + subtitle left, range .discover-tabs + project
-// filter right) and the rows inside a .card section. onOpenSession is part of the
-// TechniqueProps contract but unused here.
-export default function UsageDrivers({ projects }: TechniqueProps) {
-  const [projectId, setProjectId] = React.useState<number | null>(null);
-  const [preset, setPreset] = React.useState<Preset>("week");
-  const query = useUsageCharacteristics(projectId, preset, true);
+// Explore technique: the overlapping traits behind your usage (/usage's
+// "what's contributing" panel), each with its share of the window's total.
+// What each driver means, and its advice, is in the glossary.
+export default function UsageDrivers() {
+  const { resolvedRange, projectId, projects } = useAnalysisScope();
+  const { from, to } = resolvedRange;
+  const bounds = React.useMemo(() => instantBounds({ from, to }), [from, to]);
+  const query = useUsageCharacteristics(projectId, bounds);
+  const data = query.data;
+  const project = projects.find((p) => p.id === projectId);
+  const basis = data?.meta.share_basis === "tokens" ? "tokens" : "cost";
+  const updating = query.isFetching && !query.isPending;
 
   return (
     <main className="discover-page">
       <div className="discover-page-inner">
-        <div className="discover-toolbar" aria-label="Usage drivers controls">
-          <div className="discover-toolbar-lead">
-            <h1>Usage drivers</h1>
-            <p className="discover-subtitle">{UC_SUBTITLE}</p>
-          </div>
-          <div className="discover-tabs" role="group" aria-label="Window">
-            {PRESETS.map((p) => (
-              <button key={p} type="button" aria-pressed={preset === p}
-                      className={preset === p ? "active" : ""}
-                      onClick={() => setPreset(p)}>
-                {PRESET_LABELS[p]}
-              </button>
-            ))}
-          </div>
-          <div className="cost-filterbar discover-filterbar">
-            <select aria-label="Project" value={projectId ?? ""}
-                    onChange={(e) => setProjectId(e.target.value ? Number(e.target.value) : null)}>
-              <option value="">All projects</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>{p.display_name}</option>
-              ))}
-            </select>
-          </div>
-        </div>
+        <PageHeader
+          section="Explore"
+          title="Usage drivers"
+          subtitle={<>Share of {basis}, {project ? <Blurred>{project.name}</Blurred> : "all projects"}.</>}
+          status={updating ? "Updating…" : null}
+          scope={{ date: "filter", project: "filter" }}
+        />
 
-        <section className="card" aria-label="Usage characteristics">
-          <div className="card-head">
-            <h2>What's driving your usage</h2>
+        {query.isPending && (
+          <div className="loading-view"><LoadingBar caption="Loading usage drivers…" /></div>
+        )}
+        {query.isError && !data && (
+          <div className="empty-state panel-error">
+            <strong>Failed to load</strong>
+            <span>Usage drivers could not be loaded.</span>
           </div>
-          <div className="card-pad usage-drivers-body">
-            <UsageCharacteristicsRows query={query} />
-          </div>
-          {query.data && (
-            <p className="usage-drivers-footnote">{query.data.meta.basis_note}</p>
-          )}
-        </section>
+        )}
+        {data && <DriversView data={data} />}
       </div>
     </main>
+  );
+}
+
+function DriversView({ data }: { data: UsageCharacteristicsResponse }) {
+  const { meta, characteristics } = data;
+  const byCost = meta.share_basis === "cost";
+  const empty = meta.sessions_analyzed === 0;
+  const count = characteristics.length;
+
+  return (
+    <>
+      {!meta.cost_available && (
+        <p className="tile-note">No price table: tokens only.</p>
+      )}
+      {meta.cost_available && meta.costs_partial && (
+        <p className="tile-note">Some models are unpriced: costs are a lower bound.</p>
+      )}
+      <div className="cost-insight-strip" aria-label="Usage totals">
+        <InsightStat label="Cost" value={meta.cost_available ? formatUsd(meta.total_usd) : "—"} />
+        <InsightStat label="Sessions" value={meta.sessions_analyzed.toLocaleString("en-US")} />
+        <InsightStat label="Tokens" value={formatTokens(meta.total_tokens)} />
+      </div>
+      <section className="card" aria-label="Share of usage">
+        <div className="card-head">
+          <h2>Share of usage</h2>
+          {!empty && (
+            <span className="card-count"><b>{count}</b> {count === 1 ? "driver" : "drivers"}</span>
+          )}
+        </div>
+        <div className="card-pad">
+          {empty ? (
+            <div className="empty-state">No usage in this window.</div>
+          ) : (
+            <div className="usage-drivers-rows" role="list" aria-label="Usage drivers">
+              {characteristics.map((c) => (
+                <div key={c.key} className="cbm-row" role="listitem">
+                  <div className="cbm-label">{c.label}</div>
+                  {/* The track is 100% of the window's usage, not the largest
+                      row: drivers overlap, so they are not slices of a whole. */}
+                  <div className="cbm-track" aria-hidden="true">
+                    <i style={{ width: `${Math.min(100, Math.max(0, c.share * 100))}%` }} />
+                  </div>
+                  <div className="cbm-val">
+                    <b>{formatShare(c.share)}</b>
+                    <span>{byCost ? formatUsd(c.cost_usd) : `${formatTokens(c.tokens)} tok`}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+    </>
   );
 }

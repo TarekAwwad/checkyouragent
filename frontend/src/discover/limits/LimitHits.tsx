@@ -6,6 +6,10 @@ import { getLimits } from "../../api/client";
 import WindowsTimeline from "./WindowsTimeline";
 import CapZones from "./CapZones";
 import PlanHistoryModal from "./PlanHistoryModal";
+import PageHeader from "../../shell/PageHeader";
+import SegmentedControl from "../../components/controls/SegmentedControl";
+import { useAnalysisScope } from "../../shell/analysisScope";
+import { instantBounds } from "../../shell/dateRange";
 import { Blurred } from "../../shell/Blurred";
 import InsightStat from "../../components/InsightStat";
 import LoadingBar from "../../components/LoadingBar";
@@ -17,8 +21,7 @@ import {
 } from "./limitMath";
 
 function hitCountsHint(counts: Record<string, number>): string {
-  const parts = Object.entries(counts).map(([kind, count]) => `${count} ${kind}`);
-  return parts.length > 0 ? parts.join(" · ") : "in your exported logs";
+  return Object.entries(counts).map(([kind, count]) => `${count} ${kind}`).join(" · ");
 }
 
 function sessionHitWindowCount(windows: LimitsResponse["windows"]): number {
@@ -26,12 +29,21 @@ function sessionHitWindowCount(windows: LimitsResponse["windows"]): number {
 }
 
 // Explore technique: measured subscription limits. Account-level by design,
-// so unlike the other techniques there is no project filter (a limit window
-// may have been filled by several projects at once).
+// so the project scope is fixed (a limit window may have been filled by
+// several projects at once); the date range follows the shared scope.
 export default function LimitHits({ onOpenSession }: TechniqueProps) {
-  const query = useQuery<LimitsResponse>({ queryKey: ["limits"], queryFn: getLimits });
+  const { resolvedRange } = useAnalysisScope();
+  const { from, to } = resolvedRange;
+  const bounds = React.useMemo(() => instantBounds({ from, to }), [from, to]);
+  const query = useQuery<LimitsResponse>({
+    queryKey: ["limits", bounds.dateFrom, bounds.dateTo],
+    queryFn: () => getLimits(bounds),
+    placeholderData: (previous) => previous,
+  });
   const data = query.data;
   const [selected, setSelected] = React.useState<number | null>(null);
+  // The selection is an index into the window list; a new range has a new list.
+  React.useEffect(() => { setSelected(null); }, [bounds.dateFrom, bounds.dateTo]);
   const [planOpen, setPlanOpen] = React.useState(false);
   const [chosenBasis, setChosenBasis] = React.useState<LimitBasis | null>(null);
 
@@ -43,85 +55,86 @@ export default function LimitHits({ onOpenSession }: TechniqueProps) {
   const defaultBasis: LimitBasis =
     data != null && (!data.meta.cost_available || data.meta.costs_partial) ? "tokens" : "cost";
   const basis: LimitBasis = costUnusable ? "tokens" : chosenBasis ?? defaultBasis;
+  // A refetch (after a resync) keeps the old results on screen for the several
+  // seconds the endpoint takes, so mark it as the Cost page does.
+  const updating = query.isFetching && !query.isLoading && data != null;
 
   return (
-    <main className="discover-page">
+    <main className="discover-page" aria-busy={query.isFetching}>
       <div className="discover-page-inner">
-        <div className="discover-toolbar" aria-label="Limit hits controls">
-          <div className="discover-toolbar-lead">
-            <h1>Limit hits</h1>
-            <p className="discover-subtitle">
-              Every recorded limit hit in your logs, and the 5-hour windows behind
-              session-limit hits. Covers all projects: limits are account-level.
-            </p>
-          </div>
-          <div className="limit-toolbar-actions">
-            <div className="segmented-control" role="group" aria-label="Usage measurement">
-              {(["tokens", "cost"] as LimitBasis[]).map((item) => (
-                <button key={item} type="button"
-                        className={basis === item ? "active" : ""}
-                        aria-pressed={basis === item}
-                        disabled={item === "cost" && costUnusable}
-                        onClick={() => setChosenBasis(item)}>
-                  {item === "cost" ? "Cost" : "Tokens"}
-                </button>
-              ))}
-            </div>
+        <PageHeader
+          section="Explore"
+          title="Limit hits"
+          subtitle="Limit hits and 5-hour windows."
+          status={updating ? "Updating…" : null}
+          actions={(
             <button type="button" className="ghost-action" onClick={() => setPlanOpen(true)}>
               Plan history
             </button>
-          </div>
-        </div>
+          )}
+          scope={{ date: "filter", project: "fixed" }}
+          view={(
+            <SegmentedControl
+              label="Usage measurement"
+              options={[
+                { value: "tokens", label: "Tokens" },
+                { value: "cost", label: "Cost", disabled: costUnusable },
+              ]}
+              value={basis}
+              onChange={setChosenBasis}
+            />
+          )}
+        />
 
         {query.isLoading && (
-          <div className="loading-view"><LoadingBar caption="Reconstructing 5-hour windows…" /></div>
+          <div className="loading-view"><LoadingBar caption="Loading limit hits…" /></div>
         )}
         {query.isError && (
           <div className="empty-state panel-error">
             <strong>Failed to load</strong>
-            <span>Limit analytics could not be loaded.</span>
+            <span>Limit hits could not be loaded.</span>
           </div>
         )}
 
         {data && (
           <>
             {!data.meta.cost_available && (
-              <p className="tile-note">Price table unavailable, so window dollar values cannot be computed.</p>
+              <p className="tile-note">No price table: tokens only.</p>
             )}
             {data.meta.cost_available && data.meta.costs_partial && (
-              <p className="tile-note">Some models lack prices, so window values are a lower bound.</p>
+              <p className="tile-note">Some models are unpriced: costs are a lower bound.</p>
             )}
             <div className="cost-insight-strip limit-insight-strip" aria-label="Limit stats">
               <InsightStat label="Limit hits" value={data.meta.total_hits}
                            hint={hitCountsHint(data.meta.hit_counts)} />
-              <InsightStat label="Time remaining until recorded reset"
+              <InsightStat label="Time to reset"
                            value={formatResetInterval(data.meta.minutes_until_reset)}
-                           hint="sum of parsed reset-minus-hit intervals" />
-              <InsightStat label="Recorded session-hit windows"
-                           value={`${sessionHitWindowCount(data.windows)} of ${data.windows.length}`}
-                           hint="reconstructed five-hour windows" />
+                           hint="across all hits" />
+              <InsightStat label="Windows with a session hit"
+                           value={`${sessionHitWindowCount(data.windows)} of ${data.windows.length}`} />
             </div>
             <section className="card" aria-label="Windows timeline">
               <div className="card-head">
-                <h2>5-hour windows, recorded hits marked</h2>
+                <h2>5-hour windows</h2>
                 <span className="card-count"><b>{data.meta.total_windows}</b> windows</span>
               </div>
               <div className="card-pad">
-                <WindowsTimeline windows={data.windows} hits={data.hits} basis={basis} selected={selected}
+                <WindowsTimeline windows={data.windows} eras={data.eras}
+                                 basis={basis} selected={selected}
                                  onSelectWindow={setSelected} />
               </div>
             </section>
 
-            <section className="card" aria-label="Visible usage at recorded hit">
+            <section className="card" aria-label="Usage at session-limit hit">
               <div className="card-head">
-                <h2>Visible usage at recorded hit</h2>
+                <h2>Usage at session-limit hit</h2>
               </div>
               <div className="card-pad">
                 <CapZones eras={data.eras} basis={basis} />
               </div>
             </section>
 
-            {selected != null && (
+            {selected != null && data.windows[selected] && (
               <section className="card" aria-label="Window detail">
                 <div className="card-head">
                   <h2>Window detail</h2>
@@ -136,12 +149,12 @@ export default function LimitHits({ onOpenSession }: TechniqueProps) {
                       <span>{new Date(h.ts).toLocaleString()}</span>
                       <span>
                         {h.minutes_until_reset != null
-                          ? `Time remaining until recorded reset: ${formatResetInterval(h.minutes_until_reset)}`
-                          : "Recorded reset time unavailable"}
+                          ? `resets in ${formatResetInterval(h.minutes_until_reset)}`
+                          : "reset time unknown"}
                       </span>
                       {hitUsage(h, basis) != null && (
                         <span>
-                          at {formatLimitValue(hitUsage(h, basis), basis)} of window usage
+                          at {formatLimitValue(hitUsage(h, basis), basis)} usage
                         </span>
                       )}
                       {h.occurrence_count > 1 && <span>seen {h.occurrence_count} times</span>}
@@ -161,8 +174,6 @@ export default function LimitHits({ onOpenSession }: TechniqueProps) {
                 </div>
               </section>
             )}
-
-            <p className="limit-footnote">{data.meta.method_note}</p>
           </>
         )}
 

@@ -1,5 +1,4 @@
 import type { ComponentType } from "react";
-import type { Project } from "../api/types";
 import SubgroupDiscovery from "./SubgroupDiscovery";
 import ContextEconomics from "./context/ContextEconomics";
 import UsageMindmap from "./mindmap/UsageMindmap";
@@ -7,7 +6,6 @@ import UsageDrivers from "./drivers/UsageDrivers";
 import LimitHits from "./limits/LimitHits";
 
 export interface TechniqueProps {
-  projects: Project[];
   /** Open the session workspace, optionally landing on a specific event. */
   onOpenSession: (sessionId: number, eventId?: number | null) => void;
 }
@@ -27,9 +25,9 @@ export interface Technique {
 // first entry is what Explore opens to.
 export const TECHNIQUES: Technique[] = [
   { key: "limits", label: "Limit hits", status: "ready", section: "main", component: LimitHits },
-  { key: "context", label: "Context economics", status: "ready", section: "main", component: ContextEconomics },
   { key: "drivers", label: "Usage drivers", status: "ready", section: "main", component: UsageDrivers },
-  { key: "mindmap", label: "Usage Mindmap", status: "ready", section: "experimental", component: UsageMindmap },
+  { key: "mindmap", label: "Activity map", status: "ready", section: "main", component: UsageMindmap },
+  { key: "context", label: "Context economics", status: "ready", section: "experimental", component: ContextEconomics },
   { key: "subgroup", label: "Subgroups", status: "ready", section: "experimental", component: SubgroupDiscovery },
 ];
 

@@ -1,8 +1,6 @@
 import { DEFAULT_TECHNIQUE, TECHNIQUES, type Technique } from "./techniques";
-import type { Project } from "../api/types";
 
 interface Props {
-  projects: Project[];
   onOpenSession: (sessionId: number, eventId?: number | null) => void;
   technique: string;
 }
@@ -20,7 +18,7 @@ function ComingSoon({ technique }: { technique: Technique }) {
   );
 }
 
-export default function DiscoverPage({ projects, onOpenSession, technique }: Props) {
+export default function DiscoverPage({ onOpenSession, technique }: Props) {
   const active =
     TECHNIQUES.find((t) => t.key === technique) ??
     // DEFAULT_TECHNIQUE is always present in TECHNIQUES (same module), so this is safe.
@@ -31,5 +29,5 @@ export default function DiscoverPage({ projects, onOpenSession, technique }: Pro
   }
 
   const Component = active.component;
-  return <Component projects={projects} onOpenSession={onOpenSession} />;
+  return <Component onOpenSession={onOpenSession} />;
 }

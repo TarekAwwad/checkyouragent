@@ -83,10 +83,10 @@ describe("TeamOverview", () => {
     renderOverview();
 
     const totals = await screen.findByLabelText("Team totals");
-    expect(within(totals).getByText("Members").closest(".team-metric")).toHaveTextContent("3");
-    expect(within(totals).getByText("Projects").closest(".team-metric")).toHaveTextContent("4");
-    expect(within(totals).getByText("Sessions").closest(".team-metric")).toHaveTextContent("9");
-    expect(within(totals).getByText("Tokens").closest(".team-metric")).toHaveTextContent("27k");
+    expect(within(totals).getByText("Members").closest(".cost-insight")).toHaveTextContent("3");
+    expect(within(totals).getByText("Projects").closest(".cost-insight")).toHaveTextContent("4");
+    expect(within(totals).getByText("Sessions").closest(".cost-insight")).toHaveTextContent("9");
+    expect(within(totals).getByText("Tokens").closest(".cost-insight")).toHaveTextContent("27k");
 
     expect(screen.getByRole("img", { name: "Token activity over time" })).toBeInTheDocument();
 
@@ -142,5 +142,12 @@ describe("TeamOverview", () => {
 
     expect(await screen.findByText("Token volume by member")).toBeInTheDocument();
     expect(screen.queryByText("Toolchain")).not.toBeInTheDocument();
+  });
+
+  it("shows the header with a fixed scope while loading", () => {
+    vi.mocked(getTeamDashboard).mockReturnValue(new Promise(() => undefined) as never);
+    renderOverview();
+    expect(screen.getByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: "Scope" })).getByText("All projects")).toBeInTheDocument();
   });
 });

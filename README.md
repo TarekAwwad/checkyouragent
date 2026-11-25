@@ -72,8 +72,8 @@ visit.
   distribution, and session outliers. Historical pricing is optional and
   date-aware. Spend increases show their comparison baseline, and long model
   legends wrap while the model list scrolls within its panel.
-- **Explore** covers limit hits, context economics, and usage drivers, plus an
-  experimental section with the Usage Mindmap and subgroup discovery.
+- **Explore** covers limit hits, usage drivers, and the Activity map, plus an
+  experimental section with context economics and subgroup discovery.
 - **Team bundles** export allowlisted aggregates (no raw conversation content)
   that teammates can import for team Overview and Cost views. A privacy mode
   reduces visible sensitive text.
@@ -82,7 +82,7 @@ visit.
 > This is early-stage software. Costs are estimates computed from recorded
 > tokens and bundled pricing tables, not invoice amounts, and the UI
 > distinguishes values that are observed, estimated, inferred, or associated.
-> Experimental views report classified activity and statistical associations,
+> Experimental views report estimated signals and statistical associations,
 > not causes. Privacy mode reduces visible sensitive text but is not data
 > sanitization; review screenshots before sharing them.
 

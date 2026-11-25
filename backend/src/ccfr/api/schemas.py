@@ -56,6 +56,9 @@ class ImportProgressResponse(BaseModel):
     totals: CacheStatsResponse | None = None
     summary: ImportProgressSummary | None = None
     updated_at: str | None = None
+    # Increments when an import, demo load or local reset finishes in this server
+    # process; clients refetch imported data when it changes.
+    data_version: int = 0
 
 
 class ImportSummaryResponse(BaseModel):
@@ -705,11 +708,11 @@ class UsageMapEvidenceResponse(BaseModel):
 
 class UsageCharacteristic(BaseModel):
     key: str
-    headline: str = ""
+    label: str = ""
     share: float = 0
     cost_usd: float = 0
+    tokens: int = 0
     kind: str = ""
-    guidance: str = ""
 
 
 class UsageCharacteristicsMeta(BaseModel):
@@ -721,7 +724,6 @@ class UsageCharacteristicsMeta(BaseModel):
     costs_partial: bool = False
     sessions_analyzed: int = 0
     share_basis: str = "cost"
-    basis_note: str = ""
 
 
 class UsageCharacteristicsResponse(BaseModel):
@@ -748,6 +750,8 @@ class LimitWindowOut(BaseModel):
     value_usd: float = 0
     tokens: int = 0
     era: str = ""
+    # Index into LimitsResponse.eras: the plan period this window falls in.
+    era_index: int = 0
     hit_kinds: list[str] = Field(default_factory=list)
 
 
@@ -766,6 +770,13 @@ class LimitEraOut(BaseModel):
     hit_level_percentile_tokens: float | None = None
     usage_at_hit_usd: list[float] = Field(default_factory=list)
     usage_at_hit_tokens: list[int] = Field(default_factory=list)
+    # One era is one plan period (a plan-history entry until the next), so a
+    # plan held twice is two eras. Dates are the entry's bounds, end exclusive;
+    # weeks is the logged span inside them, floored at one week.
+    start_date: str | None = None
+    end_date: str | None = None
+    weeks: float = 1.0
+    hits_per_week: float = 0
 
 
 class LimitsMeta(BaseModel):
@@ -778,7 +789,6 @@ class LimitsMeta(BaseModel):
     hits_per_week_recent: float = 0
     hit_counts: dict[str, int] = Field(default_factory=dict)
     plan_history: list[dict[str, str]] = Field(default_factory=list)
-    method_note: str = ""
 
 
 class LimitsResponse(BaseModel):

@@ -268,7 +268,7 @@ export default function MindmapCanvas({
           <span><i className="is-tool" /> tool</span>
         )}
       </div>
-      <svg ref={svgRef} role="img" aria-label="Experimental activity map"
+      <svg ref={svgRef} role="img" aria-label="Activity map"
            viewBox={`${-size.width / 2} ${-size.height / 2} ${size.width} ${size.height}`}
            onPointerDown={onPointerDown} onPointerMove={onPointerMove}
            onPointerUp={onPointerUp} onPointerLeave={onPointerUp}>

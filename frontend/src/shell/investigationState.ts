@@ -1,13 +1,11 @@
-import type { CostAnalyticsFilters } from "../api/types";
-
 export interface SpendViewState {
   mode: "total" | "model";
   isolatedModel: string | null;
 }
 
 export interface CostViewState {
-  filters: CostAnalyticsFilters;
-  rangeKey: string;
+  /** Model filter; date range and project are shared (analysisScope). */
+  model: string | null;
   selectedBucket: string | null;
   spend: SpendViewState;
   scrollTop: number;
@@ -15,8 +13,7 @@ export interface CostViewState {
 
 export function initialCostViewState(): CostViewState {
   return {
-    filters: { dateFrom: null, dateTo: null },
-    rangeKey: "all",
+    model: null,
     selectedBucket: null,
     spend: { mode: "total", isolatedModel: null },
     scrollTop: 0,
@@ -27,12 +24,11 @@ export type SessionSortKey = "first_ts" | "last_ts" | "cost_usd" | "error_count"
 
 export interface SessionsViewState {
   query: string;
-  projectId: number | "all";
   onlyErrors: boolean;
   sortKey: SessionSortKey;
   scrollTop: number;
 }
 
 export function initialSessionsViewState(): SessionsViewState {
-  return { query: "", projectId: "all", onlyErrors: false, sortKey: "first_ts", scrollTop: 0 };
+  return { query: "", onlyErrors: false, sortKey: "first_ts", scrollTop: 0 };
 }

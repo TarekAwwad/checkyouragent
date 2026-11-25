@@ -99,8 +99,9 @@ describe("Sidebar", () => {
     expect(screen.queryByRole("button", { name: /Sequence mining/ })).not.toBeInTheDocument();
 
     const experimental = screen.getByRole("group", { name: "Experimental techniques" });
-    expect(within(experimental).getByRole("button", { name: "Usage Mindmap" })).toBeInTheDocument();
+    expect(within(experimental).getByRole("button", { name: "Context economics" })).toBeInTheDocument();
     expect(within(experimental).getByRole("button", { name: "Subgroups" })).toBeInTheDocument();
+    expect(within(experimental).queryByRole("button", { name: "Activity map" })).not.toBeInTheDocument();
     expect(within(experimental).queryByRole("button", { name: "Usage drivers" })).not.toBeInTheDocument();
     expect(screen.getByText("Experimental")).toBeInTheDocument();
   });

@@ -63,6 +63,12 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
   },
   {
     category: "Structure",
+    term: "Team bundle",
+    definition:
+      "An aggregate export of one machine's usage that teammates import for team Overview and Cost. It carries counts and totals only — no prompts, file contents, or commands.",
+  },
+  {
+    category: "Structure",
     term: "Large output",
     definition:
       "A tool output big enough that it was stored on its own rather than inline with the event — typically a heavy file read or verbose command output. The Sources & sync page's \"Large outputs\" stat counts these.",
@@ -118,12 +124,12 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
       "How the timeline spaces events along the x-axis. Raw time uses real wall-clock gaps; Compressed gaps shortens long idle stretches so activity isn't squished; Event order ignores time and spaces events evenly.",
   },
 
-  // Workflow — the Usage Mindmap's phases and habits.
+  // Workflow — the Activity map's phases and habits.
   {
     category: "Workflow",
-    term: "Usage Mindmap",
+    term: "Activity map",
     definition:
-      "The experimental activity map on Explore. It groups observed tool calls and text-only assistant steps into workflow phases, tools, and recurring habits. It describes recorded activity, not cost attribution. Click a node to inspect its rule and supporting sessions.",
+      "The Explore map that groups observed tool calls and text-only assistant steps into workflow phases, tools, and recurring habits. It describes recorded activity, not cost attribution. Click a node to inspect its rule and supporting sessions.",
   },
   {
     category: "Workflow",
@@ -170,7 +176,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     category: "Evidence",
     term: "Inferred",
     definition:
-      "Reconstructed from indirect evidence because the source export does not record the value directly. The UI states the reconstruction basis and sample wherever an inferred result is shown.",
+      "Reconstructed from indirect evidence because the source export does not record the value directly, such as 5-hour windows.",
   },
   {
     category: "Evidence",
@@ -198,12 +204,12 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     ],
   },
 
-  // Discovery — the Subgroup view that explains outcomes.
+  // Discovery — Explore's subgroup, limit-hit, usage-driver and context analyses.
   {
     category: "Discovery",
     term: "Subgroup",
     definition:
-      "Sessions or tool calls that match the same set of conditions. Experimental subgroup analysis reports groups whose observed outcome rate differs from the comparison sample; it does not claim those conditions caused the outcome.",
+      "Sessions or tool calls that match the same set of conditions. Experimental subgroup analysis reports groups whose observed outcome rate differs from the comparison sample; it does not claim those conditions caused the outcome. Each section declares its observation unit (session or tool call) and compares matching observations with the rest.",
   },
   {
     category: "Discovery",
@@ -246,12 +252,93 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     definition:
       "The \"stays at or above X%\" figure. Even on a pessimistic reading of a small sample, the subgroup's rate must still beat the baseline — and the bar rises with the number of conditions tested (a Bonferroni adjustment), so a long screen doesn't manufacture false positives. The gate is conservative: weak real effects can be hidden. Treat results as leads to investigate, not proof of cause.",
   },
+
   {
     category: "Discovery",
-    term: "Observed hit-level percentile",
+    term: "Limit hit",
     definition:
-      "Where a recorded limit hit's token volume or estimated API-equivalent cost falls within the reconstructed usage windows for the same plan era. For example, p50 is the median observed hit level. The windows are inferred; the percentile does not measure unused plan capacity.",
+      "A usage-limit message in a session log: session (5-hour), weekly, or org. Repeats of one message count once. Only hits inside exported Claude Code sessions are visible, so counts are a lower bound.",
   },
+  {
+    category: "Discovery",
+    term: "5-hour window",
+    definition:
+      "The span a session limit covers, rebuilt from your logs: it opens at the first message after the previous window and lasts 5 hours, or ends at the reset time a session-limit message states. Limits are account-wide, so Limit hits always covers all projects.",
+  },
+  {
+    category: "Discovery",
+    term: "Usage at hit",
+    definition:
+      "A window's logged cost or tokens up to a session-limit hit. Usage outside Claude Code counts toward the same limit but is not in these logs, so the real total can be higher.",
+  },
+  {
+    category: "Discovery",
+    term: "Plan period",
+    definition:
+      "One Plan history entry, from its start date until the next entry starts, so Pro → Max → Pro is three periods. Usage before the first entry is its own period; with no history, all usage is one. A window counts for the plan in force at its first session-limit hit, else at its start.",
+  },
+  {
+    category: "Discovery",
+    term: "Hits per week",
+    definition:
+      "A plan period's session-limit hits divided by the weeks that period overlaps your logs, with a minimum of one week.",
+  },
+  {
+    category: "Discovery",
+    term: "Hit-level percentile",
+    definition:
+      "The share of a plan period's 5-hour windows that used no more than the period's median usage at hit, shown on hover as \"71% of windows at or below the median\". It is not a share of your plan's limit.",
+  },
+  {
+    category: "Discovery",
+    term: "Time to reset",
+    definition:
+      "The reset time a limit message states, minus the time of the hit. The stat adds it up over all hits. It is not measured downtime.",
+  },
+
+  {
+    category: "Discovery",
+    term: "Usage driver",
+    definition:
+      "A trait of your usage, such as sessions with subagents or calls over 150k context, shown with its share of usage. Drivers overlap: one call can count toward several, so their shares can add up to more than 100%. They are not a breakdown. Today and Last 7 days match the windows of Claude Code's /usage; Last 30 days and All time draw on your full imported history.",
+  },
+  {
+    category: "Discovery",
+    term: "Share of usage",
+    definition:
+      "A driver's cost as a percentage of the window's total cost. With no price table, or nothing priced in the window, it uses tokens instead. Claude Code's /usage weights by rate-limit consumption, so the two agree in direction, not exactly.",
+  },
+  {
+    category: "Discovery",
+    term: "Sessions with subagents",
+    definition:
+      "Every session that started at least one subagent, counted in full, main thread included. It shows how widely you use subagents, not what they cost directly (that is Subagent turns). Start subagents deliberately, and consider a cheaper model for simple ones.",
+  },
+  {
+    category: "Discovery",
+    term: "Subagent turns",
+    definition:
+      "The requests made inside subagents, each of which runs its own requests. This is the direct subagent share of usage; the rest is the main thread.",
+  },
+  {
+    category: "Discovery",
+    term: "Calls over 150k context",
+    definition:
+      "Requests that sent more than 150,000 tokens of context. Long contexts cost more even when cached: /compact mid-task, and /clear when you switch tasks.",
+  },
+  {
+    category: "Discovery",
+    term: "Sessions active 8h+",
+    definition:
+      "Every session whose first and last message are 8 or more hours apart, counted in full. These are often background or loop sessions. Continuous usage adds up, so make sure it is intentional.",
+  },
+  {
+    category: "Discovery",
+    term: "Subagent: type",
+    definition:
+      "The requests made inside subagents of one type, such as general-purpose. A type is listed once it reaches 5% of usage. If it runs often, consider a cheaper model or tighter prompts for it.",
+  },
+
   {
     category: "Discovery",
     term: "Context tax",
@@ -297,6 +384,12 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     term: "Estimated API-equivalent cost",
     definition:
       "A dollar estimate computed from recorded token counts and the configured model price table. It is an API-equivalent comparison, not an invoice. Historical mode uses the price in effect on each session date; incomplete model coverage is shown as partial or unavailable.",
+  },
+  {
+    category: "Cost",
+    term: "Historical pricing",
+    definition:
+      "On: each session is priced at the rates in effect on its date. Off: every session is priced at the current rates. The Historical pricing chip on Cost switches between them.",
   },
   {
     category: "Cost",

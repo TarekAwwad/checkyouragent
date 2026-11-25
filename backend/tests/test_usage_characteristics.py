@@ -91,8 +91,40 @@ def test_agent_type_expansion_and_floor() -> None:
     chars = _by_key(compute_characteristics(
         events, session_spans={}, agent_types=agent_types, use_cost=True))
     assert 'agent_type:general-purpose' in chars
-    assert chars['agent_type:general-purpose']['headline'] == 'subagents under "general-purpose"'
+    assert chars['agent_type:general-purpose']['label'] == "Subagent: general-purpose"
     assert 'agent_type:rare' not in chars   # 2/100 = 2% < 5% floor
+
+
+def test_each_characteristic_has_a_short_label_and_no_prose() -> None:
+    events = [_ev(1, session=1, cost=10.0, agent_id="a1", ctx=200_000)]
+    chars = _by_key(compute_characteristics(
+        events, session_spans={1: ("2026-06-01T00:00:00Z", "2026-06-01T09:00:00Z")},
+        agent_types={(1, "a1"): "Explore"}, use_cost=True))
+    assert {k: c["label"] for k, c in chars.items()} == {
+        "subagent_usage": "Subagent turns",
+        "subagent_sessions": "Sessions with subagents",
+        "context_gt_150k": "Calls over 150k context",
+        "duration_gte_8h": "Sessions active 8h+",
+        "agent_type:Explore": "Subagent: Explore",
+    }
+    # Explanations and advice live in the frontend glossary, not the payload.
+    for c in chars.values():
+        assert "guidance" not in c
+        assert "headline" not in c
+
+
+def test_each_characteristic_reports_its_tokens() -> None:
+    events = [
+        _ev(1, session=1, cost=4.0, tokens=300),
+        _ev(2, session=1, cost=6.0, tokens=700, agent_id="a1", ctx=200_000),
+        _ev(3, session=2, cost=10.0, tokens=1000),
+    ]
+    chars = _by_key(compute_characteristics(
+        events, session_spans={}, agent_types={}, use_cost=True))
+    assert chars["subagent_usage"]["tokens"] == 700
+    assert chars["subagent_sessions"]["tokens"] == 1000    # whole session 1
+    assert chars["context_gt_150k"]["tokens"] == 700
+    assert chars["duration_gte_8h"]["tokens"] == 0
 
 
 def test_shares_may_overlap_above_one() -> None:
@@ -204,7 +236,7 @@ def test_analytics_token_basis_when_no_pricing(monkeypatch, tmp_path) -> None:
     payload = usage_characteristics_analytics(conn)
     assert payload["meta"]["share_basis"] == "tokens"
     assert payload["meta"]["cost_available"] is False
-    assert "token" in payload["meta"]["basis_note"].lower()
+    assert "basis_note" not in payload["meta"]
 
 
 def test_analytics_reads_agent_type_from_subagents(monkeypatch, tmp_path) -> None:
@@ -232,7 +264,9 @@ def test_endpoint_returns_characteristics(monkeypatch, tmp_path) -> None:
     assert resp.status_code == 200
     body = resp.json()
     assert "characteristics" in body
-    assert body["meta"]["basis_note"]
-    assert "cost" in body["meta"]["basis_note"].lower()
-    keys = [c["key"] for c in body["characteristics"]]
-    assert "subagent_sessions" in keys
+    assert body["meta"]["share_basis"] == "cost"
+    assert "basis_note" not in body["meta"]
+    row = next(c for c in body["characteristics"] if c["key"] == "subagent_sessions")
+    assert set(row) == {"key", "label", "share", "cost_usd", "tokens", "kind"}
+    assert row["label"] == "Sessions with subagents"
+    assert row["tokens"] == 480_000   # both events: 200k base + 40k out each

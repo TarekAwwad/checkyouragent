@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
 import ContextEconomics from "./ContextEconomics";
+import { TestScopeProvider } from "../../shell/TestScopeProvider";
 import type { ContextEconomicsResponse } from "../../api/types";
 
 const corpusPayload: ContextEconomicsResponse = {
@@ -99,7 +100,9 @@ function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <ContextEconomics projects={[]} onOpenSession={vi.fn()} />
+      <TestScopeProvider projects={[{ id: 3, name: "gamma" }]}>
+        <ContextEconomics onOpenSession={vi.fn()} />
+      </TestScopeProvider>
     </QueryClientProvider>,
   );
 }
@@ -212,5 +215,25 @@ describe("ContextEconomics", () => {
     expect(screen.getByText(/custom-model/)).toBeInTheDocument();
     expect(screen.queryByText(/\(31%\)/)).not.toBeInTheDocument();
     expect(screen.queryByRole("group", { name: /opportunity breakdown/i })).not.toBeInTheDocument();
+  });
+
+  it("keeps the header on an empty corpus and refetches for another project", async () => {
+    mocks.getContextEconomics.mockResolvedValueOnce({
+      ...corpusPayload, meta: { ...corpusPayload.meta, sessions_analyzed: 0 },
+    });
+    renderPage();
+    expect(await screen.findByText("No imported sessions with usage data available.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Context economics" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Project"), { target: { value: "3" } });
+    await waitFor(() => expect(mocks.getContextEconomics).toHaveBeenLastCalledWith({ projectId: 3 }));
+    expect(await screen.findByText("Estimated context opportunity")).toBeInTheDocument();
+  });
+
+  it("keeps the header when the analysis fails", async () => {
+    mocks.getContextEconomics.mockRejectedValueOnce(new Error("boom"));
+    renderPage();
+    expect(await screen.findByText("Context economics could not be loaded.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Project")).toBeInTheDocument();
+    expect(within(screen.getByRole("group", { name: "Scope" })).getByText("All time")).toBeInTheDocument();
   });
 });
