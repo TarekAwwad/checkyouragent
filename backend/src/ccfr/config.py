@@ -199,4 +199,4 @@ def app_version() -> str:
     try:
         return _pkg_version("checkyouragent")
     except PackageNotFoundError:
-        return "0.4.0"
+        return "0.5.0"

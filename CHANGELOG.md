@@ -4,7 +4,11 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project aims
 to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.0] - 2026-11-25
+
+This release shares date and project filters across analytics pages, redesigns
+Usage drivers, and improves the Activity map and Limit hits. Explore views load
+faster on large caches and refresh when imported data changes.
 
 ### Changed
 - Every page now opens with the same header: title, then date range and
@@ -80,6 +84,14 @@ to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (8 s to 3.7 s). The counts joined each event to every subagent of its
   session and read every event row for its replay flag. They are now counted
   per session from indexes, and only replayed events are read.
+
+### Upgrade notes
+- Existing SQLite caches can be reused. On first startup, the app builds
+  query-planner statistics for caches that lack them.
+- Date filters now use local calendar days. Totals may differ near the
+  boundaries of a range.
+- API consumers should check the response changes for
+  `/api/analytics/limits` and `/api/analytics/usage-characteristics` above.
 
 ## [0.4.0] - 2026-11-05
 
